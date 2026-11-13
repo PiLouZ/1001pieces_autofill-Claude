@@ -2114,6 +2114,25 @@ class MainWindow(QMainWindow):
     MAX_LIGNES_COMPLETIONS = 20
 
     @classmethod
+    def _lignes_fiches_a_refaire(cls, results, retrait):
+        """Fiches du site aux données bancales (appareils non créés), à refaire depuis
+        les PDF, et fiches refaites par cet import (CDC fiches du site § 10.14)."""
+        texte = ''
+        a_refaire = results.get('fiches_a_refaire') or []
+        for ref, raison in a_refaire[:cls.MAX_LIGNES_COMPLETIONS]:
+            texte += f"{retrait}[!] Fiche {ref} à refaire depuis les PDF : {raison}\n"
+        if len(a_refaire) > cls.MAX_LIGNES_COMPLETIONS:
+            texte += f"{retrait}==> … ({len(a_refaire) - cls.MAX_LIGNES_COMPLETIONS} de plus)\n"
+        if a_refaire:
+            texte += (f"{retrait}==> Cherchez les PDF de ces pièces et importez-les : "
+                      f"la fiche sortira de la liste\n")
+        refaites = results.get('fiches_refaites') or []
+        if refaites:
+            texte += (f"{retrait}==> Fiche(s) du site refaite(s) : {', '.join(refaites)}, "
+                      f"retirée(s) de la liste à refaire\n")
+        return texte
+
+    @classmethod
     def _lignes_completions(cls, results, retrait):
         """Bloc d'historique des appareils existants complétés par l'import :
 
@@ -2363,6 +2382,7 @@ class MainWindow(QMainWindow):
             # deux fichiers réunis redonnent les 370 appareils (357 et 354 seuls)
             summary += ("     ==> Conseil : régénérez le PDF avec le tri inversé et "
                         "importez-le en complément — ses coupures tombent ailleurs\n")
+        summary += MainWindow._lignes_fiches_a_refaire(results, retrait="     ")
         summary += "\n"
 
         # Section Appareils (format exact)
@@ -2571,13 +2591,15 @@ class MainWindow(QMainWindow):
         dialog = HistoryViewDialog(self.history_service, parent=self)
         dialog.show()
 
-    def _open_fiche_site_dialog(self):
-        """Lire une fiche du site (lien ou description collée) : aperçu puis
-        enregistrement après validation (CDC reprise des fiches, étape 3)."""
-        from .fiche_site_dialog import FicheSiteDialog
-        dialog = FicheSiteDialog(self.db_manager, main_window=self,
-                                 on_enregistre=self._apres_fiche_site)
+    def _open_fiche_site_dialog(self, url: str = ''):
+        """Lire une fiche du site (lien ou description collée), puis la fenêtre
+        d'import, comme pour un PDF (CDC reprise des fiches, § 10.12). Avec `url`
+        (lien collé dans le tableau) : la fiche est lue aussitôt."""
+        from .fiche_site_import import SaisieFicheSite
+        dialog = SaisieFicheSite(self, url=url)
         dialog.show()
+        if url:
+            dialog.lire_lien()
 
     def _open_reprise_site_dialog(self):
         """Importer les fiches du site en masse, par lots (CDC reprise des fiches,
@@ -3387,6 +3409,12 @@ class MainWindow(QMainWindow):
         clipboard_text = QApplication.clipboard().text()
         if not clipboard_text.strip():
             QMessageBox.information(self, "Collage", "Aucune donnée dans le presse-papiers")
+            return
+
+        # Lien d'une fiche de 1001pieces.com : import de cette fiche (§ 10.12)
+        from .fiche_site_import import est_lien_fiche_site
+        if est_lien_fiche_site(clipboard_text):
+            self._open_fiche_site_dialog(url=clipboard_text.strip())
             return
 
         # Optimisation pour gros volumes - détection limitée sur échantillon

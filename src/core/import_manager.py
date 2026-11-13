@@ -42,6 +42,9 @@ class ImportFile:
     suggested_reference: str
     suggested_label: str = None
     data: List[List[str]] = None
+    # Fiche du site (FileType.FICHE_SITE) : lecture et plan, pour la fenêtre d'import
+    # (aperçu, Succession préremplie) ; cf. EnregistrementFicheService.FicheAImporter
+    fiche: Any = None
     
     @property
     def filename(self) -> str:
@@ -432,6 +435,45 @@ class ImportManager:
         dialog = ImportDialog(self.parent_widget, config, import_manager=self)
         # Non bloquant (show, jamais exec_) : résultat via callback
         dialog.accepted.connect(lambda: self._on_dialog_accepted(dialog, callback, 'import'))
+        dialog.rejected.connect(lambda: self._on_dialog_rejected(dialog, callback))
+        dialog.show()
+
+    def importer_avec_dialogue(self, config: ImportConfiguration, callback: Optional[Callable] = None,
+                               preparer: Optional[Callable] = None, titre: str = '') -> None:
+        """Ouvre la fenêtre d'import sur une configuration déjà faite (fiche du site).
+        `preparer(configuration validée)` → (configuration de l'import réel, fin) :
+        `fin(results)` est appelée sur le thread principal avant `callback`."""
+        from ..ui.fenetre_import import ImportDialog
+        dialog = ImportDialog(self.parent_widget, config, import_manager=self)
+        if titre:
+            dialog.setWindowTitle(titre)
+
+        def _acceptee():
+            validee = dialog.get_configuration()
+            if not validee or preparer is None:
+                self._on_dialog_accepted(dialog, callback, 'import')
+                return
+            try:
+                reelle, fin = preparer(validee)
+            except Exception as e:
+                app_logger.error(f"Préparation de l'import impossible : {e}", exc_info=True)
+                if callback:
+                    callback(None)
+                dialog.deleteLater()
+                return
+
+            def _fin(results):
+                if results and fin is not None:
+                    try:
+                        fin(results)
+                    except Exception as e:
+                        app_logger.error(f"Fin d'import : {e}", exc_info=True)
+                if callback:
+                    callback(results)
+            self._launch_real_import(reelle, _fin, _time.perf_counter(), dialog=dialog,
+                                     source='fiche_site')
+
+        dialog.accepted.connect(_acceptee)
         dialog.rejected.connect(lambda: self._on_dialog_rejected(dialog, callback))
         dialog.show()
 
@@ -896,12 +938,40 @@ class ImportManager:
         else:
             self._apply_succession_from_config(config, results)
 
+        self._solder_fiches_a_refaire(config, results)
+
         apres = getattr(config, 'apres_ecriture', None)
         if apres is not None:
             apres(self, results)
 
         if hasattr(self.db_manager, 'cache_invalidation'):
             self.db_manager.cache_invalidation.invalidate_after_import(results)
+
+    def _solder_fiches_a_refaire(self, config: ImportConfiguration, results: Dict[str, Any]) -> None:
+        """Une pièce dont la fiche du site était « à refaire depuis les PDF » sort de
+        la liste quand un import PDF, CSV ou collage la concerne (CDC fiches du site
+        § 10.14). Non bloquant."""
+        retirer = getattr(self.db_manager, 'retirer_fiches_a_refaire', None)
+        if retirer is None:
+            return
+        refs = []
+        if config.use_common_reference and config.common_reference:
+            refs.append(config.common_reference)
+        for file in config.files:
+            if file.type == FileType.FICHE_SITE or file.path not in self._resultats_par_fichier:
+                continue
+            ref = config.individual_references.get(file.path, file.suggested_reference)
+            if ref:
+                refs.append(ref)
+        try:
+            refaites = retirer(refs)
+        except Exception as e:
+            app_logger.warning(f"Fiches à refaire non mises à jour : {e}")
+            return
+        if refaites:
+            results['fiches_refaites'] = refaites
+            app_logger.info(f"[Import] Fiches du site refaites, retirées de la liste : "
+                            f"{', '.join(refaites)}")
 
     @staticmethod
     def _refs_importees(config: ImportConfiguration) -> List[str]:

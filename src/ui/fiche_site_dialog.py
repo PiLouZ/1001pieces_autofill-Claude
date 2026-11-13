@@ -27,9 +27,7 @@ Non bloquant : show() + callbacks, jamais exec_() (conventions du projet).
 
 from typing import Callable, Dict, List, Optional
 
-from PyQt5.QtCore import (
-    QAbstractTableModel, QModelIndex, QSortFilterProxyModel, Qt, QThread, pyqtSignal,
-)
+from PyQt5.QtCore import QAbstractTableModel, QModelIndex, QSortFilterProxyModel, Qt
 from PyQt5.QtWidgets import (
     QAbstractItemView, QApplication, QComboBox, QDialog, QHBoxLayout, QHeaderView, QLabel,
     QLineEdit, QPlainTextEdit, QPushButton, QSplitter, QTableView, QTabWidget, QTextBrowser,
@@ -38,7 +36,7 @@ from PyQt5.QtWidgets import (
 import qtawesome as qta
 
 from src.core.logger import app_logger
-from src.services.enregistrement_fiche_service import EnregistrementFicheService, telecharger_page
+from src.services.enregistrement_fiche_service import EnregistrementFicheService
 from src.utils.rapprochement_fiche import STATUTS_EQUIVALENCE, STATUTS_REMPLACEMENT
 from src.utils.rapprochement_fiche.decisions import (
     CATEGORIES_RESUME, ChoixAppareil, DecisionsFiche, categorie_appareil,
@@ -57,19 +55,8 @@ _COLONNES = ("N°", "Ce que l'outil a trouvé", "Compatibilité", "Marque", "Ré
 _SANS_QUESTION = {A_REVOIR: "à revoir : appareil à choisir", ILLISIBLE: "illisible : non créé"}
 
 
-class _Telechargement(QThread):
-    """Téléchargement de la page publique, hors du thread principal."""
-    termine = pyqtSignal(str, str)      # page, erreur
-
-    def __init__(self, url: str, parent=None):
-        super().__init__(parent)
-        self.url = url
-
-    def run(self):
-        try:
-            self.termine.emit(telecharger_page(self.url), '')
-        except Exception as e:
-            self.termine.emit('', str(e))
+# Téléchargement de la page publique : commun avec « Lire une fiche du site »
+from .fiche_site_import import Telechargement as _Telechargement  # noqa: E402
 
 
 class ModeleAppareils(QAbstractTableModel):

@@ -109,6 +109,19 @@ class DatabaseFichesSiteMixin:
                     FOREIGN KEY (appareil_id) REFERENCES appareils(id) ON DELETE CASCADE
                 )
             """)
+            # Fiches du site à refaire depuis les PDF (§ 10.14) : une par pièce
+            self.cursor.execute("""
+                CREATE TABLE IF NOT EXISTS fiches_a_refaire (
+                    ref_piece  TEXT PRIMARY KEY,
+                    id_product INTEGER,
+                    raison     TEXT,
+                    en_vrac    INTEGER,
+                    creations  INTEGER,
+                    retenues   INTEGER,
+                    exemples   TEXT,
+                    releve_le  TEXT
+                )
+            """)
             self._setup_reprise_site_tables()
             self._ajouter_colonne_si_absente('piece_associations', 'provenance', 'TEXT')
             self._ajouter_colonne_si_absente('piece_equivalence_groups', 'origine', 'TEXT')
@@ -116,6 +129,45 @@ class DatabaseFichesSiteMixin:
             self._ajouter_colonne_si_absente('piece_supersessions', 'rang_fiche', 'INTEGER')
         except Exception as e:
             app_logger.error(f"Erreur création des tables des fiches du site : {e}")
+
+    # --- Fiches à refaire depuis les PDF (§ 10.14) ---------------------------------
+    def _noter_fiche_a_refaire(self, ref_piece: str, id_product: Optional[int], a_refaire,
+                               le: str):
+        """Fiche dont des créations ont été retenues (données bancales). Une relecture
+        met la ligne à jour ; un import de la pièce l'en retire."""
+        self.cursor.execute(
+            "INSERT OR REPLACE INTO fiches_a_refaire (ref_piece, id_product, raison, en_vrac, "
+            "creations, retenues, exemples, releve_le) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [ref_piece, id_product, a_refaire.raison, int(a_refaire.en_vrac), a_refaire.creations,
+             a_refaire.retenues, '\n'.join(a_refaire.exemples), le])
+
+    def fiches_a_refaire(self) -> List[Dict]:
+        """Fiches à refaire, les plus touchées d'abord."""
+        with self._query_lock:
+            rows = self.cursor.execute(
+                "SELECT ref_piece, id_product, raison, en_vrac, creations, retenues, exemples, "
+                "releve_le FROM fiches_a_refaire ORDER BY en_vrac DESC, retenues DESC, ref_piece"
+            ).fetchall()
+        cles = ('ref_piece', 'id_product', 'raison', 'en_vrac', 'creations', 'retenues',
+                'exemples', 'releve_le')
+        return [dict(zip(cles, r)) for r in rows]
+
+    def retirer_fiches_a_refaire(self, refs: Iterable[str]) -> List[str]:
+        """Retire de la liste les pièces données (fiche refaite par un import, ou
+        « Fait ») ; retourne celles qui y étaient."""
+        refs = [r for r in dict.fromkeys(refs) if r]
+        if not refs:
+            return []
+        with self._query_lock:
+            presentes = []
+            for i in range(0, len(refs), 500):
+                lot = refs[i:i + 500]
+                q = ','.join('?' * len(lot))
+                presentes += [r[0] for r in self.cursor.execute(
+                    f"SELECT ref_piece FROM fiches_a_refaire WHERE ref_piece IN ({q})", lot)]
+                self.cursor.execute(f"DELETE FROM fiches_a_refaire WHERE ref_piece IN ({q})", lot)
+            self.conn.commit()
+        return presentes
 
     def _setup_reprise_site_tables(self):
         self.cursor.execute("""

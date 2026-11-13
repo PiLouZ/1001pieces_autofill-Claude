@@ -253,7 +253,12 @@ class ImportDialog(QDialog):
         self.import_manager = import_manager  # PHASE 2.1: Référence à ImportManager pour chargement lazy
 
         is_clipboard = any(f.type == FileType.CLIPBOARD for f in self.import_config.files)
-        self.setWindowTitle("Importer depuis le presse-papiers" if is_clipboard else "Configuration d'importation")
+        # Fiche du site (CDC fiches du site § 10.12) : lignes déjà lues, pas de colonnes
+        self._fiche = next((f.fiche for f in self.import_config.files
+                            if f.type == FileType.FICHE_SITE and f.fiche is not None), None)
+        self.setWindowTitle("Importer une fiche du site" if self._fiche is not None
+                            else "Importer depuis le presse-papiers" if is_clipboard
+                            else "Configuration d'importation")
         self.setModal(True)
         self.setMinimumWidth(1000)
         # Multi-fichiers : disposition en colonnes (cf _setup_ui) → moins de
@@ -359,6 +364,13 @@ class ImportDialog(QDialog):
         self.format_desc_label = QLabel()
         self.format_desc_label.setStyleSheet("color: #6c757d; margin-left: 20px;")
         format_layout.addWidget(self.format_desc_label)
+
+        # Fiche du site aux données bancales : à refaire depuis les PDF (§ 10.14)
+        self.bandeau_fiche = QLabel()
+        self.bandeau_fiche.setWordWrap(True)
+        self.bandeau_fiche.setStyleSheet(StyleManager.BANDEAU_AVERTISSEMENT)
+        self.bandeau_fiche.setVisible(False)
+        format_layout.addWidget(self.bandeau_fiche)
 
         # Bandeau d'alerte format non reconnu (masqué par défaut)
         self.format_warning_widget = QWidget()
@@ -535,7 +547,8 @@ class ImportDialog(QDialog):
             ref_row_lbl.setStyleSheet(StyleManager.TEXTE_GRAS)
             ref_row_lbl.setFixedWidth(70)
             ref_row.addWidget(ref_row_lbl)
-            if file.type == FileType.CLIPBOARD:
+            if file.type == FileType.CLIPBOARD or (
+                    file.type == FileType.FICHE_SITE and not file.suggested_reference):
                 ref_input_edit = QLineEdit()
                 ref_input_edit.setPlaceholderText("Référence pièce (ex: AS6015830)")
                 ref_input_edit.setObjectName(f"ref_input_{file.path}")
@@ -560,6 +573,8 @@ class ImportDialog(QDialog):
             desc_input = QLineEdit()
             desc_input.setPlaceholderText("Description optionnelle")
             desc_input.setObjectName(f"desc_{file.path}")
+            if file.type == FileType.FICHE_SITE and file.suggested_label:
+                desc_input.setText(file.suggested_label)
             desc_row.addWidget(desc_input)
             ref_group_layout.addLayout(desc_row)
             self.individual_desc_fields.append(desc_input)
@@ -660,6 +675,14 @@ class ImportDialog(QDialog):
             row3.addWidget(self.equiv_input)
             succ_layout.addLayout(row3)
 
+            if self._fiche is not None:
+                # Relations de la fiche : retirer une référence ne l'écrit pas (une
+                # équivalente retirée est écartée), en ajouter une l'écrit
+                succ_info.setText("Relations lues sur la fiche. Retirez une référence "
+                                  "erronée, ajoutez-en une au besoin.")
+                self.succ_replaces_input.set_refs(self._fiche.remplace())
+                self.succ_replaced_by_input.set_refs(self._fiche.remplacee_par())
+                self.equiv_input.set_refs(self._fiche.equivalentes())
             self._succ_content.setVisible(True)
             succ_container_layout.addWidget(self._succ_content)
             layout.addWidget(succ_container)
@@ -789,6 +812,8 @@ class ImportDialog(QDialog):
 
         self.preview_checkbox = QCheckBox("Aperçu avant import (vérification détaillée, plus lent)")
         self.preview_checkbox.setChecked(False)
+        # Fiche du site : l'aperçu est déjà dans la fenêtre
+        self.preview_checkbox.setVisible(self._fiche is None)
         self.preview_checkbox.setToolTip("Affiche un récapitulatif détaillé (créations/mises à jour) avant l'écriture définitive en base")
         buttons_layout.addWidget(self.preview_checkbox)
 
@@ -1136,6 +1161,12 @@ class ImportDialog(QDialog):
         self._collecter_relations(config)
         self._collecter_mapping_colonnes(config)
 
+        # Fiche du site sans code produit : la pièce est à saisir
+        if self._fiche is not None and not any(
+                (config.individual_references.get(f.path) or '').strip() for f in config.files):
+            self._signaler_reference_fiche()
+            return
+
         # Blocage : remplacements contradictoires (deux remplaçantes pour une réf,
         # boucle). Rien de sensé à « importer quand même » : la base garderait la
         # dernière remplaçante écrite, ou refuserait la boucle en silence.
@@ -1188,9 +1219,11 @@ class ImportDialog(QDialog):
     def _ref_du_fichier(self, file, auto_references_enabled):
         """Référence de pièce d'un fichier : champ éditable pour le collage, sinon
         déduite du nom de fichier (si l'option automatique est cochée)."""
-        if file.type == FileType.CLIPBOARD:
+        if file.type in (FileType.CLIPBOARD, FileType.FICHE_SITE):
             ref_input_edit = self.findChild(QLineEdit, f"ref_input_{file.path}")
-            return ref_input_edit.text().strip() if ref_input_edit else ""
+            if ref_input_edit is not None:
+                return ref_input_edit.text().strip()
+            return file.suggested_reference or "" if file.type == FileType.FICHE_SITE else ""
         if auto_references_enabled:
             return file.suggested_reference
         return ""
@@ -1398,6 +1431,76 @@ class ImportDialog(QDialog):
         box.setWindowModality(Qt.WindowModal)
         box.finished.connect(lambda *_: box.deleteLater())
         box.show()
+
+    def _signaler_reference_fiche(self):
+        """Fiche sans code produit : rien à importer sans référence de pièce."""
+        from PyQt5.QtWidgets import QMessageBox
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle("Référence de pièce à saisir")
+        box.setText("Cette fiche n'a pas de code produit : saisissez la référence de la pièce "
+                    "avant d'importer.")
+        box.setStandardButtons(QMessageBox.Ok)
+        box.setWindowModality(Qt.WindowModal)
+        box.finished.connect(lambda *_: box.deleteLater())
+        box.show()
+
+    # États des lignes d'une fiche, dans l'ordre de l'aperçu
+    _ETATS_FICHE = ("déjà lié", "connu", "à créer", "à refaire", "couvert", "non importé")
+
+    def _apercu_fiche(self):
+        """Aperçu d'une fiche du site : ce que l'import fera de ses lignes, en
+        langage métier ; bandeau si la fiche est à refaire depuis les PDF."""
+        a = self._fiche.apercu()
+        titre = a['titre'] or "fiche du site"
+        n_produit = f"n° {a['id_product']} : " if a['id_product'] else ""
+        self.format_info_label.setText(f"Fiche du site {n_produit}{titre}")
+        self.format_info_label.setVisible(True)
+        libelles = {"déjà lié": "déjà liés à la pièce", "connu": "appareils connus à relier",
+                    "à créer": "appareils à créer",
+                    "à refaire": "non créés (fiche à refaire)",
+                    "couvert": "couverts par une ancienne référence",
+                    "non importé": "non importés"}
+        compte = a['compte']
+        self.format_desc_label.setText(" · ".join(
+            f"{compte[e]} {libelles[e]}" for e in self._ETATS_FICHE if compte.get(e)) or
+            "Aucun appareil sur la fiche (relations seules)")
+        self.format_desc_label.setVisible(True)
+        self.format_warning_widget.setVisible(False)
+        lignes = a['lignes']
+        texte = [f"{'État':<12} {'Marque':<16} {'Référence':<20} {'Nom commercial':<26} Type",
+                 "=" * 86]
+        for etat, marque, ref, nom, type_ in lignes[:12]:
+            texte.append(f"{etat:<12} {marque[:15]:<16} {ref[:19]:<20} {(nom or '')[:25]:<26} "
+                         f"{type_ or ''}")
+        if len(lignes) > 12:
+            texte.append(f"… {len(lignes) - 12} autres lignes")
+        if lignes:
+            self._set_preview_text("\n".join(texte))
+            self.preview_text.setVisible(True)
+        else:
+            self.preview_text.setVisible(False)
+        self.third_col_widget.setVisible(False)
+        self.headers_checkbox.setVisible(False)
+        self.mapping_container.setVisible(False)
+        self._format_options_panel.setVisible(False)
+        self._mapping_widgets = []
+        alertes = []
+        refaire = a['a_refaire']
+        if refaire is not None:
+            ref = self._fiche.plan.ref_piece or "cette pièce"
+            alertes.append(f"<b>Fiche à refaire depuis les PDF</b> — {refaire.raison}. "
+                           f"Les appareils connus sont reliés, mais ces appareils ne sont "
+                           f"pas créés. Cherchez les PDF de <b>{ref}</b> et importez-les.")
+        if a['non_importees']:
+            alertes.append(f"{len(a['non_importees'])} ligne(s) non importée(s) "
+                           f"(appareil à choisir, référence illisible, marque inconnue).")
+        if a['sans_code_produit']:
+            alertes.append("Pas de code produit sur la fiche : saisissez la référence de la pièce.")
+        self.bandeau_fiche.setText("<br>".join(alertes))
+        self.bandeau_fiche.setVisible(bool(alertes))
+        if hasattr(self, 'ok_btn'):
+            self.ok_btn.setEnabled(True)
 
     def _reference_manquante_warning_message(self, config) -> Optional[str]:
         """Message d'avertissement si un collage va être importé SANS référence de
@@ -1626,6 +1729,9 @@ class ImportDialog(QDialog):
         self._cache_analyse_format = {}
 
         if not self.import_config.files:
+            return
+        if self._fiche is not None:
+            self._apercu_fiche()
             return
 
         # Grouper les fichiers par structure

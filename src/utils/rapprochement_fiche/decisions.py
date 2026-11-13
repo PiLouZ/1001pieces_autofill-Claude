@@ -196,6 +196,8 @@ class PlanEnregistrement:
     # Règles de l'import (§ 10.12) : lignes que l'import ne peut pas trancher, non
     # importées et comptées dans l'historique (appareil parmi plusieurs, réf. illisible)
     non_importees: List[str] = field(default_factory=list)
+    # Créations retenues pour données bancales : fiche à refaire depuis les PDF (§ 10.14)
+    a_refaire: Optional[object] = None          # regles_import.ARefaire
     en_attente: List[str] = field(default_factory=list)              # catégories en attente
 
     @property
