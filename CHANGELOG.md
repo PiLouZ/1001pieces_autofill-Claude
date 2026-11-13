@@ -4,6 +4,109 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.101.0] - 2026-11-13 (PR #125 à #146)
+
+Reprise des fiches produit du site 1001pieces.com : une fiche s'importe comme un PDF
+ou un CSV, seule ou par lots, sans question ; les fiches aux données en vrac ne créent
+aucun appareil bancal ; référence associée Whirlpool / Indesit / Beko ; export
+EveryParts des fiches reprises. Et les appellations des appareils dans les textes
+générés. Cahier des charges : `docs/cdc_import_fiches_site.md`.
+
+### Appellations des appareils (PR #125)
+- La méta description peut citer l'appareil sous un autre nom (« machine à laver »
+  pour « lave-linge »), choix fixe par référence ; nouvel onglet **Appareils** de la
+  configuration des exports ; l'article s'accorde au genre de l'appareil.
+
+### Cahier des charges de la reprise des fiches (PR #126)
+- `docs/cdc_import_fiches_site.md` : sources, lecture, rapprochement, données, retour
+  vers le site et EveryParts.
+
+### Lecteur de description (PR #127)
+- `src/utils/lecteur_fiche/` lit une description de fiche (HTML ou texte) guidé par
+  les gabarits « Fiche » : code produit, « Remplace », équivalentes, liste d'appareils
+  par marque ; 88,9 % des 12 228 listes lues sans doute.
+
+### Rapprochement avec la base (PR #128)
+- `src/utils/rapprochement_fiche/` : pièce, appareils (marque + réf., ponctuation
+  considérée puis ignorée), lignée (« déjà couvert »), remplacements, équivalences et
+  marque d'origine, type appareil par appareil ; lecture seule.
+
+### Aperçu et enregistrement d'une fiche (PR #129)
+- Tables `produits_site`, `decisions_ecritures`, `decisions_references`, provenance
+  des liens, origine et n° de ligne des équivalentes ; enregistrement par les briques
+  de l'import.
+
+### Reprise en masse par lots (PR #130)
+- Lecture conjointe des deux exports CSV PrestaShop, lots de 100, avancement d'une
+  session à l'autre (`reprise_site_etat`, journal des lots, fiches de côté), relance
+  sans doublon.
+
+### Rien de faux en bloc (PR #131)
+- Le type trouvé n'est jamais remplacé, un appareil retrouvé par le seul nom
+  commercial n'est pas relié, pas de doublon sous une autre marque du groupe, ni
+  d'équivalente sans chiffre ni de référence illisible créées.
+
+### Moteur de questions, fiches à revoir, écrans par questions, réglages (PR #132 à #135)
+- Étapes intermédiaires de la refonte, remplacées depuis par l'import sans question
+  (PR #139 à #141) puis retirées (PR #145) ; restent les réglages de la fenêtre dans
+  `QSettings("1001pieces", "autofill")`, isolés des tests, et les chemins d'export
+  disparus ignorés (PR #135).
+
+### Lecteur corrigé sur les erreurs du 1er lot (PR #136)
+- « POUR APPAREILS », « Références équivalentes Rosières », « Remplace les
+  dimensions », parenthèses, cotes, « Four à Pyrolyse », références par marque.
+
+### Retour vers le site et EveryParts (PR #137)
+- Fiche complète : paire dans le code produit, une ligne d'équivalentes par marque
+  d'origine, références écartées absentes ; export EveryParts : référence interne du
+  produit du site proposée, variables `{ref_interne}` et `{id_product}`.
+
+### Libellé sans le type, ordre des « Remplace » (PR #138)
+- Le libellé tiré du titre s'arrête avant « pour <type d'appareil> » ; « Remplace »
+  suit l'ordre de la fiche (`piece_supersessions.rang_fiche`).
+
+### Une fiche est écrite par l'import (PR #139)
+- `FileType.FICHE_SITE` : lignes déjà identifiées, écrites par `ImportManager`
+  (orthographe alignée, auto-complétion, suggestions, auto-complétés) ; règles de
+  l'import à la place des questions.
+- Correctif de l'import de plusieurs fichiers : un appareil créé par un fichier et cité
+  par un fichier suivant est relié dès le premier import.
+
+### Fiche seule par la fenêtre d'import, fiches à refaire (PR #140)
+- « Lire une fiche du site » ouvre la fenêtre d'import habituelle ; Cmd+V d'un lien
+  de 1001pieces.com ; créations bancales retenues (nom mêlé de description, n° d'article
+  collé, mot coupé, type non appareil, marque inconnue), fiche en vrac à 20 % :
+  `fiches_a_refaire`, retirée par un import de sa référence.
+
+### Lot en cartes, liste des fiches à refaire (PR #141)
+- « Importer les fiches du site » : une carte par fiche dans la fenêtre d'import ;
+  fiche sans code produit : libellé et lien du site, référence à saisir ; fenêtre
+  « Fiches à refaire » (page du site, Fait, export CSV) ; saisie d'une fiche en une zone.
+
+### Référence associée Whirlpool / Indesit / Beko (PR #142)
+- Champ « Réf. associée » dans tous les imports, retenu (`references_associees`) ;
+  la référence associée devient une équivalente de ligne 0 ; libellés de la
+  Succession élargis.
+
+### Export EveryParts des fiches reprises (PR #143)
+- Fenêtre « Exporter les fiches reprises (EveryParts) » : référence produit du site en
+  1re colonne, appareils de la pièce et de sa lignée, un fichier par produit ou un
+  seul, date d'export retenue.
+
+### Réf. associée dans le code produit (PR #144)
+- La référence associée va à la suite dans le code produit de la Fiche complète, même
+  sans produit du site ; le champ suit directement la référence à l'import.
+
+### Retrait du moteur de questions (PR #145)
+- Questions, catégories, groupes de doutes, écarts à cliquer, règles mémorisées et
+  fiches à revoir retirés (≈ 3 300 lignes) ; mêmes résultats sur le 1er lot réel.
+
+### Référence principale (PR #146)
+- Bouton « ⇄ » à l'import : la référence associée devient la principale (appareils,
+  libellé) ; la principale toujours en premier dans le code produit.
+
+---
+
 ## [3.100.3] - 2026-11-06 (PR #119, #120, #121, #122, #123)
 
 Version de maintenance : fin des restes de l'audit d'intégrité du code, sans
