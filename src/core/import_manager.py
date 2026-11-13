@@ -121,6 +121,9 @@ class ImportConfiguration:
     # Lot de fiches du site (cartes) : saisies de chaque carte, par chemin de fichier
     # (importer, ref, libelle, remplace, remplacee_par, equivalentes, obsolete)
     saisies_fiches: Optional[Dict[str, Dict[str, Any]]] = None
+    # Référence associée Whirlpool / Indesit / Beko répondue dans la fenêtre :
+    # réf. de pièce → référence associée, ou None (« aucune ») ; CDC fiches § 10.17
+    references_associees: Optional[Dict[str, Optional[str]]] = None
 
     def __post_init__(self):
         if self.label_config is None:
@@ -947,8 +950,31 @@ class ImportManager:
         if apres is not None:
             apres(self, results)
 
+        # Après la fiche du site : la réponse de la fenêtre l'emporte sur son code produit
+        self._appliquer_references_associees(config, results)
+
         if hasattr(self.db_manager, 'cache_invalidation'):
             self.db_manager.cache_invalidation.invalidate_after_import(results)
+
+    def _appliquer_references_associees(self, config: ImportConfiguration,
+                                        results: Dict[str, Any]) -> None:
+        """Référence associée Whirlpool / Indesit / Beko répondue à l'import : mémorisée,
+        et équivalente de la pièce si elle est donnée (CDC fiches du site § 10.17)."""
+        reponses = getattr(config, 'references_associees', None)
+        definir = getattr(self.db_manager, 'definir_references_associees', None)
+        if not reponses or definir is None:
+            return
+        try:
+            from ..utils.rapprochement_fiche.associee import origine_associable
+            origines = {a: origine_associable(a) or None for a in reponses.values() if a}
+            n = definir(reponses.items(), datetime.now().isoformat(timespec='seconds'), origines)
+        except Exception as e:
+            app_logger.warning(f"Références associées non enregistrées : {e}")
+            return
+        if n:
+            results['references_associees'] = dict(reponses)
+            app_logger.info("[Import] Références associées : " + ", ".join(
+                f"{r} ≡ {a or 'aucune'}" for r, a in reponses.items()))
 
     def _solder_fiches_a_refaire(self, config: ImportConfiguration, results: Dict[str, Any]) -> None:
         """Une pièce dont la fiche du site était « à refaire depuis les PDF » sort de

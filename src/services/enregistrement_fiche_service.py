@@ -490,6 +490,12 @@ class FicheAImporter:
             rp.nouvelle for rp in self.rapprochement.remplacements
             if rp.sens == 'remplacee_par' and rp.statut not in ('identique', 'cycle')))[:1]
 
+    def reference_associee(self) -> str:
+        """2ᵉ référence du code produit (paire Whirlpool / Indesit / Beko, ligne 0)."""
+        return next((e.reference for e in self.rapprochement.equivalences
+                     if e.ligne == 0 and e.statut != 'ecartee'
+                     and e.reference != self.plan.ref_piece), '')
+
     def equivalentes(self) -> List[str]:
         return list(dict.fromkeys(
             e.reference for e in self.rapprochement.equivalences

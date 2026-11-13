@@ -239,6 +239,11 @@ class RefChipsInput(QFrame):
             self._reconstruire()
             self.changed.emit()
 
+    def definir_aide(self, texte: str):
+        """Change le texte d'aide (affiché tant qu'aucune réf n'est saisie)."""
+        self._placeholder = texte or ''
+        self.line_edit.setPlaceholderText("" if self._refs else self._placeholder)
+
     def set_refs(self, refs):
         self._refs = []
         self.line_edit.clear()

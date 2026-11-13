@@ -154,6 +154,13 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
   <li>Section <b>Succession</b> : « Cette réf. remplace », « est remplacée par » et « est équivalente à ». Plusieurs références sont possibles (séparées par un espace), sauf pour « remplacée par » : <b>une pièce n'a qu'une seule remplaçante</b>.</li>
 </ul>
 
+<h3>Référence associée (Whirlpool, Indesit, Beko)</h3>
+<ul>
+  <li>Quand la pièce importée a une référence <b>Whirlpool</b> (48 suivi de 10 chiffres), <b>Indesit</b> (C00 suivi de 6 chiffres) ou <b>Beko</b> (10 chiffres commençant par 17, 18 ou 28), la ligne <b>Réf. associée</b> apparaît : dans la section Succession pour un fichier seul, sur chaque carte pour plusieurs fichiers ou un lot de fiches du site. Indiquez la référence jumelle de l'un des deux autres groupes (« 481073071153 » ↔ « C00319033 »), ou cochez <b>aucune</b>.</li>
+  <li>La réponse est retenue : la référence associée devient une équivalente de la pièce, écrite dans le code produit de la Fiche complète. Au prochain import de la même pièce, la ligne est déjà remplie (ou « aucune » cochée). Laissée vide, la question reviendra.</li>
+  <li>Pour une fiche du site, la ligne est remplie d'office avec la 2ᵉ référence de son code produit.</li>
+</ul>
+
 <h3>À l'import de plusieurs fichiers</h3>
 <ul>
   <li><b>Remplacée par</b>, sur chaque carte de fichier : la remplaçante <b>directe</b> de ce fichier (une seule réf ; du lot, de la base, ou nouvelle — elle est alors créée en fantôme). La case <b>Obsolète</b> se coche d'office.</li>
@@ -262,6 +269,7 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
   <li>Reprise des fiches du site : une fiche enregistrée (seule ou par lot) passe désormais par l'import, comme un PDF ou un CSV. Elle profite de l'orthographe alignée, de l'auto-complétion du type, des <b>Suggestions à valider</b> et des <b>Auto-complétés à vérifier</b>, avec son récapitulatif dans l'historique. L'appareil reste reconnu par sa marque et sa référence : pas de doublon quand le nom commercial diffère.</li>
   <li>Import de plusieurs fichiers : un appareil créé par un fichier et cité par un fichier suivant est relié aux deux pièces dès le premier import (il fallait jusqu'ici importer une seconde fois).</li>
   <li><b>Lire une fiche du site</b> ouvre la fenêtre d'import habituelle, comme pour un PDF : ce que deviennent les appareils de la fiche, référence et libellé, section Succession préremplie (une référence erronée se retire). Plus de questions pour une fiche seule. Un lien de 1001pieces.com collé dans le tableau (Cmd+V) lit la fiche aussitôt.</li>
+  <li><b>Référence associée</b> Whirlpool / Indesit / Beko demandée à l'import (PDF, CSV, collage, fiches du site) : la référence jumelle, ou « aucune ». La réponse est retenue et la question ne revient plus ; la référence associée devient une équivalente de la pièce, dans son code produit. Libellés de la section Succession qui ne sont plus coupés.</li>
   <li><b>Importer les fiches du site</b> : un lot s'ouvre dans la fenêtre d'import habituelle, une carte par fiche (référence, libellé, Obsolète, relations, lien vers la fiche sur le site) ; plus de questions. Une carte décochée met la fiche de côté ; une fiche sans code produit garde son libellé et attend sa référence. Liste <b>Fiches à refaire</b> (bouton de la fenêtre et menu Données) : ouvrir la page du site, « Fait », export CSV.</li>
   <li><b>Lire une fiche du site</b> : une seule zone pour coller le lien ou la description ; l'outil reconnaît un lien d'un texte.</li>
   <li>Fiches du site <b>à refaire depuis les PDF</b> : une fiche aux données en vrac (nom mêlé d'une description, n° d'article collé, mot coupé, en-tête de série pris pour une marque) ne crée aucun appareil bancal. Elle relie seulement les appareils connus, et sa référence est notée pour que vous importiez ses PDF ; l'import de cette référence la retire de la liste.</li>
