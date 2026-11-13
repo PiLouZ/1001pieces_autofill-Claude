@@ -18,12 +18,12 @@ Le service tient une **session** de reprise :
 (l'interface passe par un QThread) ; `apres_lot` (caches, sauvegarde
 événementielle) se fait sur le thread principal.
 
-Écriture d'un lot, par les briques de l'étape 3 (`EnregistrementFicheService`) :
-1. tous les appareils à créer du lot en UNE insertion du tronc d'import
-   (`_batch_insert_devices`), dédoublonnés entre fiches (même marque, même forme
-   normalisée) ;
-2. chaque fiche : pièce, liens avec provenance, remplacements et équivalences,
-   origines, produit du site, décisions ;
+Écriture d'un lot (§ 10.12) : un import de plusieurs fichiers, une fiche par
+fichier (`EnregistrementFicheService.ecrire_par_import`) :
+1. les appareils sont créés et reliés par l'import ; un appareil créé par une
+   fiche est retrouvé par les suivantes (même marque, même forme normalisée) ;
+2. après l'import, chaque fiche : provenance des liens, remplacements et
+   équivalences, origines, produit du site, décisions ;
 3. dans la même transaction : journal du lot, fiches mises de côté, et
    avancement du dernier id_produit.
 
@@ -38,7 +38,7 @@ import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional
 
 from ..core.logger import app_logger
 from .base_service import BaseService
@@ -74,6 +74,8 @@ class ResultatLot:
     # Champs d'appareils pris sur le site, écrits par `apres_lot` (thread principal)
     maj_appareils: Dict[int, Dict[str, str]] = field(default_factory=dict)
     champs_modifies: int = 0
+    # Résultats de l'import du lot (historique, suggestions, auto-complétés)
+    resultats_import: Dict[str, object] = field(default_factory=dict)
 
     def resume(self) -> str:
         croissance = (self.taille_apres - self.taille_avant) / 1e6
@@ -285,43 +287,34 @@ class RepriseSiteService(BaseService):
         return res
 
     def _ecrire_lot(self, lot, plan, res: ResultatLot, progression, annule):
-        from ..utils.rapprochement_fiche.decisions import AppareilACreer
-        # 1. Appareils à créer, une fois pour tout le lot (1ʳᵉ occurrence : écriture, nom, type)
-        cles = list(plan.creations)
-        uniques = [AppareilACreer(n, *self._attributs(plan.creations[c][0][1]))
-                   for n, c in enumerate(cles)]
-        if progression is not None:
-            progression(0, len(plan.plans), f"Création de {len(uniques)} appareil(s)…")
-        ids = self.fiche_service.creer_appareils(uniques)
-        res.appareils_crees = len(ids)
-        res.marques_touchees = sorted({a.marque for a in uniques})
-        par_fiche: Dict[int, Dict[int, int]] = {}
-        for n, c in enumerate(cles):
-            for i_fiche, a in plan.creations[c]:
-                par_fiche.setdefault(i_fiche, {})[a.index] = ids[n]
-        # 2. Fiche par fiche
-        for k, (i_fiche, p) in enumerate(plan.plans):
-            if annule is not None and annule():
+        """Le lot est un import de plusieurs fichiers, une fiche par fichier (§ 10.12) :
+        un appareil créé par une fiche est retrouvé par les suivantes (même marque,
+        même forme normalisée), puis le propre de chaque fiche s'écrit."""
+        if not plan.plans:
+            return
+        res.marques_touchees = sorted({a.marque for occ in plan.creations.values()
+                                       for _, a in occ[:1]})
+        noms = [f"fiche {lot.fiches[i].id_produit}" for i, _ in plan.plans]
+        resultats = self.fiche_service.ecrire_par_import(
+            [p for _, p in plan.plans], noms=noms, progression=progression, annule=annule)
+        for r in resultats:
+            if not r.ok:
                 res.annule = True
-                return
-            if progression is not None:
-                progression(k, len(plan.plans), f"Fiche {lot.fiches[i_fiche].id_produit} "
-                                                f"({p.ref_piece})")
-            r = ResultatEnregistrement()
-            self.fiche_service._ecrire(p, r, nouveaux=par_fiche.get(i_fiche, {}))
+                continue
             res.fiches_ecrites += 1
+            res.appareils_crees += r.appareils_crees
             res.liens_crees += r.liens_crees
             res.liens_completes += r.liens_completes
             res.remplacements += r.relations.get('successions', 0)
             res.equivalences += r.relations.get('equivalences', 0)
             for ident, colonnes in r.maj_appareils.items():
                 res.maj_appareils.setdefault(ident, {}).update(colonnes)
+        res.resultats_import = resultats[0].resultats_import if resultats else {}
+        if res.annule and not (annule is not None and annule()):
+            erreurs = (res.resultats_import or {}).get('errors') or []
+            raise RuntimeError("fiche(s) non importée(s) : " + "; ".join(erreurs[:5]))
         if progression is not None:
             progression(len(plan.plans), len(plan.plans), "Fiches enregistrées")
-
-    @staticmethod
-    def _attributs(a) -> Tuple[str, str, str, str]:
-        return a.marque, a.ref_modele, a.nom, a.type
 
     def _clore_lot(self, lot, plan, res: ResultatLot, mesures: Dict):
         """Journal du lot, fiches mises de côté, dernier id_produit : une transaction."""
@@ -374,6 +367,7 @@ class RepriseSiteService(BaseService):
                                        liens_crees=res.liens_crees,
                                        liens_completes=res.liens_completes,
                                        maj_appareils=res.maj_appareils)
+        bilan.resultats_import = res.resultats_import
         self.fiche_service._apres_ecriture(bilan, source="reprise_site")
         res.champs_modifies = bilan.champs_modifies
         if res.maj_appareils and self._acces is not None:

@@ -29,6 +29,9 @@ class FileType(Enum):
     CSV = "csv"
     PDF = "pdf"
     CLIPBOARD = "clipboard"  # Données issues du presse-papiers (v3.31.0)
+    # Fiche du site 1001pieces.com (CDC fiches du site § 10.12) : lignes déjà lues et
+    # identifiées (dict par ligne, cf. ImportManager.CLE_APPAREIL / CLE_IDENTITE)
+    FICHE_SITE = "fiche_site"
 
 
 @dataclass
@@ -107,6 +110,12 @@ class ImportConfiguration:
     # Exemple : {3: ["commercial_ref", "ref_modele", "ignore"]}
     column_mapping: Optional[Dict[int, List[str]]] = None
 
+    # Écritures propres à une source, faites après les appareils, les liens et les
+    # relations, dans le même thread : apres_ecriture(import_manager, results).
+    # Jamais appelé en simulation. Les fiches du site y écrivent leur provenance,
+    # leurs origines et leur produit du site (CDC fiches du site § 10.12).
+    apres_ecriture: Optional[Callable[['ImportManager', Dict[str, Any]], None]] = None
+
     def __post_init__(self):
         if self.label_config is None:
             self.label_config = LabelConfiguration()
@@ -124,6 +133,7 @@ class _LotBatch:
     l'écriture (ÉTAPE 3). first_occurrence_by_key et processed_line_index sont
     locaux au fichier, contrairement à seen_device_refs partagé entre fichiers."""
     new_devices_batch: List[Dict[str, Any]] = field(default_factory=list)
+    cles_nouveaux: List[str] = field(default_factory=list)   # clé d'identité, parallèle à new_devices_batch
     existing_updates: List[Tuple[int, Dict[str, Any]]] = field(default_factory=list)
     completions: List[Tuple[int, Dict[str, Any], Dict[str, str]]] = field(default_factory=list)  # Type/Fabricant vides en base
     associations_batch: List[Tuple] = field(default_factory=list)
@@ -214,6 +224,11 @@ class ImportManager:
         # comptés puis journalisés en une seule ligne, au lieu d'une ligne chacun.
         # Initialisés ici car _try_auto_complete est aussi appelable hors import.
         self._log_counters = self._nouveaux_compteurs_log()
+        # État de session (réinitialisé à chaque import, cf. _reinitialiser_etat_session) ;
+        # posé ici aussi pour les appels directs du chemin batch (tests, briques)
+        self._ids_session = {}
+        self._resultats_par_fichier = {}
+        self._index_par_id = None
 
         # Casse alignée sur la base : marques (v3.82.0, « DELTA » → « Delta ») et
         # types (v3.83.0, « CHAUFFAGE » → « Chauffage »)
@@ -728,6 +743,7 @@ class ImportManager:
 
                 if file_results:
                     self._cumuler_resultats_fichier(results, file, file_results)
+                    self._resultats_par_fichier[file.path] = file_results
 
             if progress_cb:
                 progress_cb(n, n, "Finalisation…")
@@ -746,6 +762,13 @@ class ImportManager:
                 cache_service.resume_invalidation(force_invalidate=True)
 
     # ── Étapes de _run_import_files ──────────────────────────────────────────
+
+    @staticmethod
+    def _resultats_fichier_vides() -> Dict[str, Any]:
+        """Résultat d'un fichier sans ligne à traiter."""
+        return {'total_imported': 0, 'matches_found': 0, 'new_entries': 0,
+                'associations_created': 0, 'associations_existing': 0,
+                'manual_completion': 0, 'duplicates_in_file': 0, 'total_lines_extracted': 0}
 
     @staticmethod
     def _nouveaux_resultats_import(nb_fichiers: int) -> Dict[str, Any]:
@@ -782,6 +805,11 @@ class ImportManager:
         # Appareils dont un champ auto-complété a été tracé (fenêtre « à vérifier »)
         self._appareils_autocompletes = set()
         self._horodatage_import = datetime.now().isoformat(sep=' ', timespec='seconds')
+        # Appareils créés pendant la session, par clé d'identité (les fiches du site
+        # y retrouvent l'id de leurs créations), et résultat de chaque fichier
+        self._ids_session = {}
+        self._resultats_par_fichier = {}
+        self._index_par_id = None
 
     @staticmethod
     def _progression_pdf(progress_cb, file, i: int, n: int):
@@ -867,6 +895,10 @@ class ImportManager:
             self._apply_relations_from_config(config, results)
         else:
             self._apply_succession_from_config(config, results)
+
+        apres = getattr(config, 'apres_ecriture', None)
+        if apres is not None:
+            apres(self, results)
 
         if hasattr(self.db_manager, 'cache_invalidation'):
             self.db_manager.cache_invalidation.invalidate_after_import(results)
@@ -1121,7 +1153,12 @@ class ImportManager:
         """Importer un fichier unique"""
         # Charger les données — clipboard utilise les données pré-chargées, fichiers relus depuis disque
         pages_vides = []
-        if file.type == FileType.CLIPBOARD and file.data is not None:
+        if file.type == FileType.FICHE_SITE:
+            # Une fiche sans appareil (relations seules) n'est pas une erreur
+            data = file.data or []
+            if not data:
+                return ImportManager._resultats_fichier_vides()
+        elif file.type == FileType.CLIPBOARD and file.data is not None:
             data = file.data
         elif file.type == FileType.CSV:
             data = self.load_csv_data(file.path)
@@ -1177,7 +1214,8 @@ class ImportManager:
         BATCH_THRESHOLD = 50  # lignes - batch dès 50 lignes pour optimisation immédiate
 
         # En dry_run, toujours utiliser le batch (chemin propre : classification séparée des écritures)
-        if dry_run or len(data) >= BATCH_THRESHOLD:
+        # Lignes déjà identifiées (fiche du site) : seul le chemin batch les connaît
+        if dry_run or len(data) >= BATCH_THRESHOLD or file.type == FileType.FICHE_SITE:
             file_results = self._process_data_import_batch(
                 data,
                 references_and_labels,
@@ -1287,7 +1325,8 @@ class ImportManager:
         """
         from .config import Config
 
-        if not row or not any(cell.strip() if cell is not None else False for cell in row):
+        cellules = row.values() if isinstance(row, dict) else (row or ())
+        if not row or not any(str(cell).strip() for cell in cellules if cell is not None):
             return self.LIGNE_IGNOREE, None, None
 
         # Compter chaque ligne non vide comme extraite du fichier
@@ -1432,6 +1471,7 @@ class ImportManager:
         # ÉTAPE 3: Batch operations sur la base (ignorées en dry_run)
         if not dry_run:
             self._ecrire_lot_batch(lot, results)
+            self._retenir_appareils_crees(lot, existing_devices_cache)
         else:
             self._compter_associations_simulees(lot.associations_batch, results)
 
@@ -1474,6 +1514,27 @@ class ImportManager:
                 app_logger.debug(f" BATCH: {idx}/{total_rows} lignes analysées")
 
         return lot
+
+    def _retenir_appareils_crees(self, lot, existing_devices_cache) -> None:
+        """Appareils créés par ce fichier, ajoutés au cache partagé des fichiers
+        suivants. Sans cela, un fichier suivant qui cite le même appareil (doublon
+        inter-fichiers) ne le trouvait ni en base au chargement du cache, ni dans
+        le cache : sa ligne n'était pas rattachée à la pièce, et seul un 2ᵈ import
+        posait le lien (418 liens sur le 1ᵉʳ lot des fiches du site, CDC § 10.12)."""
+        for device_data, cle in zip(lot.new_devices_batch, lot.cles_nouveaux):
+            ident = device_data.get('id')
+            if not cle or not ident:
+                continue
+            existing_devices_cache[cle] = {
+                'id': ident,
+                'ref_modele': device_data.get('ref_modele', ''),
+                'commercial_ref': device_data.get('commercial_ref', ''),
+                'type': device_data.get('type', ''),
+                'manufacturer': device_data.get('manufacturer', ''),
+                'other_ref': device_data.get('other_ref', ''),
+                'notes': device_data.get('notes', ''),
+            }
+            self._ids_session[cle] = ident
 
     def _rattacher_doublon_batch(self, lot, device_data, device_key, references_and_labels,
                                  existing_devices_cache) -> None:
@@ -1519,6 +1580,8 @@ class ImportManager:
             # Type/Fabricant vides en base : le cache filtre en amont, pour ne pas
             # émettre un UPDATE par appareil retrouvé sur un import de 90 000 lignes
             entree = existing_devices_cache.get(device_key) if device_key else None
+            if entree is None and device_data.get(self.CLE_APPAREIL):
+                entree = self._appareil_par_id(existing_id)
             champs = self._champs_a_completer(device_data, entree) if entree else {}
             if champs:
                 lot.completions.append((existing_id, device_data, champs))
@@ -1530,6 +1593,7 @@ class ImportManager:
             if self._needs_manual_completion(device_data):
                 results['manual_completion'] += 1
             lot.new_devices_batch.append(device_data)
+            lot.cles_nouveaux.append(device_key)
 
         self._collecter_candidat_similarite(
             device_data, actif=not dry_run,
@@ -1929,11 +1993,12 @@ class ImportManager:
         les trois notions d'identité (clé de dédup, construction du cache, lecture du
         cache) sont désormais alignées sur la même condition.
         """
-        ref_modele = (device_data.get('ref_modele') or '').strip()
-        commercial_ref = (device_data.get('commercial_ref') or '').strip()
+        ident = device_data.get(self.CLE_APPAREIL)
+        if ident:
+            return ident                # identifié par la source (fiche du site)
+        ref_modele, commercial_ref, key = self._build_device_key(device_data)
 
         if ref_modele or commercial_ref:
-            key = f"{ref_modele.lower()}|{commercial_ref.lower()}"
             if key in cache:
                 return cache[key]['id']
 
@@ -2249,6 +2314,9 @@ class ImportManager:
         """
         ref_modele = (device_data.get('ref_modele') or '').strip()
         commercial_ref = (device_data.get('commercial_ref') or '').strip()
+        cle = device_data.get(ImportManager.CLE_IDENTITE)
+        if cle:
+            return ref_modele, commercial_ref, cle
         return ref_modele, commercial_ref, f"{ref_modele.lower()}|{commercial_ref.lower()}"
 
     def _parse_row_data(self, row: List[str], config: ImportConfiguration) -> Optional[Dict[str, Any]]:
@@ -2260,7 +2328,9 @@ class ImportManager:
             return None
 
         n = len(row)
-        if config.column_mapping and n in config.column_mapping:
+        if isinstance(row, dict):
+            data = self._lire_ligne_identifiee(row)
+        elif config.column_mapping and n in config.column_mapping:
             data = ImportManager._lire_ligne_par_mapping(row, config.column_mapping[n])
         else:
             data = ImportManager._lire_ligne_par_position(row, config.third_column_choice)
@@ -2276,6 +2346,52 @@ class ImportManager:
             self._try_auto_complete(data)
 
         return data
+
+    # Lignes déjà lues et identifiées par leur source (fiche du site, FileType.FICHE_SITE) :
+    # - CLE_APPAREIL : id d'un appareil de la base (la source l'a reconnu) ;
+    # - CLE_IDENTITE : clé de déduplication à la place de « réf. modèle | nom »
+    #   (une fiche identifie un appareil par sa marque et sa réf., CDC § 5.2).
+    CLE_APPAREIL = '_appareil_id'
+    CLE_IDENTITE = '_cle_identite'
+    _CHAMPS_APPAREIL = ('ref_modele', 'commercial_ref', 'type', 'manufacturer',
+                        'other_ref', 'notes')
+
+    def _lire_ligne_identifiee(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        """Ligne fournie en dict par sa source. Appareil reconnu : ses champs sont
+        ceux de la base, la ligne ne fait que compléter un type ou une marque vides
+        (règle de l'import : jamais écraser)."""
+        data = {k: v for k, v in row.items()
+                if v is not None and (k.startswith('_') or k in self._CHAMPS_APPAREIL)}
+        for champ in self._CHAMPS_APPAREIL:
+            if champ in data:
+                data[champ] = str(data[champ]).strip()
+        ident = data.get(self.CLE_APPAREIL)
+        base = self._appareil_par_id(ident) if ident else None
+        if base is not None:
+            for champ in ('ref_modele', 'commercial_ref', 'other_ref', 'notes'):
+                data[champ] = (base.get(champ) or '').strip()
+            for champ in self.CHAMPS_COMPLETABLES:
+                data[champ] = (base.get(champ) or '').strip() or data.get(champ, '')
+            # 3ᵉ colonne : rien à reporter sur l'appareil (_needs_update)
+            data['other_ref'] = data['notes'] = ''
+        return data
+
+    def _appareil_par_id(self, ident) -> Optional[Dict[str, Any]]:
+        """Appareil de la base par son id (lignes chargées pour le cache, sinon SQL)."""
+        if not ident:
+            return None
+        if self._index_par_id is None:
+            self._index_par_id = {}
+            for row in getattr(self, '_existing_devices_rows_for_similarity', None) or ():
+                self._index_par_id[row[0]] = dict(zip(('id',) + self._CHAMPS_APPAREIL, row))
+        entree = self._index_par_id.get(ident)
+        if entree is None:
+            rows = self.db_manager.execute_query(
+                "SELECT id, ref_modele, commercial_ref, type, manufacturer, other_ref, notes "
+                "FROM appareils WHERE id = ?", [ident]) or []
+            if rows:
+                entree = self._index_par_id[ident] = dict(zip(('id',) + self._CHAMPS_APPAREIL, rows[0]))
+        return entree
 
     @staticmethod
     def _cellule(row: List[str], i: int) -> str:

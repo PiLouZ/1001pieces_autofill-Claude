@@ -187,6 +187,8 @@ class PlanLot:
     fiches_a_completer: List[int]
     lignes_a_completer: int
     a_revoir: Dict[int, List[str]] = field(default_factory=dict)     # mode questions : fiche → lignes de côté
+    # Règles de l'import (§ 10.12) : fiche → lignes non importées (historique)
+    non_importees: Dict[int, List[str]] = field(default_factory=dict)
 
     @property
     def pret(self) -> bool:
@@ -430,6 +432,39 @@ class LotReprise:
         if q is not None:
             plan.en_attente = q.en_attente() + plan.en_attente
             plan.a_revoir = {i: list(v) for i, v in q.a_revoir.items() if v}
+        return plan
+
+    def planifier_par_regles(self) -> PlanLot:
+        """Plan du lot par les règles de l'import (CDC § 10.12) : aucune question,
+        aucune catégorie en attente. Une fiche sans code produit est mise de côté
+        (référence de pièce à saisir) ; ce que l'import ne sait pas trancher n'est
+        pas importé et compté. Les créations restent partagées entre les fiches."""
+        from src.utils.rapprochement_fiche.regles_import import (
+            SANS_CODE_PRODUIT, decisions_import, sans_code_produit)
+        self.questionnaire = None
+        regles: Dict[int, List[str]] = {}
+        for i, f in self.fiches_actives():
+            if f.personnalisee or f.de_cote:
+                continue
+            if sans_code_produit(f.rapprochement):
+                self.mettre_de_cote(i, SANS_CODE_PRODUIT)
+                continue
+            f.decisions, regles[i] = decisions_import(f.rapprochement)
+        self.tout_valider()
+        self.etats[PROFILS_AMBIGUS] = VALIDEE
+        plan = self._planifier()
+        if plan.fiches_a_completer:
+            for i, p in plan.plans:
+                f = self.fiches[i]
+                if not p.lignes_a_completer or f.personnalisee:
+                    continue
+                for index in p.lignes_a_completer:
+                    f.decisions.appareils[index] = ChoixAppareil(ignorer=True)
+                regles.setdefault(i, []).extend(p.a_completer)
+            plan = self._planifier()
+        plan.non_importees = {i: v for i, v in regles.items() if v}
+        for i, p in plan.plans:
+            p.non_importees = list(plan.non_importees.get(i, []))
         return plan
 
     def _planifier(self) -> PlanLot:

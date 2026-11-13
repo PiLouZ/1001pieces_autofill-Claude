@@ -696,6 +696,116 @@ Vérification : `test_lecteur_fiche.py::TestCorrectifsDuLot1` et `test_reprise_r
 
 **Suite notée par l'utilisateur (2026-11-12)** : pour une référence Whirlpool, Indesit ou Beko, demander la référence associée (de l'un des deux autres groupes, ou aucune). C'est une mémoire de paires utile au code produit, à l'appariement des remplacements et aux imports PDF / CSV. Elle ne suffit pas à l'ordre exact du point 3 : l'ordre à l'intérieur d'une paire varie d'une ligne à l'autre. À traiter avec la refonte de l'ergonomie, ou dans une étape à part.
 
+### 10.12 La reprise devient un import comme les autres — audit, mesure, plan (2026-11-13)
+
+**Décision de l'utilisateur (2026-11-13)**, pour les deux fenêtres : une fiche du site est une source de plus, comme un PDF ou un CSV. Une fiche seule suit l'import d'un fichier ; un lot suit l'import de plusieurs fichiers (cartes), en gardant le propre du massif (deux exports, avancement, relance sans doublon). Un doute sur un appareil n'est pas un doute sur la relation avec la pièce. Des écrans simples.
+
+**Chemin d'import actuel** (`src/core/import_manager.py`, `src/ui/fenetre_import.py`) :
+1. Fichier choisi, glissé ou collé → `ImportConfiguration` ; réf. de pièce = nom du fichier (champ saisi pour un collage).
+2. `ImportDialog` (non bloquant) : aperçu de 5 lignes, correspondance des colonnes (`ref_modele`, `commercial_ref`, `type`, `manufacturer`, `other_ref`, `notes`), libellé, Obsolète. Fichier seul : section « Succession » (remplace, remplacée par, équivalente à). Plusieurs fichiers : une carte par fichier (réf., libellé, Obsolète, « Remplacée par »), réf. commune, zone de groupes (lignées, équivalences).
+3. Aperçu à blanc facultatif (`ImportPreviewDialog`) : comptages et « Orthographe alignée sur la base ».
+4. Import (QThread) : casse des marques et types alignée (`CasseNormalisationService`), auto-complétion Type/Marque par réf. exacte (`proposer_type_fabricant`), appareil cherché par la clé `lower(ref_modele)|lower(commercial_ref)` **sans la marque**, créations en lot, champs vides des appareils existants complétés (jamais écrasés), liens par `add_or_update_piece_with_description`, puis relations (`apply_relations` ou `_apply_succession_from_config`).
+5. Après : aucune fenêtre n'est imposée. Récapitulatif dans l'historique ; boutons « Suggestions à valider (N) » (`SuggestionValidationDialog` : paire Type/Marque proposée par similarité de réf.) et « Auto-complétés à vérifier (N) » (`AutocompletionReviewDialog`). Refus dans `refus_completions`.
+6. L'import PDF ne pose **aucune** question par appareil (type, marque, écriture) : les seules fenêtres sur les appareils sont ces deux fenêtres d'après l'import.
+
+**Mesure sur le 1ᵉʳ lot réel** (produits 7084 à 7191, copies de la base par l'API backup, sans réseau). Les mêmes lignes lues (lecteur et marque retenue par la reprise) passent d'un côté par la reprise (mode questions, réponses simulées comme au § 10.6), de l'autre par `ImportManager._run_import_files`, une carte par fiche (73 fiches ont des appareils) :
+
+| | Import d'origine (réf. + nom) | Reprise (marque + réf., 2 passes) |
+|---|---|---|
+| Appareils créés | 4 402 | 1 262 |
+| dont même marque et même réf. qu'un appareil existant | **2 829** (le nom commercial diffère ou manque : 2 301 créés sans nom) | 0 |
+| dont doublons de ponctuation | 0 | 0 |
+| dont même réf. sous une autre marque (Beko / Altus, Far ; Whirlpool / Ignis, Laden) | 36 | 0 |
+| créés en double entre fiches | 25 | 0 |
+| créés sans type / sans marque | 17 / 28 | 0 / 0 |
+| Lignes rattachées à un appareil d'une autre marque | 272 (presque toutes du même groupe : Bauknecht / Whirlpool, Candy / Hoover), sans trace | relié (R1) ou question |
+| Liens créés | 31 930 (les lignes « déjà couvertes » par la lignée sont liées) | 25 343 |
+| Auto-complétés à vérifier | 3 107 appareils | — |
+| Suggestions à valider | 21 appareils | — (26 questions) |
+| Existants complétés ou modifiés | 0 | 0 |
+| Relance du même lot | 0 appareil, **+418 liens** | 0 ajout |
+
+- Ce qu'on perd avec la clé de l'import : 2 829 doublons sur un lot (≈ 370 000 sur la reprise entière), dus au nom commercial dans la clé ; les liens de lignée en double ; 418 liens perdus au 1ᵉʳ passage (un appareil créé par une carte et cité par une carte suivante n'y est pas rattaché, `_rattacher_doublon_batch` : défaut du chemin à plusieurs fichiers, hors reprise).
+- Ce qu'on gagne : l'auto-complétion et les suggestions de l'import, aucune question.
+- La ponctuation ne pèse rien sur ce lot (aucun niveau « normalisé ») ; elle compte sur la base entière (467 collisions, § 5.2).
+- **Conclusion** : la fiche garde son identification (marque + réf., deux passes, lignée), qui résout chaque ligne en appareil connu ou à créer ; tout le reste suit l'import.
+
+**Ce qui se branche tel quel sur l'import** : écran `ImportDialog` (aperçu, carte, libellé, Obsolète, « Succession » ou cartes), casse alignée, auto-complétion du type et de la marque des appareils à créer, complétion des champs vides des existants, écriture des appareils (`_batch_insert_devices`) et des relations (`apply_relations`), garde des conflits de remplacement, historique, suggestions à valider, auto-complétés à vérifier, `EventDrivenSaveService.save_after_import`.
+
+**Ce qui reste propre à la reprise, sans écran** : lecteur (`lecteur_fiche`), deux exports CSV et lots, avancement et relance (`reprise_site_etat`, `_lots`), identification marque + réf. et lignée (« déjà couvert » = pas de lien), coupe du libellé, provenance des liens, `produits_site` / EAN / réf. interne (le site fait foi, écrits sans question), marques d'origine et n° de ligne des équivalentes, ordre des « Remplace » (`rang_fiche`), pièce fantôme devenue réelle.
+
+**Ce qui disparaît** : moteur de questions R1 à R7 et Q1 à Q7 (`reprise_site/questions.py`, `regles_reprise`), catégories validées en bloc et groupes de doutes (`decisions.py` réduit au plan d'écriture), écarts outil / site (`Ecart`, `GroupeEcart`, `decisions_champs` n'est plus écrite), fiches « à revoir », panneau `questions_reprise.py`, onglets et vue virtuelle de `reprise_site_dialog.py`, `fiche_site_dialog.py`.
+
+**Règles qui remplacent les questions** (celles de l'import) :
+
+| Avant | Après |
+|---|---|
+| R1 même réf. sous une marque du groupe | relié (l'import le fait déjà, sans trace) |
+| R3 même nom, autre réf. ; Q1 créer les inconnus | créé |
+| R4 marque hors du groupe | créé sous la marque de la fiche |
+| Q2 type d'un appareil à créer | auto-complétion, sinon vide → « Suggestions à valider » |
+| Q3 marque d'un appareil à créer | ligne non importée, comptée (§ 10.13) |
+| R5, Q6, Q7 réf. interne, EAN | le site fait foi, écrit, noté dans l'historique |
+| R6 libellé | champ libellé de la carte : celui de l'outil, ou le titre coupé s'il est vide |
+| R7 sans code produit | carte à réf. vide, à saisir ou à décocher |
+| Q4 équivalentes sans origine | origine vide ; une erreur (`481949`) se retire de la « Succession » |
+| Q5 remplacement en conflit | garde de l'import (fenêtre existante) |
+| appareil parmi plusieurs sans proposition, réf. illisible | ligne non importée, comptée dans l'historique |
+| écarts outil / site | règle de l'import : un champ vide est complété, jamais écrasé |
+
+**Réf. associée Whirlpool / Indesit / Beko** : la question a sa place dans la « Succession » de l'import (fichier seul) et sur la carte (plusieurs fichiers), pour **tous** les imports, quand la réf. de la pièce a la forme d'un de ces trois groupes (table des formats, § 5.5). Une fiche du site la remplit d'office avec la 2ᵉ réf. de son code produit. Mémoire : équivalence de n° de ligne 0 (déjà en place, § 10.10) ; la réponse « aucune » dans `decisions_references` (décision `sans_associee`), pour ne plus la poser.
+
+**Plan proposé** (en attente de l'accord de l'utilisateur) :
+1. Moteur : une fiche → des lignes d'import déjà résolues + relations des cartes ; écriture par l'import, puis le propre de la reprise. Règles du tableau ci-dessus. Anciennes fenêtres inchangées.
+2. « Lire une fiche du site » ouvre `ImportDialog` en fichier seul. Un lien de 1001pieces.com collé dans le tableau (Cmd+V) ouvre le même import d'une fiche (demande du 2026-11-13).
+3. « Importer les fiches du site » ouvre `ImportDialog` en cartes (une par fiche), avec la barre d'avancement du massif.
+4. Réf. associée Whirlpool / Indesit / Beko, pour tous les imports.
+5. Retrait du moteur de questions, des écarts et des anciennes fenêtres.
+
+### 10.13 Moteur : une fiche est écrite par l'import — refonte, PR 1 (2026-11-13)
+
+**`ImportManager`** (ajouts génériques, sans effet sur les imports PDF, CSV et collage) :
+- `FileType.FICHE_SITE` : des lignes déjà lues, un dict par ligne. Une ligne porte soit l'id d'un appareil reconnu (`CLE_APPAREIL`), soit un appareil à créer avec sa clé d'identité (`CLE_IDENTITE` = marque + forme normalisée, la règle du § 5.2, à la place de « réf. modèle | nom commercial »). Elles passent par le chemin batch : orthographe alignée, auto-complétion, appareils créés, liens, suggestions.
+- Un appareil reconnu garde ses champs ; la ligne ne complète qu'un type ou une marque vides.
+- `ImportConfiguration.apres_ecriture(import_manager, results)` : un crochet appelé après les appareils, les liens et les relations, dans le thread de l'import. Il n'est jamais appelé en simulation.
+- **Correctif de l'import de plusieurs fichiers** : un appareil créé par un fichier entre dans le cache partagé (`_retenir_appareils_crees`). Un fichier suivant qui le cite y est relié dès le 1ᵉʳ passage. Sur le 1ᵉʳ lot réel, c'étaient 418 liens posés seulement par une relance (§ 10.12).
+
+**Écriture d'une fiche** (`EnregistrementFicheService.ecrire_par_import`) :
+1. la pièce (fantôme → réelle, libellé), avant l'import, pour que les relations propagent le libellé ;
+2. un fichier `FICHE_SITE` par fiche (lignes : `lignes_import(plan)`), puis `_run_import_files` ;
+3. dans le crochet, fiche par fiche : provenance des liens, remplacements et équivalences, origines, ordre des « Remplace », produit du site, décisions.
+
+Un lot est un import de plusieurs fichiers (`RepriseSiteService._ecrire_lot`). Une fiche que l'import n'a pas traitée (annulation) n'a rien de propre écrit, et l'état du lot n'avance pas. Les anciennes fenêtres écrivent déjà par ce chemin. Après l'écriture, `signaler_import` appelle `MainWindow._on_import_complete` : récapitulatif dans l'historique, « Suggestions à valider », « Auto-complétés à vérifier ».
+
+**Règles de l'import** (`src/utils/rapprochement_fiche/regles_import.py`, `planifier_import`, `LotReprise.planifier_par_regles`, `EnregistrementFicheService.planifier_par_regles`) : le tableau du § 10.12, sans question. Les écrans des PR 2 et 3 s'en serviront ; d'ici là, les fenêtres gardent leurs questions.
+
+Écart au tableau du § 10.12, trouvé par la relance : **un appareil à créer dont la marque est inconnue n'est pas importé.** Créé sans marque, il n'était jamais retrouvé par la marque et la réf. : la relance le recréait (+42 appareils sur le 1ᵉʳ lot). L'auto-complétion lui donnait en plus la marque d'un autre appareil de même réf. (36 doublons Ikea).
+
+**1ᵉʳ lot réel par les règles** (`scripts/mesurer_lot_reprise.py --regles-import`, copie de la base par l'API backup) :
+
+| | Questions (§ 10.11) | Règles de l'import |
+|---|---|---|
+| Appareils créés | 1 262 | 1 357 |
+| dont même marque et même réf. qu'un appareil existant | 0 | 0 |
+| dont même réf. sous une marque hors du groupe | 0 (R4 « oui » simulé) | 95 (Beko / Altus, Bluesky, Far ; Ikea / Elica) |
+| Créés sans type | 0 | 17 (16 avec une suggestion) |
+| Liens créés | 25 343 | 25 343 |
+| Lignes non écrites | 84 « à revoir » | 84 non importées (12 fiches), dont 46 de marque inconnue |
+| Fiches sans code produit | reprises sous la réf. produit (R7 « reprendre » simulé) | 4 mises de côté |
+| Écriture | 0,5 s | 12 s (une association à la fois, comme un PDF) |
+| Croissance | +9,9 Mo | +10,4 Mo |
+| Relance du même lot | 0 ajout | **0 ajout** |
+
+**Points à trancher par l'utilisateur :**
+- les 95 appareils de même réf. sous une marque hors du groupe. Ce sont les anciennes questions R4 ; la réponse est de compléter les groupes de marques (`groupes_marques`, `data/reprise_fiches.json`) ;
+- les 46 lignes de marque inconnue ;
+- la durée d'écriture : 12 s par lot, soit environ 27 min pour la reprise entière.
+
+**Vérification :**
+- `tests/unit/test_reprise_import.py` : doublon entre fichiers relié au 1ᵉʳ passage (le test échoue sans le correctif) ; fiche seule écrite par l'import puis relue sans ajout, récapitulatif transmis à la fenêtre ; lot des 3 fiches d'exemple par les règles puis relance sans ajout ; même réf. sous une marque du groupe reliée ; création hors du groupe au type auto-complété ; fiche sans code produit mise de côté ; appareil reconnu non modifié ; marque inconnue non importée.
+- Les tests existants des deux fenêtres passent par le nouveau chemin d'écriture.
+- Suite complète (2 036 tests), `compileall`, lancement de `run.py`.
+
 ## 11. Fiches d'exemple
 
 | Produit | Intérêt |
