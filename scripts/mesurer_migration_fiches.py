@@ -68,7 +68,6 @@ def main():
 
     def decisions(r):
         d = DecisionsFiche()
-        d.valider_tout(r)
         for i, a in enumerate(r.appareils):
             if categorie_appareil(a) == 'a_valider' and a.candidats and \
                     a.appareil_id is None and a.proposition is None:

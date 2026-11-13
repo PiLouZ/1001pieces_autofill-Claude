@@ -112,13 +112,6 @@ class ResultatEnregistrement:
                 f"équivalence(s)" + (f", {r['errors']} refus" if r.get('errors') else ''))
 
 
-def _champs_de_colonnes(colonnes) -> List[str]:
-    """Colonnes d'`appareils` → champs des écarts (type, marque, ref, nom)."""
-    from ..utils.rapprochement_fiche.resultat import CHAMPS_ECARTS
-    par_colonne = {col: champ for champ, (_, col) in CHAMPS_ECARTS.items()}
-    return [par_colonne[c] for c in colonnes if c in par_colonne]
-
-
 class EnregistrementFicheService(BaseService):
     """Écrit une fiche validée dans l'outil."""
 
@@ -203,7 +196,7 @@ class EnregistrementFicheService(BaseService):
     def enregistrer(self, plan: PlanEnregistrement) -> ResultatEnregistrement:
         if not plan.pret:
             res = ResultatEnregistrement(ok=False)
-            res.erreur = "aperçu non validé : " + "; ".join(plan.en_attente + plan.a_completer)
+            res.erreur = "fiche non prête : " + "; ".join(plan.a_completer or ["pièce introuvable"])
             return res
         try:
             res = self.ecrire_par_import([plan])[0]
@@ -360,9 +353,6 @@ class EnregistrementFicheService(BaseService):
             le = produit['lu_le'] if produit else None
             db._enregistrer_decisions_ecritures(plan.decisions_ecritures, le)
             db._enregistrer_decisions_references(plan.decisions_references, le)
-            db._enregistrer_decisions_champs(plan.decisions_champs, le or self._maintenant())
-            db._oublier_decisions_champs((i, c) for i, cols in plan.maj_appareils.items()
-                                         for c in _champs_de_colonnes(cols))
             db.conn.commit()
         for ident, colonnes in plan.maj_appareils.items():
             res.maj_appareils.setdefault(ident, {}).update(colonnes)

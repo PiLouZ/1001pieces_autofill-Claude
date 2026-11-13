@@ -14,16 +14,14 @@ site, § 10.12, PR 1 : moteur)
 Aucun accès réseau, aucun réglage du poste écrit.
 """
 
-from pathlib import Path
 
 from src.core.import_manager import (FileType, ImportConfiguration, ImportFile, ImportManager,
                                      ImportType)
 from src.services.enregistrement_fiche_service import EnregistrementFicheService
-from src.utils.lecteur_fiche.page_publique import extraire_description
 
 from tests.unit.test_reprise_site import (
-    CONFIG, FIXTURES, MODELES, Construite, _db_extrait, _ecrire_csv, ENTETE_C, ENTETE_P,
-    _exports_exemples, _instantane, _produit, _service,
+    CONFIG, FIXTURES, MODELES, RACINE, Construite, _db_extrait, _description, _ecrire_csv,
+    ENTETE_C, ENTETE_P, _exports_exemples, _instantane, _produit, _service,
 )
 
 
@@ -103,7 +101,7 @@ def test_lot_des_fiches_exemples_par_les_regles(tmp_path):
     s.adopter_export(s.examiner_export(p, c)[0], repartir_de_zero=True)
     lot = s.analyser_lot_suivant(100)
     plan = lot.planifier_par_regles()
-    assert plan.pret and lot.questionnaire is None
+    assert plan.pret
     res = s.enregistrer_lot(lot, plan)
     assert res.ok, res.erreur
     assert res.fiches_ecrites == 3 and res.resultats_import['total_files'] == 3
@@ -200,3 +198,43 @@ def test_appareil_a_creer_sans_marque_non_importe():
     a = AppareilRapproche(numero=4, marque_fiche='Bosch', ref_modele='WAE99/01', nom='',
                           provenance='description', niveau='absent')
     assert choix_ligne(a) == (None, '')             # créé, même sans type
+
+
+# =============================================================================
+# Appareil connu dont la fiche donne un autre type : l'outil est gardé
+# =============================================================================
+
+def _base_ecarts(tmp_path):
+    b = Construite(tmp_path)
+    ids = {
+        'xyz': b.appareil('Bosch', 'XYZ123', 'Lave-linge'),
+        'wae': b.appareil('Bosch', 'WAE24/01', 'Lave-linge'),
+        'wat': b.appareil('Bosch', 'WAT28/02', 'Lave-linge'),
+    }
+    b.db.conn.execute("UPDATE appareils SET commercial_ref = 'Serie 4' WHERE id = ?", [ids['xyz']])
+    b.db.conn.commit()
+    return b, ids
+
+
+_LIGNES_ECARTS = [('XYZ123', 'Serie 6'), ('WAE2401', 'Maxx 6'), ('WAT28/02', 'Logixx')]
+_COMPAT_ECARTS = [('XYZ123', 'Sèche-linge'), ('WAT28/02', 'Sèche-linge')]
+
+
+def test_lot_par_les_regles_garde_l_outil(qapp, tmp_path):
+    """Import d'un lot par les règles (refonte, PR 3) : plus de question sur un champ
+    qui diffère ; l'outil est gardé (règle de l'import : jamais écraser)."""
+    b, ids = _base_ecarts(tmp_path)
+    produits = [[101 + n, code, f"Pièce {code}", 'Bosch', '', 'Pompe - Lave-linge', '1',
+                 _description(code, 'Bosch', _LIGNES_ECARTS)]
+                for n, code in enumerate(('481010595117', '481010595118'))]
+    compat = [[101 + n, ref, ref, 'Bosch', t] for n in range(2) for ref, t in _COMPAT_ECARTS]
+    p, c = b.exports(produits, compat)
+    s = _service(b.db)
+    s.adopter_export(s.examiner_export(p, c)[0], repartir_de_zero=True)
+    lot = s.analyser_lot_suivant(10)
+    res = s.enregistrer_lot(lot, s.planifier_lot(lot))
+    assert res.ok, res.erreur
+    types = dict(b.db.conn.execute("SELECT id, type FROM appareils").fetchall())
+    assert types[ids['xyz']] == 'Lave-linge' and types[ids['wat']] == 'Lave-linge'
+    assert not (RACINE / 'data' / 'reprise_fiches.json').exists()
+

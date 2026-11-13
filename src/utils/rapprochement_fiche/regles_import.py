@@ -35,8 +35,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from src.utils.rapprochement_fiche.acces_base import forme_normalisee
 from src.utils.rapprochement_fiche.coupe_titre import sans_accents, termes_appareils
 from src.utils.rapprochement_fiche.decisions import (
-    VALIDEE, ChoixAppareil, DecisionsFiche, PlanEnregistrement, categorie_appareil,
-    elements_par_categorie, planifier,
+    ChoixAppareil, DecisionsFiche, PlanEnregistrement, categorie_appareil, planifier,
 )
 from src.utils.rapprochement_fiche.resultat import AppareilRapproche, Rapprochement
 
@@ -194,7 +193,6 @@ def choix_ligne(a: AppareilRapproche) -> Tuple[Optional[ChoixAppareil], str]:
 def decisions_import(r: Rapprochement) -> Tuple[DecisionsFiche, list]:
     """Décisions d'une fiche par les règles de l'import, et lignes non importées."""
     d = DecisionsFiche(creer_incomplets=True)
-    d.etats = {c: VALIDEE for c in elements_par_categorie(r)}
     doutes = r.doutes_par_categorie()
     d.identite = {k: v for k, v in REPONSES_IDENTITE.items() if k in doutes}
     non_importees = []

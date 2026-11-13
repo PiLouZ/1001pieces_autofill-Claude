@@ -62,9 +62,8 @@ def _enregistreur(db):
     return EnregistrementFicheService(db, configuration=ConfigurationRapprochement())
 
 
-def _tout_valider(r, ecartees=()):
+def _decisions(r, ecartees=()):
     d = DecisionsFiche()
-    d.valider_tout(r)
     for i, a in enumerate(r.appareils):
         if categorie_appareil(a) == 'a_valider' and a.candidats and \
                 a.appareil_id is None and a.proposition is None:
@@ -77,7 +76,7 @@ def _enregistrer_exemples(db):
     for n in (7285, 20746, 20744):
         page = (FIXTURES / f'produit_{n}.html').read_text(encoding='utf-8')
         _, r = _enregistreur(db).analyser_page(page, f'https://www.1001pieces.com/{n}-fiche.html')
-        plan = planifier(r, _tout_valider(r, ecartees={'481949'} if n == 7285 else ()))
+        plan = planifier(r, _decisions(r, ecartees={'481949'} if n == 7285 else ()))
         assert plan.pret, (n, plan.en_attente, plan.a_completer)
         assert _enregistreur(db).enregistrer(plan).ok
 
@@ -228,7 +227,7 @@ class TestFichesExemple:
         db.conn.commit()
         page = (FIXTURES / 'produit_7285.html').read_text(encoding='utf-8')
         _, r = _enregistreur(db).analyser_page(page, 'https://www.1001pieces.com/7285-fiche.html')
-        plan = planifier(r, _tout_valider(r))
+        plan = planifier(r, _decisions(r))
         assert plan.vide and plan.rangs_remplace
         assert _enregistreur(db).enregistrer(plan).ok
         assert db.rangs_remplace(['C00535957', '488000535957', 'C00309416', '482000032568']) == \
@@ -266,7 +265,7 @@ class TestFichesExemple:
                 assert lecture.code_produit == ['481073071153', 'C00319033']
                 assert [l.references for l in lecture.equivalentes] == [['00145522']]
                 assert '481949' not in html
-            plan = planifier(r, _tout_valider(r))
+            plan = planifier(r, _decisions(r))
             assert plan.vide, (n, plan.resume())
             assert not r.absents_de_la_fiche, n
             res = _enregistreur(db).enregistrer(plan)

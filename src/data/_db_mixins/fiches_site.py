@@ -22,8 +22,8 @@ sur les 5 millions de liens) :
 - `decisions_ecritures` : « même appareil » / « appareils distincts » pour une
   paire d'écritures d'une marque (§ 5.2).
 - `decisions_champs` : « garder l'outil » choisi pour un champ d'un appareil
-  connu que la fiche donne autrement (type, marque, écriture, nom commercial),
-  avec la valeur du site : la relecture ne le repropose pas.
+  connu que la fiche donne autrement, avec la valeur du site. Les écrans à
+  questions sont retirés (§ 10.20) : la table n'est plus écrite, seulement lue.
 - `decisions_references` : références écartées et étiquettes d'origine
   choisies, avec la forme de la référence pour l'apprentissage (§ 5.3, 5.5).
 - Reprise en masse (§ 7.3, étape 4) : `reprise_site_etat` (une ligne : dernier
@@ -568,22 +568,6 @@ class DatabaseFichesSiteMixin:
         self.cursor.executemany(
             "INSERT OR REPLACE INTO decisions_references VALUES (?, ?, ?, ?, ?, ?)", lignes)
         return len(lignes)
-
-    def _enregistrer_decisions_champs(self, decisions: Iterable[Tuple[int, str, str]],
-                                      le: Optional[str]) -> int:
-        """(appareil_id, champ, valeur du site) : « garder l'outil » mémorisé."""
-        lignes = [(i, c, v, le) for i, c, v in decisions]
-        self.cursor.executemany(
-            "INSERT OR REPLACE INTO decisions_champs VALUES (?, ?, ?, ?)", lignes)
-        return len(lignes)
-
-    def _oublier_decisions_champs(self, cles: Iterable[Tuple[int, str]]) -> int:
-        """Champs pris sur le site : la décision « garder l'outil » ne vaut plus."""
-        n = 0
-        for i, c in cles:
-            n += self.cursor.execute(
-                "DELETE FROM decisions_champs WHERE appareil_id = ? AND champ = ?", [i, c]).rowcount
-        return n
 
 
 def decisions_ecritures_en_memoire(rows: Iterable[Tuple[str, str, str, str]]

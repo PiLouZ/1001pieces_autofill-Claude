@@ -998,6 +998,23 @@ Pistes 1 à 3 faites au § 10.19 ; la piste 4 (raccourci en fin de lot) reste po
   - fenêtre rendue hors écran, export d'une sélection dans le thread.
 - Suite complète, `compileall`, lancement de `run.py`.
 
+### 10.20 Retraits : moteur de questions, catégories, écarts — refonte, PR 5 (2026-11-13)
+
+La refonte du § 10.12 est complète. L'interface n'appelait plus le moteur de questions depuis la PR 3 ; il est retiré avec ce qui ne servait qu'à lui :
+- **fichiers supprimés** : `src/utils/reprise_site/questions.py` (R1 à R7, Q1 à Q7, `QuestionnaireLot`), `src/ui/questions_reprise.py` (panneau), `src/ui/fiche_site_dialog.py` (ancienne fenêtre de fiche et de « fiche du lot »), et les styles des cartes de questions et des écarts (`StyleManager`) ;
+- **plan d'écriture** (`decisions.py`) : plus de catégories ni d'états (validée, laissée de côté, en attente), ni de « type commun ». Sans choix, chaque élément suit sa proposition. Les choix ligne par ligne (`ChoixAppareil`), les doutes d'identité et les équivalentes écartées restent : ce sont eux que posent les règles de l'import (`regles_import.py`). `categorie_appareil` reste, pour dire ce qu'une ligne demande ;
+- **lot** (`lot.py`) : plus de résumé par catégorie, de groupes de doutes, de profils ambigus mis de côté, de fiches personnalisées ni de fiches « à revoir » (partielles). Restent l'analyse, les fiches mises de côté, le plan par les règles (créations partagées entre fiches, fiches en vrac retenues) et les mesures ;
+- **service de reprise** : plus de questionnaire, de relecture après une règle de groupe, ni de règles mémorisées. `chemin_configuration` est retiré, et rien n'écrit plus `data/reprise_fiches.json` ;
+- **configuration** : plus de `regles_reprise` ni d'`enregistrer_configuration`. Un fichier du poste qui en contient encore est lu sans elle : seules les clés connues comptent. Sur le poste de l'utilisateur, ce sont R5 « enregistrer » et R6 « garder », les règles appliquées désormais d'office ;
+- **écarts outil / site** : le rapprochement relève toujours les champs qui diffèrent. L'import garde la valeur de l'outil, et ne complète qu'un nom commercial vide (`plan.maj_appareils`). La table `decisions_champs` n'est plus écrite ; elle reste lue, sans effet sur l'import ;
+- **script de mesure** : `scripts/mesurer_lot_reprise.py` décide toujours par les règles (plus de `--questions` ni de « tout valider »).
+
+**Vérification** :
+- Tests réécrits pour le plan par les règles : `test_reprise_site.py`, `test_enregistrement_fiche.py`, `test_ecarts_fiche.py` (nom vide complété, valeurs de l'outil gardées), `test_reprise_rien_de_faux.py`, `test_fiche_export_site.py`.
+- Tests retirés avec ce qu'ils testaient : `test_reprise_questions.py`, les écrans à questions, la forme des réf. internes groupées. Le test « un lot par les règles garde l'outil » passe dans `test_reprise_import.py`.
+- **1ᵉʳ lot réel** (copie de la base) : mêmes chiffres qu'avant les retraits (1 323 appareils, 25 309 liens, 91 remplacements, 198 membres d'équivalence, 96 produits, 2 fiches à refaire) ; **relance sans ajout**.
+- Aller-retour des 3 fiches d'exemple ; suite complète (2 040 tests), `compileall`, lancement de `run.py`.
+
 ## 11. Fiches d'exemple
 
 | Produit | Intérêt |
@@ -1026,9 +1043,9 @@ Pistes 1 à 3 faites au § 10.19 ; la piste 4 (raccourci en fin de lot) reste po
 | Relecture | ajout seul, absents signalés |
 | Qui fait foi | l'outil pour les relations, le site pour le commercial |
 | Lecture | tous les profils Fiche, HTML normalisé, repli texte |
-| Masse | lots de 100, récapitulatif et questions (règles posées une fois, mémorisées, révocables), détail filtrable, reprise, fiches « à revoir » (§ 10.6 à 10.8) |
+| Masse | lots de 100, un import de plusieurs fichiers (une carte par fiche), règles de l'import sans question, reprise d'une session à l'autre, fiches à refaire depuis les PDF (§ 10.12 à 10.20) |
 | EAN | conservé avec le produit du site, le site fait foi |
 | Référence interne | gardée pour chaque produit du site (avec `id_product`), proposée à l'export EveryParts |
 | Retour vers le site | gabarits Fiche complète, une ligne par origine, paire, « Remplace » dans l'ordre de la fiche (`rang_fiche`) |
 | Libellé de la pièce | titre de la fiche coupé avant « pour <type> » (onglet Appareils), caractéristique chiffrée gardée |
-| Appareil connu, champ différent | relié ; outil gardé par défaut ; un clic prend le site, cas par cas ou en bloc ; « garder l'outil » mémorisé |
+| Appareil connu, champ différent | relié ; la valeur de l'outil est gardée, un nom commercial vide est complété (§ 10.20) |

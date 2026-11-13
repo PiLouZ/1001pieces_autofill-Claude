@@ -43,7 +43,6 @@ from typing import Callable, Dict, List, Optional, Tuple
 from ..core.logger import app_logger
 from .base_service import BaseService
 from .enregistrement_fiche_service import EnregistrementFicheService, ResultatEnregistrement
-from ..utils.lecteur_fiche.lecteur import cle_marque as cle_marque_
 
 Progression = Callable[[int, int, str], None]
 
@@ -61,7 +60,6 @@ class ResultatLot:
     numero: Optional[int] = None
     fiches_ecrites: int = 0
     de_cote: int = 0
-    partielles: int = 0                 # écrites en partie, inscrites « à revoir »
     appareils_crees: int = 0
     liens_crees: int = 0
     liens_completes: int = 0
@@ -79,7 +77,7 @@ class ResultatLot:
 
     def resume(self) -> str:
         croissance = (self.taille_apres - self.taille_avant) / 1e6
-        return (f"{self.fiches_ecrites} fiche(s) enregistrée(s) dont {self.partielles} à revoir, "
+        return (f"{self.fiches_ecrites} fiche(s) enregistrée(s), "
                 f"{self.de_cote} mise(s) de côté ; "
                 f"{self.appareils_crees} appareil(s) créé(s), {self.liens_crees} lien(s) créé(s), "
                 f"{self.liens_completes} complété(s) ; {self.remplacements} remplacement(s), "
@@ -102,11 +100,9 @@ class RepriseSiteService(BaseService):
     """Session de reprise des fiches du site par lots."""
 
     def __init__(self, db_manager, parent_window=None, parent=None, configuration=None,
-                 fiche_service: Optional[EnregistrementFicheService] = None,
-                 chemin_configuration=None):
+                 fiche_service: Optional[EnregistrementFicheService] = None):
         super().__init__(parent_window, parent)
         self.db = db_manager
-        self.chemin_configuration = chemin_configuration   # None = data/reprise_fiches.json
         self.fiche_service = fiche_service or EnregistrementFicheService(
             db_manager, parent_window, configuration=configuration)
         self.signature = None
@@ -208,56 +204,6 @@ class RepriseSiteService(BaseService):
         return lot
 
     # -------------------------------------------------------------------------
-    # Questions (refonte, étape 2)
-    # -------------------------------------------------------------------------
-    def questionnaire(self, lot, reponses: Optional[Dict[str, str]] = None):
-        """Met le lot en mode questions (réponses d'un passage précédent reprises)."""
-        from ..utils.reprise_site.questions import QuestionnaireLot
-        q = QuestionnaireLot(lot, self._acces_lecture(), self.fiche_service.configuration(),
-                             sauver_regles=self._sauver_regles, reponses=reponses)
-        lot.questionnaire = q
-        return q
-
-    def _sauver_regles(self, regles: Dict[str, str]):
-        """Règles mémorisées → data/reprise_fiches.json ; une règle R4 « oui » ajoute
-        la marque au groupe de l'autre (groupes_marques)."""
-        from ..utils.rapprochement_fiche.configuration import enregistrer_configuration
-        config = self.fiche_service.configuration()
-        modifs: Dict[str, object] = {'regles_reprise': dict(regles)}
-        groupes = {g: list(m) for g, m in (config.donnees.get('groupes_marques') or {}).items()}
-        change = False
-        for cle, reponse in regles.items():
-            if not cle.startswith('R4:') or reponse != 'oui':
-                continue
-            marque, autre = cle[3:].split('|', 1)
-            groupe = config.groupe_de.get(cle_marque_(marque)) or marque
-            membres = groupes.setdefault(groupe, [marque] if groupe == marque else [])
-            if all(cle_marque_(m) != cle_marque_(autre) for m in membres):
-                membres.append(autre)
-                change = True
-        if change:
-            modifs['groupes_marques'] = groupes
-        enregistrer_configuration(modifs, self.chemin_configuration)
-        from ..utils.rapprochement_fiche.configuration import ConfigurationRapprochement
-        donnees = dict(config.donnees)
-        donnees.update(modifs)
-        self.fiche_service._configuration = ConfigurationRapprochement(donnees)
-        app_logger.info(f"[Reprise site] règles enregistrées : {regles}")
-
-    def relire_lot(self, lot, progression: Optional[Progression] = None,
-                   annule: Optional[Callable[[], bool]] = None):
-        """Relit le même lot (configuration changée : groupes de marques…), en
-        gardant les réponses déjà données."""
-        from ..utils.reprise_site import analyser_lot
-        reponses = dict(lot.questionnaire.reponses) if lot.questionnaire is not None else None
-        nouveau = analyser_lot(lot.export, self._acces_lecture(), self.fiche_service.configuration(),
-                               self._modeles_lecture(), progression, annule)
-        nouveau.fiches_de_cote = lot.fiches_de_cote
-        if lot.questionnaire is not None:
-            self.questionnaire(nouveau, reponses)
-        return nouveau
-
-    # -------------------------------------------------------------------------
     # Écriture (hors du thread principal)
     # -------------------------------------------------------------------------
     def enregistrer_lot(self, lot, plan, progression: Optional[Progression] = None,
@@ -265,9 +211,9 @@ class RepriseSiteService(BaseService):
         """Écrit un lot planifié (`plan.pret`). L'état n'avance qu'à la fin."""
         from ..utils.reprise_site import mesures_lot
         res = ResultatLot(taille_avant=taille_base(self.db.db_file))
-        if plan.en_attente or plan.fiches_a_completer:
-            res.ok, res.erreur = False, "lot non validé : " + "; ".join(
-                plan.en_attente + [f"{len(plan.fiches_a_completer)} fiche(s) à compléter"])
+        if plan.fiches_a_completer:
+            res.ok, res.erreur = False, (f"lot non prêt : {len(plan.fiches_a_completer)} "
+                                         f"fiche(s) à compléter")
             return res
         debut = time.time()
         try:
@@ -372,7 +318,7 @@ class RepriseSiteService(BaseService):
             if saisie.get('obsolete'):
                 obsoletes.append(p.ref_piece)
             retenues.append((i, p))
-        plan_final = PlanLot(retenues, plan.creations, de_cote, [], [], 0,
+        plan_final = PlanLot(retenues, plan.creations, de_cote,
                              non_importees=plan.non_importees, a_refaire=plan.a_refaire)
         res = ResultatLot(taille_avant=taille_base(self.db.db_file))
         res.marques_touchees = sorted({a.marque for occ in plan.creations.values()
@@ -412,30 +358,17 @@ class RepriseSiteService(BaseService):
         le = datetime.now().isoformat(timespec='seconds')
         date_export = self.signature.date_export if self.signature else ''
         de_cote = [(lot.fiches[i].id_produit, lot.fiches[i].ref_piece, lot.fiches[i].nom,
-                    lot.fiches[i].raison_de_cote or "profil ambigu laissé de côté")
+                    lot.fiches[i].raison_de_cote or "mise de côté")
                    for i in plan.de_cote]
         res.de_cote = len(de_cote)
-        # Fiches écrites en partie (lignes laissées de côté par le lot, pas par
-        # l'utilisateur) : à revoir, elles reviennent avec « Fiches à revoir »
-        partielles = []
-        for i, _ in plan.plans:
-            f = lot.fiches[i]
-            n = sum(1 for k in f.lignes_auto
-                    if (c := f.decisions.appareils.get(k)) is not None and c.ignorer)
-            if n:
-                partielles.append((f.id_produit, f.ref_piece, f.nom,
-                                   f"partielle : {n} appareil(s) à revoir"))
-        res.partielles = len(partielles)
         mesures = dict(mesures, resultat={
             'appareils_crees': res.appareils_crees, 'liens_crees': res.liens_crees,
             'liens_completes': res.liens_completes, 'remplacements': res.remplacements,
             'equivalences': res.equivalences})
         db = self.db
         with db._query_lock:
-            restent = {p[0] for p in partielles}
-            ecrites = [lot.fiches[i].id_produit for i, _ in plan.plans]
-            db._retirer_de_cote_reprise_site([i for i in ecrites if i not in restent])
-            db._mettre_de_cote_reprise_site(de_cote + partielles, date_export, le)
+            db._retirer_de_cote_reprise_site([lot.fiches[i].id_produit for i, _ in plan.plans])
+            db._mettre_de_cote_reprise_site(de_cote, date_export, le)
             res.numero = db._journaliser_lot_reprise_site({
                 'premier_id': lot.export.premier_id, 'dernier_id': lot.export.dernier_id,
                 'date_export': date_export, 'produits': len(lot.export.produits)
