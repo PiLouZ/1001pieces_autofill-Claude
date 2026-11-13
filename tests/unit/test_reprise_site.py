@@ -417,53 +417,136 @@ def test_lot_des_fiches_exemples_sur_extrait(tmp_path):
 # Fenêtre (hors écran)
 # =============================================================================
 
-def test_fenetre_reprise_rendue_et_fiche_du_lot(qapp, tmp_path):
-    """Fenêtre « Importer les fiches du site » par questions (refonte, étape 4)."""
-    from src.ui.fiche_site_dialog import FicheSiteDialog
+def test_fenetre_reprise_lot_en_cartes(qapp, qtbot, tmp_path):
+    """« Importer les fiches du site » : le lot s'ouvre dans la fenêtre d'import, une
+    carte par fiche (refonte, PR 3) ; une carte décochée est mise de côté, une fiche
+    sans code produit reçoit sa référence ; relancer le lot n'ajoute rien."""
+    from src.ui.fenetre_import import ImportDialog
     from src.ui.reprise_site_dialog import RepriseSiteDialog
-    from src.utils.rapprochement_fiche.decisions import ChoixAppareil
+    from tests.unit.test_fiche_import_ecran import _fenetre
     b = Construite(tmp_path)
     b.appareil('Bosch', 'WAE24/01')
+    sans_code = ('<div class="class_perso4">Appareils compatibles :</div>'
+                 '<div class="class_perso5"><div id="Bosch"><b><u>Bosch</u></b></div>'
+                 '<div>WAE24/01 - Maxx</div></div>')
     p, c = b.exports([
         _produit(101, '481010595117', 'Bosch', [('WAE24/01', 'Maxx'), ('ZZNEUF01/02', 'Neuf')]),
-        _produit(102, '481010595118', 'Bosch', [('WAE24/01', 'Maxx')], ref_interne='ES10028')])
+        _produit(102, '481010595118', 'Bosch', [('WAE24/01', 'Maxx')], ref_interne='ES10028'),
+        [103, 'ES20203', 'Pièce sans code', 'Bosch', '', 'Pompe - Lave-linge', '1', sans_code]])
+    fenetre = _fenetre(qapp, b.db)
     s = _service(b.db, tmp_path / 'regles.json')
-    d = RepriseSiteDialog(b.db, service=s)
-    d.setWindowTitle(d.windowTitle())
+    d = RepriseSiteDialog(b.db, main_window=fenetre, service=s)
     assert d.windowTitle() == "Importer les fiches du site"
     d.champ_produits.setText(p)
     d.champ_compat.setText(c)
     d._examiner_export()
     assert s.signature is not None
     d.afficher_lot(s.analyser_lot_suivant(10))
-    d.show()
     qapp.processEvents()
-    q = d.lot.questionnaire
-    assert {'Q1', 'R5'} <= set(q.questions) and set(d.panneau.cartes) == set(q.questions)
-    assert d.onglets.tabText(0) == f"À décider ({len(q.sans_reponse())})"
-    assert d.modele_fiches.rowCount() == 2 and d.modele_detail.rowCount() == 3
-    assert not d.bouton_enregistrer.isEnabled() and d.bouton_propositions.isEnabled()
-    # Toutes les lignes, filtrées sur une question (« Voir les lignes »)
-    d._voir_lignes('Q1')
-    assert d.onglets.currentIndex() == 2 and d.filtre_detail.rowCount() == 1
-    # Fiche du lot : un choix ligne par ligne revient au lot et sort la ligne de Q1
-    d._ouvrir_fiche(0)
-    fiche = d._fiche_ouverte
-    assert isinstance(fiche, FicheSiteDialog) and fiche.bouton_enregistrer.isEnabled()
-    k = next(i for i, a in enumerate(fiche.rapprochement.appareils) if a.ref_modele == 'ZZNEUF01/02')
-    fiche.individuels.appareils[k] = ChoixAppareil(ignorer=True)
-    fiche._enregistrer()
-    assert 0 in q.individuels and 'Q1' not in q.questions
-    # Propositions acceptées : plus rien en attente
-    d._propositions_acceptees()
-    assert not q.sans_reponse() and d.bouton_enregistrer.isEnabled(), d.etat.text()
-    assert d.grab().width() > 0
+    imports = [w for w in qapp.topLevelWidgets() if isinstance(w, ImportDialog) and w.isVisible()]
+    assert len(imports) == 1
+    dialogue = imports[0]
+    dialogue._load_data_deferred()
+    assert dialogue.windowTitle() == "Importer les fiches du site — produits 101 à 103"
+    assert "Lot de 3 fiches du site" in dialogue.format_info_label.text()
+    assert "sans code produit" in dialogue.format_desc_label.text()
+    cartes = {c['file'].fiche.id_product: c for c in dialogue._cartes_fiches}
+    assert set(cartes) == {101, 102, 103}
+    assert cartes[103]['ref'] is not None and not cartes[103]['importer'].isChecked()
+    # Sans code produit : le libellé vient du nom du produit, le lien mène à la fiche
+    assert cartes[103]['libelle'].text() == 'Pièce sans code'
+    from src.ui.fiche_site_import import QLabel as _QLabel
+    liens = [w.text() for w in dialogue.findChildren(_QLabel) if 'n° 103 sur le site' in w.text()]
+    assert liens and 'id_product=103' in liens[0]
+    assert cartes[101]['importer'].isChecked() and cartes[101]['ref'] is None
+    assert not d.bouton_analyser.isEnabled()            # import en cours de décision
+    dialogue.resize(1100, 820)
+    qapp.processEvents()
+    dossier = Path(os.environ.get('AUTOFILL_RENDUS') or tmp_path)
+    dossier.mkdir(parents=True, exist_ok=True)
+    dialogue.grab().save(str(dossier / 'lot_en_cartes.png'))
+    # 102 décochée : mise de côté ; 103 : référence saisie, la carte se coche
+    cartes[102]['importer'].setChecked(False)
+    cartes[103]['ref'].setText('481010595199')
+    assert cartes[103]['importer'].isChecked()
+    dialogue._validate_and_accept()
+    qtbot.waitUntil(lambda: len(fenetre.imports) == 1 and not d._import_en_cours, timeout=30000)
+    assert fenetre.imports[0]['total_files'] == 2
+    assert s.dernier_id() == 103
+    assert [f['id_produit'] for f in b.db.fiches_de_cote_reprise_site()] == [102]
+    lies = b.db.conn.execute(
+        "SELECT COUNT(*) FROM piece_associations pa JOIN pieces p ON p.id = pa.piece_id "
+        "WHERE p.ref_piece = '481010595199'").fetchone()[0]
+    assert lies == 1
+    assert b.db.conn.execute("SELECT description FROM pieces WHERE ref_piece = '481010595199'"
+                             ).fetchone()[0] == 'Pièce sans code'
+    assert "Lot n°" in d.etat.text() and d.bouton_analyser.isEnabled()
+    assert "Fiches mises de côté (1)" in d.bouton_de_cote.text()
+    apres = _instantane(b.db)
+    # Relance du lot (état remis au début), mêmes décisions (102 de côté) : rien n'est ajouté
+    b.db.conn.execute("UPDATE reprise_site_etat SET dernier_id = 0")
+    b.db.conn.commit()
+    lot = s.analyser_lot_suivant(10)
+    lot.mettre_de_cote(next(i for i, f in enumerate(lot.fiches) if f.id_produit == 102))
+    res = s.enregistrer_lot(lot, s.planifier_lot(lot))
+    assert res.ok and (res.appareils_crees, res.liens_crees, res.liens_completes) == (0, 0, 0)
+    assert _instantane(b.db) == apres
     assert not (RACINE / 'data' / 'reprise_fiches.json').exists()
     # Réglages : ceux du test, jamais ceux de l'application (chemins temporaires)
     from PyQt5.QtCore import QSettings
-    import src.ui.reprise_site_dialog as fenetre
-    assert fenetre._reglages().value('reprise_site/export_produits') == p
+    import src.ui.reprise_site_dialog as fenetre_lot
+    assert fenetre_lot._reglages().value('reprise_site/export_produits') == p
     assert 'pytest' not in str(QSettings("1001pieces", "autofill").value('reprise_site/export_produits', ''))
+    d.close()
+
+
+def test_fenetre_lot_fermee_sans_importer(qapp, tmp_path):
+    """La fenêtre d'import du lot fermée sans importer : rien n'est écrit, l'import
+    n'avance pas, le lot peut être relu."""
+    from src.ui.fenetre_import import ImportDialog
+    from src.ui.reprise_site_dialog import RepriseSiteDialog
+    from tests.unit.test_fiche_import_ecran import _fenetre
+    b = Construite(tmp_path)
+    p, c = b.exports([_produit(101, '481010595117', 'Bosch', [('ZZNEUF01/02', 'Neuf')])])
+    fenetre = _fenetre(qapp, b.db)
+    s = _service(b.db, tmp_path / 'regles.json')
+    d = RepriseSiteDialog(b.db, main_window=fenetre, service=s)
+    d.champ_produits.setText(p)
+    d.champ_compat.setText(c)
+    d._examiner_export()
+    avant = _instantane(b.db)
+    d.afficher_lot(s.analyser_lot_suivant(10))
+    qapp.processEvents()
+    dialogue = next(w for w in qapp.topLevelWidgets() if isinstance(w, ImportDialog) and w.isVisible())
+    dialogue.reject()
+    qapp.processEvents()
+    assert "rien n'a été écrit" in d.etat.text() and d.bouton_analyser.isEnabled()
+    assert s.dernier_id() == 0 and _instantane(b.db) == avant
+    d.close()
+
+
+def test_liste_des_fiches_a_refaire(qapp, tmp_path):
+    """« Fiches à refaire » : liste, lien du produit, « Fait », export CSV."""
+    from src.ui.fiches_a_refaire_dialog import FichesARefaireDialog, lien_produit
+    from src.utils.rapprochement_fiche.regles_import import ARefaire
+    b = Construite(tmp_path)
+    b.db._noter_fiche_a_refaire('480131100599', 7196, ARefaire(
+        True, 21, 21, {'nom_mele_de_description': 21}, ['Whirlpool 853986715000 « CF121E »']),
+        '2026-11-13T10:00:00')
+    b.db._noter_fiche_a_refaire('481227128459', 7352, ARefaire(
+        False, 59, 3, {'marque_inconnue': 3}, ['GSFEXWS GSF5000EXWS']), '2026-11-13T10:01:00')
+    b.db.conn.commit()
+    vus = []
+    d = FichesARefaireDialog(b.db, on_change=lambda: vus.append(1))
+    assert d.table.rowCount() == 2 and d.table.item(0, 0).text() == '480131100599'
+    assert "dont 1 en vrac" in d.etat.text()
+    assert lien_produit(7196).endswith('id_product=7196')
+    d.exporter(str(tmp_path / 'a_refaire.csv'))
+    contenu = (tmp_path / 'a_refaire.csv').read_text(encoding='utf-8-sig')
+    assert '480131100599;7196;https://www.1001pieces.com/' in contenu and 'GSFEXWS' in contenu
+    d.table.selectRow(0)
+    d.marquer_faites()
+    assert [f['ref_piece'] for f in b.db.fiches_a_refaire()] == ['481227128459'] and vus
     d.close()
 
 

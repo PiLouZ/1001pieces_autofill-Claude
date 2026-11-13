@@ -38,7 +38,7 @@ import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 from ..core.logger import app_logger
 from .base_service import BaseService
@@ -297,6 +297,16 @@ class RepriseSiteService(BaseService):
         noms = [f"fiche {lot.fiches[i].id_produit}" for i, _ in plan.plans]
         resultats = self.fiche_service.ecrire_par_import(
             [p for _, p in plan.plans], noms=noms, progression=progression, annule=annule)
+        self._cumuler(res, resultats)
+        if res.annule and not (annule is not None and annule()):
+            erreurs = (res.resultats_import or {}).get('errors') or []
+            raise RuntimeError("fiche(s) non importée(s) : " + "; ".join(erreurs[:5]))
+        if progression is not None:
+            progression(len(plan.plans), len(plan.plans), "Fiches enregistrées")
+
+    @staticmethod
+    def _cumuler(res: ResultatLot, resultats: List[ResultatEnregistrement]):
+        """Résultats des fiches d'un lot (une fiche non traitée = lot annulé)."""
         for r in resultats:
             if not r.ok:
                 res.annule = True
@@ -310,11 +320,92 @@ class RepriseSiteService(BaseService):
             for ident, colonnes in r.maj_appareils.items():
                 res.maj_appareils.setdefault(ident, {}).update(colonnes)
         res.resultats_import = resultats[0].resultats_import if resultats else {}
-        if res.annule and not (annule is not None and annule()):
-            erreurs = (res.resultats_import or {}).get('errors') or []
-            raise RuntimeError("fiche(s) non importée(s) : " + "; ".join(erreurs[:5]))
-        if progression is not None:
-            progression(len(plan.plans), len(plan.plans), "Fiches enregistrées")
+
+    # -------------------------------------------------------------------------
+    # Lot en cartes dans la fenêtre d'import (§ 10.12, PR 3)
+    # -------------------------------------------------------------------------
+    def planifier_lot(self, lot):
+        """Plan du lot par les règles de l'import, sans question."""
+        appellations = self.fiche_service.configuration().appellations_appareils
+        return lot.planifier_par_regles(appellations=appellations)
+
+    def fiches_a_importer(self, lot, plan) -> List[Tuple[int, object]]:
+        """Une carte par fiche : celles du plan, puis celles sans code produit (la
+        référence de la pièce s'y saisit). Les autres fiches de côté n'ont pas de carte."""
+        from .enregistrement_fiche_service import FicheAImporter
+        from ..utils.rapprochement_fiche.regles_import import SANS_CODE_PRODUIT, planifier_import
+        cartes = [(i, FicheAImporter(lot.fiches[i].rapprochement, p, nom_produit=lot.fiches[i].nom))
+                  for i, p in plan.plans]
+        appellations = self.fiche_service.configuration().appellations_appareils
+        for i in plan.de_cote:
+            f = lot.fiches[i]
+            if f.rapprochement is not None and f.raison_de_cote == SANS_CODE_PRODUIT:
+                cartes.append((i, FicheAImporter(
+                    f.rapprochement, planifier_import(f.rapprochement, appellations=appellations),
+                    nom_produit=f.nom)))
+        return cartes
+
+    def preparer_import_lot(self, lot, plan, cartes, saisies: Dict[str, Dict],
+                            fin: Optional[Callable] = None):
+        """La fenêtre d'import du lot est validée : saisies des cartes dans les plans
+        (carte décochée ou sans référence : fiche de côté), puis configuration de
+        l'import réel. Retourne (configuration, fin_import) ; `fin_import(results)`
+        clôt le lot sur le thread principal, puis appelle `fin(ResultatLot)`."""
+        from ..utils.reprise_site.lot import PlanLot
+        retenues, de_cote, obsoletes = [], [i for i in plan.de_cote], []
+        for i, fiche in cartes:
+            saisie = saisies.get(fiche.nom_fichier, {})
+            if not saisie.get('importer', True):
+                if i not in de_cote:
+                    de_cote.append(i)
+                lot.mettre_de_cote(i, "mise de côté à l'import")
+                continue
+            p = fiche.appliquer(saisie.get('ref'), saisie.get('libelle'),
+                                saisie.get('remplace', fiche.remplace()),
+                                saisie.get('remplacee_par', fiche.remplacee_par()),
+                                saisie.get('equivalentes', fiche.equivalentes()))
+            if not p.ref_piece or p.a_completer:
+                continue                    # reste de côté : référence à saisir
+            if i in de_cote:                # sans code produit, référence saisie
+                de_cote.remove(i)
+                lot.reprendre(i)
+            if saisie.get('obsolete'):
+                obsoletes.append(p.ref_piece)
+            retenues.append((i, p))
+        plan_final = PlanLot(retenues, plan.creations, de_cote, [], [], 0,
+                             non_importees=plan.non_importees, a_refaire=plan.a_refaire)
+        res = ResultatLot(taille_avant=taille_base(self.db.db_file))
+        res.marques_touchees = sorted({a.marque for occ in plan.creations.values()
+                                       for _, a in occ[:1]})
+        noms = [f"fiche {lot.fiches[i].id_produit}" for i, _ in retenues]
+        config, resultats = self.fiche_service.configuration_import(
+            [p for _, p in retenues], noms=noms)
+        config.obsolete_refs = obsoletes
+        debut = time.time()
+
+        def fin_import(results):
+            from ..utils.reprise_site import mesures_lot
+            self._cumuler(res, resultats)
+            res.ecriture_s = time.time() - debut
+            res.taille_apres = taille_base(self.db.db_file)
+            if not results:
+                res.ok, res.erreur = False, "import interrompu"
+            elif res.ok and not res.annule:
+                self._clore_lot(lot, plan_final, res, mesures_lot(lot, plan_final))
+            if self._acces is not None:
+                self._acces.oublier(res.marques_touchees)
+            if res.maj_appareils:
+                bilan = ResultatEnregistrement(maj_appareils=res.maj_appareils)
+                self.fiche_service.apres_import(bilan)
+                res.champs_modifies = bilan.champs_modifies
+                if self._acces is not None:
+                    self._acces.oublier()
+            app_logger.info(f"[Reprise site] lot {lot.export.premier_id}-{lot.export.dernier_id} : "
+                            + (res.resume() if res.ok and not res.annule
+                               else res.erreur or "annulé"))
+            if fin is not None:
+                fin(res)
+        return config, fin_import
 
     def _clore_lot(self, lot, plan, res: ResultatLot, mesures: Dict):
         """Journal du lot, fiches mises de côté, dernier id_produit : une transaction."""

@@ -884,6 +884,52 @@ Par les règles du § 10.13, la fiche donnerait 360 liens sans risque, car l'app
 - `test_reprise_import.py` adapté (base construite avec Bauknecht).
 - Suite complète (2 040 tests), `compileall`, lancement de `run.py`.
 
+### 10.16 Lot en cartes, fiches à refaire, fenêtre simplifiée — refonte, PR 3 (2026-11-13)
+
+**« Importer les fiches du site »** (`src/ui/reprise_site_dialog.py`, réécrite). La fenêtre garde ce qui est propre au massif :
+- les deux exports, avec « Repartir de zéro » ou « Continuer » ;
+- l'avancement : dernier produit, lots, fiches mises de côté, fiches à refaire ;
+- la taille du lot et « Lire le lot suivant », en thread, avec « Arrêter ».
+
+Le lot lu est planifié par les règles de l'import (`RepriseSiteService.planifier_lot`), puis `ouvrir_import_lot` ouvre la **fenêtre d'import habituelle**, une carte par fiche (import de plusieurs fichiers) :
+- la carte porte : la case « importer » (décochée = mise de côté), la référence de la pièce (à saisir sans code produit), le libellé, Obsolète, le résumé des appareils, l'alerte « à refaire », les relations (Remplace, Équivalentes, Remplacée par, retirables) et le lien « n° … sur le site » ;
+- en tête : le total du lot et un bandeau pour les fiches à refaire ;
+- pas de référence commune ni de zone de groupes : les relations sont propres à chaque fiche.
+
+« Importer » passe par `RepriseSiteService.preparer_import_lot` :
+- les saisies des cartes entrent dans les plans (`FicheAImporter.appliquer`) ;
+- l'import réel est celui d'un PDF (worker, progression) ;
+- `fin_import` clôt le lot sur le thread principal : journal, fiches de côté, avancement.
+
+Fermer la fenêtre d'import sans importer n'écrit rien et ne fait pas avancer l'import. Les onglets à questions (« À décider », « Fiches du lot », « Toutes les lignes ») disparaissent de l'écran. Le moteur de questions, `FicheSiteDialog` et `questions_reprise.py` ne sont plus appelés par l'interface ; leur retrait est l'objet de la PR 5.
+
+**Fiches sans code produit** (demande de l'utilisateur, 2026-11-13) : elles ont une carte, décochée tant que la référence n'est pas saisie.
+- Le libellé est repris du titre de la fiche, sinon du nom du produit de l'export, sans sa réf. finale et coupé au type (`FicheAImporter._libelle_du_nom`).
+- Le lien vers la fiche sur le site (`lien_site`) permet de trouver la référence. Il figure aussi dans le bandeau de la fiche seule.
+- La référence interne n'est jamais prise par défaut comme pièce.
+
+**« Fiches à refaire »** (`src/ui/fiches_a_refaire_dialog.py`) : un bouton dans la fenêtre du lot et le menu « Données → Fiches du site à refaire… ».
+- La liste montre la réf. de la pièce, le n° du produit, la raison, des exemples et la date.
+- On y trouve « Ouvrir la page du site », « Fait » et « Exporter en CSV… » (`ecrire_csv`, lien du produit inclus).
+
+**« Lire une fiche du site » simplifiée** (demande de l'utilisateur, 2026-11-13) : une seule zone de texte et « Lire ». Un lien seul (`est_un_lien`) est téléchargé ; tout autre texte est lu comme la description.
+
+**Marques inconnues** (mesure sur 13 lots) : sur 285 « marques » inconnues de l'outil, 277 sont des en-têtes de série pris pour des marques (ADGSPACEWH, DDSEALINE, GSFSYMPHONYACTIV, PROFESSIONNELS HOTTE…), soit 9 183 lignes. Il reste 8 vraies marques ou fautes de frappe (BAUKNCHT, Séverin, Airfoce, Dilem, Braun…) pour 45 lignes. La règle est gardée : créer « BAUKNCHT » serait pire. Une vraie marque nouvelle se crée à la main ou par un import PDF.
+
+**1ᵉʳ lot réel par le chemin de la fenêtre** (`preparer_import_lot`, puis l'import, puis `fin_import`, copie de la base) :
+- 100 cartes ouvertes en 0,9 s ;
+- 1 323 appareils, 25 309 liens, 91 remplacements, 198 membres d'équivalence, 96 produits du site, 2 fiches à refaire, 4 fiches sans code produit de côté ;
+- 10 s d'import ; **relance sans ajout**.
+
+**Vérification** :
+- `test_reprise_site.py` :
+  - lot en cartes, avec une carte décochée, une référence saisie, le libellé et le lien de la fiche sans code produit, puis la relance sans ajout ;
+  - fenêtre d'import fermée sans rien écrire ;
+  - liste à refaire (Fait, export CSV).
+- `test_ecarts_ecrans.py` : un lot par les règles garde les valeurs de l'outil.
+- `test_fiche_import_ecran.py` : zone unique, lien ou description.
+- Suite complète, `compileall`, lancement de `run.py`.
+
 ## 11. Fiches d'exemple
 
 | Produit | Intérêt |

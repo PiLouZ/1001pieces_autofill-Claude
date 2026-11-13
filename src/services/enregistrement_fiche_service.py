@@ -46,6 +46,11 @@ from .base_service import BaseService
 from .import_relations import CardData, Group, KIND_EQUIVALENCE, apply_relations
 
 
+def lien_produit(id_product) -> str:
+    """Page du produit sur 1001pieces.com, d'après son n° (PrestaShop)."""
+    return f"https://www.1001pieces.com/index.php?controller=product&id_product={id_product}"
+
+
 def cle_identite_creation(a) -> str:
     """Clé d'identité d'un appareil à créer, pour l'import : même marque et même
     forme normalisée = un seul appareil, partagé par les lignes et les fiches
@@ -429,10 +434,38 @@ class FicheAImporter:
     rapprochement: object
     plan: PlanEnregistrement
     url: str = ''
+    nom_produit: str = ''         # nom du produit dans l'export (secours du titre)
+
+    @property
+    def lien_site(self) -> str:
+        """Page de la fiche sur le site : le lien lu, sinon d'après le n° du produit."""
+        if self.url:
+            return self.url
+        if self.id_product:
+            return lien_produit(self.id_product)
+        return ''
+
+    def _libelle_du_nom(self) -> str:
+        """Libellé tiré du nom du produit (« Nettoyant pour micro-ondes - 4812… »),
+        quand la description n'a pas de titre : sans la réf. finale, coupé au type."""
+        import re
+        from ..utils.rapprochement_fiche.rapprochement import libelle_depuis_titre
+        nom = re.sub(r'\s+[-–]\s+\S*\d\S*\s*$', '', (self.nom_produit or '').strip())
+        return libelle_depuis_titre(nom) if nom else ''
 
     @property
     def id_product(self) -> Optional[int]:
         return getattr(self.rapprochement.identite, 'id_product', None)
+
+    @property
+    def sans_code_produit(self) -> bool:
+        from ..utils.rapprochement_fiche.regles_import import SANS_CODE_PRODUIT
+        return SANS_CODE_PRODUIT in self.plan.a_completer
+
+    @property
+    def reference_proposee(self) -> str:
+        """Pièce proposée dans la fenêtre d'import : vide si elle est à saisir."""
+        return '' if self.sans_code_produit else (self.plan.ref_piece or '')
 
     @property
     def nom_fichier(self) -> str:
@@ -444,7 +477,7 @@ class FicheAImporter:
         i, p = self.rapprochement.identite, self.plan
         if p.libelle and p.remplacer_libelle:       # titre entier d'une reprise antérieure
             return p.libelle
-        return i.libelle_outil or p.libelle or i.libelle or ''
+        return i.libelle_outil or p.libelle or i.libelle or self._libelle_du_nom()
 
     # --- Relations de la fiche, pour la section « Succession » -------------------
     def remplace(self) -> List[str]:
@@ -484,21 +517,45 @@ class FicheAImporter:
         compte = {}
         for etat, *_ in lignes:
             compte[etat] = compte.get(etat, 0) + 1
-        return {'titre': r.identite.libelle or '', 'id_product': self.id_product,
+        return {'titre': r.identite.libelle or self._libelle_du_nom(), 'id_product': self.id_product,
                 'lignes': lignes, 'compte': compte, 'a_refaire': p.a_refaire,
                 'non_importees': list(p.non_importees),
                 'sans_code_produit': not p.ref_piece or p.a_completer}
 
+    def resume_carte(self) -> str:
+        """Une ligne pour la carte de la fiche (import d'un lot)."""
+        a = self.apercu()
+        compte = a['compte']
+        morceaux = [f"{compte[e]} {libelle}" for e, libelle in (
+            ("déjà lié", "déjà liés"), ("connu", "connus"), ("à créer", "à créer"),
+            ("couvert", "couverts"), ("non importé", "non importés")) if compte.get(e)]
+        return " · ".join(morceaux) or "aucun appareil (relations seules)"
+
     # --- Saisies de la fenêtre → plan ---------------------------------------------
     def appliquer_saisie(self, saisie) -> PlanEnregistrement:
-        """`saisie` : la configuration rendue par la fenêtre d'import (réf. et libellé
-        du fichier, Succession). Les relations retirées ne sont pas écrites (une
-        équivalente retirée est écartée et n'est plus proposée) ; celles ajoutées le sont."""
-        from ..utils.rapprochement_fiche.decisions import forme_reference
+        """`saisie` : la configuration rendue par la fenêtre d'import d'une fiche (réf.
+        et libellé du fichier, Succession). Les relations y sont ensuite vidées : elles
+        s'écrivent avec la fiche (origines, ordre), pas en double."""
         from ..utils.text_utils import decouper_refs
-        p = self.plan
         chemin = self.nom_fichier
-        ref = (saisie.individual_references.get(chemin) or p.ref_piece or '').strip()
+        plan = self.appliquer(saisie.individual_references.get(chemin),
+                              saisie.individual_labels.get(chemin),
+                              decouper_refs(saisie.succession_replaces),
+                              decouper_refs(saisie.succession_replaced_by),
+                              decouper_refs(saisie.equivalence_ref))
+        saisie.succession_replaces = saisie.succession_replaced_by = None
+        saisie.equivalence_ref = None
+        return plan
+
+    def appliquer(self, ref, libelle, remplace, remplacee_par, equivalentes) -> PlanEnregistrement:
+        """Saisies de la fenêtre d'import (carte ou fiche seule) dans le plan. Les
+        relations retirées ne sont pas écrites (une équivalente retirée est écartée et
+        n'est plus proposée) ; celles ajoutées le sont."""
+        from ..utils.rapprochement_fiche.decisions import forme_reference
+        from ..utils.rapprochement_fiche.regles_import import SANS_CODE_PRODUIT
+        p = self.plan
+        # Sans code produit, la pièce est celle saisie : jamais la réf. interne par défaut
+        ref = (ref or ('' if self.sans_code_produit else p.ref_piece) or '').strip()
         if ref and ref != p.ref_piece:
             ancienne = p.ref_piece
             p.ref_piece = ref
@@ -507,18 +564,15 @@ class FicheAImporter:
             p.decisions_references = [(ref if d[0] == ancienne else d[0],) + tuple(d[1:])
                                       for d in p.decisions_references]
         if ref:
-            from ..utils.rapprochement_fiche.regles_import import SANS_CODE_PRODUIT
             p.a_completer = [m for m in p.a_completer if m != SANS_CODE_PRODUIT]
-        libelle = (saisie.individual_labels.get(chemin) or '').strip()
+        libelle = (libelle or '').strip()
         outil = self.rapprochement.identite.libelle_outil or ''
         if not libelle or libelle == outil:
             p.libelle, p.remplacer_libelle = '', False          # libellé de l'outil gardé
         else:
             p.libelle, p.remplacer_libelle = libelle, bool(outil)
 
-        remplace = set(decouper_refs(saisie.succession_replaces))
-        remplacee_par = set(decouper_refs(saisie.succession_replaced_by))
-        equivalentes = set(decouper_refs(saisie.equivalence_ref))
+        remplace, remplacee_par, equivalentes = set(remplace), set(remplacee_par), set(equivalentes)
         de_la_fiche_r = set(self.remplace())
         de_la_fiche_rp = set(self.remplacee_par())
         p.remplacements = [(a, n) for a, n in p.remplacements
@@ -535,7 +589,4 @@ class FicheAImporter:
         p.origines = [o for o in p.origines if o[0] not in retirees]
         p.decisions_references += [(ref, e, 'ecartee', None, forme_reference(e))
                                    for e in sorted(retirees)]
-        # Les relations sont écrites avec la fiche (origines, ordre) : pas en double
-        saisie.succession_replaces = saisie.succession_replaced_by = None
-        saisie.equivalence_ref = None
         return p

@@ -2599,7 +2599,7 @@ class MainWindow(QMainWindow):
         dialog = SaisieFicheSite(self, url=url)
         dialog.show()
         if url:
-            dialog.lire_lien()
+            dialog.lire()
 
     def _open_reprise_site_dialog(self):
         """Importer les fiches du site en masse, par lots (CDC reprise des fiches,
@@ -2617,6 +2617,11 @@ class MainWindow(QMainWindow):
         dialog.destroyed.connect(lambda *_: setattr(self, '_reprise_site_dialog', None))
         self._reprise_site_dialog = dialog
         dialog.show()
+
+    def _open_fiches_a_refaire(self):
+        """Fiches du site à refaire depuis les PDF (données en vrac, § 10.14)."""
+        from .fiches_a_refaire_dialog import FichesARefaireDialog
+        FichesARefaireDialog(self.db_manager, parent=self).show()
 
     def _apres_fiche_site(self, ref_piece: str, _resultat):
         """Fiche enregistrée : afficher la pièce dans la recherche."""
