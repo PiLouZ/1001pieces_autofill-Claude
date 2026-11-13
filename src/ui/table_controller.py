@@ -153,12 +153,17 @@ class TableController:
         # à chaque changement de contexte (recherche/tri/filtres), voir load_data()
         # et _on_header_click().
         self._empty_cells_search_exhausted = {'up': False, 'down': False}
-        # Balayage de pages en cours par _on_skip_empty_cell : suspend la
+        # Balayage de pages en cours par _sauter_vers : suspend la
         # réévaluation des flèches à chaque page traversée.
         self._incomplete_scan_in_progress = False
         # Flèches « ligne incomplète » (toolbar), branchées par set_incomplete_nav_buttons()
         self.skip_empty_up_btn = None
         self.skip_empty_down_btn = None
+        # Même mécanique pour les lignes auto-complétées à vérifier, autour de
+        # « Auto-complétés à vérifier (N) » (set_a_verifier_nav_buttons)
+        self._a_verifier_epuise = {'up': False, 'down': False}
+        self.a_verifier_up_btn = None
+        self.a_verifier_down_btn = None
         
         # Variables de tri
         self.current_sort_column = -1
@@ -837,6 +842,7 @@ class TableController:
         # son propre balayage complet, donc pas d'interférence avec les
         # rechargements de page qu'il déclenche lui-même en cours de route.
         self._empty_cells_search_exhausted = {'up': False, 'down': False}
+        self._a_verifier_epuise = {'up': False, 'down': False}
 
         # Cacher les bannières (supersession + équivalence) si aucune recherche active
         if not search_term:
@@ -1423,6 +1429,7 @@ class TableController:
         # (sauf pendant leur propre balayage de pages, qui conclut lui-même).
         if not getattr(self, '_incomplete_scan_in_progress', False):
             self._update_empty_cell_buttons_state()
+            self._update_a_verifier_buttons_state()
 
         # Synchroniser avec NavigationService si disponible
         if self.navigation_service:
@@ -1821,6 +1828,36 @@ class TableController:
         # État initial : posé au premier load_data (via _update_pagination_controls) —
         # la toolbar est construite avant le tableau, ses filtres n'existent pas encore.
 
+    def set_a_verifier_nav_buttons(self, up_btn, down_btn):
+        """Brancher les flèches « ligne auto-complétée précédente/suivante »,
+        créées dans la barre d'état autour de « Auto-complétés à vérifier »."""
+        self.a_verifier_up_btn = up_btn
+        self.a_verifier_down_btn = down_btn
+        up_btn.clicked.connect(lambda: self._sauter_vers('a_verifier', 'up'))
+        down_btn.clicked.connect(lambda: self._sauter_vers('a_verifier', 'down'))
+        self._update_a_verifier_buttons_state()
+
+    def on_autocompletes_changed(self):
+        """La liste des auto-complétés à vérifier a été relue (import, validation,
+        saisie…) : oublier l'épuisement mémorisé et réévaluer les flèches."""
+        self._a_verifier_epuise = {'up': False, 'down': False}
+        self._update_a_verifier_buttons_state()
+
+    def _update_a_verifier_buttons_state(self):
+        """Grise/dégrise les flèches « à vérifier ». Pas de requête de comptage à
+        chaque page : la liste des auto-complétés est déjà en mémoire (modèle).
+        S'ils sont tous hors du périmètre filtré, le premier clic dans chaque
+        direction ne trouve rien et grise la flèche. Le filtre « Lignes à
+        traiter » les exclut par construction (Type et Fabricant remplis)."""
+        if getattr(self, 'a_verifier_up_btn', None) is None:
+            return
+        model = getattr(self, 'model', None)
+        actif = (model is not None and model.a_des_autocompletes()
+                 and not self._current_incomplete_filter())
+        epuise = getattr(self, '_a_verifier_epuise', {'up': False, 'down': False})
+        self.a_verifier_up_btn.setEnabled(actif and not epuise['up'])
+        self.a_verifier_down_btn.setEnabled(actif and not epuise['down'])
+
     def on_incomplete_count_changed(self, _count: int = 0):
         """Le nombre de lignes incomplètes a changé (cellule vidée ou complétée,
         import…) : réévaluer les flèches tout de suite, sans attendre le prochain
@@ -1862,24 +1899,73 @@ class TableController:
             self.current_page = page
             self.load_data(self.current_search_term)
 
+    # Critères de navigation : ce que les flèches ▲/▼ cherchent. Les noms
+    # d'attributs/méthodes sont résolus à l'appel (getattr) : les tests peuvent
+    # remplacer chacun d'eux.
+    _CRITERES_NAV = {
+        'incomplete': {
+            'boutons': ('skip_empty_up_btn', 'skip_empty_down_btn'),
+            'epuisement': '_empty_cells_search_exhausted',
+            'reevaluer': '_update_empty_cell_buttons_state',
+            'ligne_page': 'find_incomplete_row',
+            'position_sql': 'find_incomplete_position',
+            'libelle': 'ligne incomplète',
+        },
+        'a_verifier': {
+            'boutons': ('a_verifier_up_btn', 'a_verifier_down_btn'),
+            'epuisement': '_a_verifier_epuise',
+            'reevaluer': '_update_a_verifier_buttons_state',
+            'ligne_page': 'find_a_verifier_row',
+            'position_sql': 'find_a_verifier_position',
+            'libelle': 'ligne à vérifier',
+        },
+    }
+
+    def _epuisement(self, critere: str) -> dict:
+        nom = self._CRITERES_NAV[critere]['epuisement']
+        if not hasattr(self, nom):
+            setattr(self, nom, {'up': False, 'down': False})
+        return getattr(self, nom)
+
+    def _reevaluer_fleches(self, critere: str):
+        getattr(self, self._CRITERES_NAV[critere]['reevaluer'])()
+
+    def _ligne_dans_la_page(self, critere: str, row: int, direction: str):
+        return getattr(self.model, self._CRITERES_NAV[critere]['ligne_page'])(row, direction)
+
     def skip_to_incomplete_row(self, direction: str):
         """Point d'entrée des raccourcis ⌥⌘↑ / ⌥⌘↓ : même effet qu'un clic sur
         la flèche correspondante, et rien si elle est grisée (direction épuisée
         ou aucune ligne incomplète dans le périmètre)."""
-        btn = getattr(self, 'skip_empty_up_btn' if direction == 'up' else 'skip_empty_down_btn', None)
-        if btn is not None and btn.isEnabled() and btn.isVisible():
-            self._on_skip_empty_cell(direction)
+        self.skip_to_row('incomplete', direction)
 
-    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur saut cellule vide")
+    def skip_to_row(self, critere: str, direction: str):
+        """Raccourci clavier d'un critère : même effet qu'un clic sur la flèche,
+        et rien si elle est grisée ou masquée."""
+        up_attr, down_attr = self._CRITERES_NAV[critere]['boutons']
+        btn = getattr(self, up_attr if direction == 'up' else down_attr, None)
+        if btn is not None and btn.isEnabled() and btn.isVisible():
+            if critere == 'incomplete':
+                self._on_skip_empty_cell(direction)
+            else:
+                self._sauter_vers(critere, direction)
+
     def _on_skip_empty_cell(self, direction: str):
         """Sauter vers la prochaine/précédente ligne incomplète (Type ou
-        Fabricant vide), quelle que soit la colonne sous le focus, et placer le
-        curseur sur la cellule à remplir. Le contexte courant (tri, recherche,
-        filtres) est conservé : la ligne cible apparaît avec son environnement.
+        Fabricant vide) — voir _sauter_vers."""
+        self._sauter_vers('incomplete', direction)
+
+    @handle_ui_operation_errors(return_value=None, log_prefix="Erreur saut de ligne")
+    def _sauter_vers(self, critere: str, direction: str):
+        """Sauter vers la prochaine/précédente ligne du critère (« incomplete » :
+        Type ou Fabricant vide ; « a_verifier » : auto-complétée non vérifiée),
+        quelle que soit la colonne sous le focus, et placer le curseur sur la
+        cellule concernée. Le contexte courant (tri, recherche, filtres) est
+        conservé : la ligne cible apparaît avec son environnement.
 
         1. Page affichée d'abord : cas le plus fréquent, aucune requête.
         2. Sinon une requête SQL donne la position de la cible dans l'ordre de
-           l'écran → un seul chargement de page (find_incomplete_position).
+           l'écran → un seul chargement de page.
         3. Repli sur le parcours page par page si la requête n'est pas possible
            (tri « Nb pièces ») ou échoue.
         """
@@ -1893,7 +1979,7 @@ class TableController:
             row = -1 if direction == 'down' else self.model.loaded_record_count()
 
         # 1. Page affichée
-        found = self.model.find_incomplete_row(row, direction)
+        found = self._ligne_dans_la_page(critere, row, direction)
         if found is not None:
             self._focus_cell(*found)
             return
@@ -1901,32 +1987,32 @@ class TableController:
         if self.page_size != -1 and self.total_pages > 1:
             # 2. Position SQL au-delà de la page affichée
             try:
-                position = self._find_incomplete_position_beyond_page(direction)
+                position = self._find_position_beyond_page(critere, direction)
             except Exception as e:
-                app_logger.warning(f"Saut ligne incomplète : requête de position impossible "
-                                   f"({e}), repli sur le parcours des pages")
-                self._scan_pages_for_incomplete(direction, start_index)
+                app_logger.warning(f"Saut {self._CRITERES_NAV[critere]['libelle']} : requête "
+                                   f"de position impossible ({e}), repli sur le parcours des pages")
+                self._scan_pages_for(critere, direction, start_index)
                 return
             if position is not None:
                 self._goto_page_preserving_context(position // self.page_size + 1)
                 target_row = position % self.page_size
                 # Recherche locale autour du rang visé (et non sélection aveugle) :
                 # si une écriture a eu lieu entre-temps, on retombe sur la ligne
-                # incomplète la plus proche dans la bonne direction.
-                found = (self.model.find_incomplete_row(target_row - 1, 'down') if direction == 'down'
-                         else self.model.find_incomplete_row(target_row + 1, 'up'))
+                # cible la plus proche dans la bonne direction.
+                found = (self._ligne_dans_la_page(critere, target_row - 1, 'down') if direction == 'down'
+                         else self._ligne_dans_la_page(critere, target_row + 1, 'up'))
                 if found is not None:
                     self._focus_cell(*found)
                 # Changement de page : load_data a remis à zéro l'épuisement
                 # des deux directions → refléter ce nouvel état une seule fois.
-                self._update_empty_cell_buttons_state()
+                self._reevaluer_fleches(critere)
                 return
 
         # Rien dans cette direction, sans avoir quitté la page : la flèche se grise
         # silencieusement, sans interrompre l'utilisateur au milieu d'une série
         # de complétions.
-        self._empty_cells_search_exhausted[direction] = True
-        self._update_empty_cell_buttons_state()
+        self._epuisement(critere)[direction] = True
+        self._reevaluer_fleches(critere)
 
     def _focus_cell(self, row: int, col: int):
         """Sélectionner une cellule de la page (révélée au
@@ -1937,15 +2023,16 @@ class TableController:
         self.table.scrollTo(target_index)
         self.table.setFocus()
 
-    def _find_incomplete_position_beyond_page(self, direction: str) -> Optional[int]:
-        """Position globale de la prochaine ligne incomplète après la fin (▼) ou
+    def _find_position_beyond_page(self, critere: str, direction: str) -> Optional[int]:
+        """Position globale de la prochaine ligne du critère après la fin (▼) ou
         avant le début (▲) de la page affichée, avec exactement les paramètres
         de load_data (terme effectif, filtres, tri, filtre « Lignes à traiter »)."""
         page_start = (self.current_page - 1) * self.page_size
         from_position = (page_start + self.model.loaded_record_count() - 1
                          if direction == 'down' else page_start)
         sort_order_str = "ASC" if self.current_sort_order == Qt.AscendingOrder else "DESC"
-        return self.db_manager.find_incomplete_position(
+        requete = getattr(self.db_manager, self._CRITERES_NAV[critere]['position_sql'])
+        return requete(
             self.build_effective_search_term(self.current_search_term),
             self._live_column_filters(),
             self.current_sort_column, sort_order_str,
@@ -1953,7 +2040,7 @@ class TableController:
             from_position, direction,
         )
 
-    def _scan_pages_for_incomplete(self, direction: str, start_index):
+    def _scan_pages_for(self, critere: str, direction: str, start_index):
         """Repli : parcourir les pages une à une (tri « Nb pièces », ou requête
         de position en échec). La page affichée a déjà été examinée."""
         start_page = self.current_page
@@ -1977,12 +2064,12 @@ class TableController:
                     row = self.model.loaded_record_count()  # juste après la dernière ligne
                 scanned_pages += 1
 
-                found = self.model.find_incomplete_row(row, direction)
+                found = self._ligne_dans_la_page(critere, row, direction)
                 if found is not None:
                     self._focus_cell(*found)
                     self._incomplete_scan_in_progress = False
                     # load_data a remis à zéro l'épuisement des deux directions
-                    self._update_empty_cell_buttons_state()
+                    self._reevaluer_fleches(critere)
                     return
 
             # Rien trouvé : revenir là où l'utilisateur était, au lieu de le
@@ -1996,8 +2083,8 @@ class TableController:
 
         # Balayage complet sans résultat : mémoriser l'épuisement de cette
         # direction (après le retour, que load_data aurait sinon effacé).
-        self._empty_cells_search_exhausted[direction] = True
-        self._update_empty_cell_buttons_state()
+        self._epuisement(critere)[direction] = True
+        self._reevaluer_fleches(critere)
 
     def _toggle_supersession_bypass(self):
         """Basculer l'état du bouton selon le mode actif."""
