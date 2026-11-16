@@ -387,9 +387,10 @@ class ImportDialog(QDialog):
         self.bandeau_fiche.setVisible(False)
         format_layout.addWidget(self.bandeau_fiche)
 
-        # Fiche du site : paires de réf. associées à cocher (§ 5.4)
-        self.liste_paires = ListePairesFiche(au_changement=self._paires_changees)
-        format_layout.addWidget(self.liste_paires)
+        # Fiche du site : paires de réf. associées à cocher (§ 5.4), placées dans la
+        # section Succession, sous les champs qu'elles relient
+        self.liste_paires = ListePairesFiche(self, au_changement=self._paires_changees)
+        self.liste_paires.setVisible(False)
 
         # Bandeau d'alerte format non reconnu (masqué par défaut)
         self.format_warning_widget = QWidget()
@@ -723,6 +724,7 @@ class ImportDialog(QDialog):
                 self.succ_replaces_input.set_refs(self._fiche.remplace())
                 self.succ_replaced_by_input.set_refs(self._fiche.remplacee_par())
                 self.equiv_input.set_refs(self._fiche.equivalentes())
+                succ_layout.addWidget(self.liste_paires)
             self._succ_content.setVisible(True)
             succ_container_layout.addWidget(self._succ_content)
             layout.addWidget(succ_container)
@@ -1618,9 +1620,6 @@ class ImportDialog(QDialog):
         resume = QLabel(fiche.resume_carte())
         resume.setStyleSheet(StyleManager.TEXTE_SECONDAIRE)
         boite.addWidget(resume)
-        paires = ListePairesFiche(compact=True, au_changement=self._apercu_lot)
-        paires.definir(fiche)
-        boite.addWidget(paires)
         refaire = fiche.plan.a_refaire
         if refaire is not None:
             alerte = QLabel(f"À refaire depuis les PDF : {refaire.raison}")
@@ -1643,6 +1642,10 @@ class ImportDialog(QDialog):
             ligne.addWidget(chips, etirement)
             champs[cle] = chips
         boite.addLayout(ligne)
+        # Paires de réf. associées, sous les champs qu'elles relient (§ 5.4)
+        paires = ListePairesFiche(compact=True, au_changement=self._apercu_lot)
+        paires.definir(fiche)
+        boite.addWidget(paires)
         self._cartes_fiches.append({'file': file, 'importer': importer, 'ref': ref_edit,
                                     'libelle': libelle, 'obsolete': obsolete, **champs})
         return carte

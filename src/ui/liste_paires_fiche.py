@@ -15,7 +15,9 @@ Le choix est porté par la fiche (`FicheAImporter.paires_decochees`).
 from typing import Callable, Optional
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QCheckBox, QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import (
+    QCheckBox, QHBoxLayout, QLabel, QScrollArea, QToolButton, QVBoxLayout, QWidget,
+)
 
 from .style_manager import StyleManager
 
@@ -28,6 +30,8 @@ class ListePairesFiche(QWidget):
     def __init__(self, parent=None, compact: bool = False,
                  au_changement: Optional[Callable[[], None]] = None):
         super().__init__(parent)
+        # Posée dans le cadre de la section Succession : pas de bordure par ligne
+        self.setStyleSheet(StyleManager.CONTENU_SANS_CADRE)
         self.compact = compact
         self.au_changement = au_changement
         self.fiche = None
@@ -42,35 +46,50 @@ class ListePairesFiche(QWidget):
             self.titre.setArrowType(Qt.RightArrow)
             self.titre.setAutoRaise(True)
             self.titre.toggled.connect(self._deplier)
-        self.titre.setStyleSheet(StyleManager.LIBELLE_PETIT_TRANSPARENT)
+        self.titre.setStyleSheet(StyleManager.LIBELLE_PETIT_TRANSPARENT if compact
+                                 else StyleManager.TEXTE_GRAS_TRANSPARENT)
         layout.addWidget(self.titre)
         self.contenu = QWidget()
         self.lignes = QVBoxLayout(self.contenu)
         self.lignes.setContentsMargins(12 if compact else 0, 0, 0, 0)
-        self.lignes.setSpacing(1)
-        layout.addWidget(self.contenu)
-        self.contenu.setVisible(not compact)
+        self.lignes.setSpacing(3)
+        self.lignes.addStretch(1)
+        # Zone défilante : la liste garde sa hauteur même si la fenêtre en manque
+        self.zone = QScrollArea()
+        self.zone.setWidgetResizable(True)
+        self.zone.setFrameShape(QScrollArea.NoFrame)
+        self.zone.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.zone.setStyleSheet(StyleManager.ZONE_DEFILEMENT_NUE)
+        self.zone.setWidget(self.contenu)
+        layout.addWidget(self.zone)
+        self.zone.setVisible(not compact)
         self.setVisible(False)
 
     # ------------------------------------------------------------------
     def definir(self, fiche) -> None:
         """Remplit la liste avec les paires de `fiche` (FicheAImporter)."""
         self.fiche = fiche
-        while self.lignes.count():
+        while self.lignes.count() > 1:          # le dernier élément : l'étirement
             item = self.lignes.takeAt(0)
             if item.widget() is not None:
                 item.widget().deleteLater()
         self.cases = {}
         a = fiche.apercu_paires() if fiche is not None else {'paires': [], 'non_liees': []}
+        rangs = []
         for p in a['paires']:
-            self.lignes.addWidget(self._ligne_paire(p))
+            rangs.append(self._ligne_paire(p))
         for n in a['non_liees']:
             texte = QLabel(f"{n['ligne']} · {' '.join(n['references'])} — non liées : "
                            f"{n['raison']}")
             texte.setWordWrap(True)
             texte.setStyleSheet(StyleManager.TEXTE_AVERTISSEMENT)
-            self.lignes.addWidget(texte)
-        self.setVisible(bool(a['paires'] or a['non_liees']))
+            rangs.append(texte)
+        for k, w in enumerate(rangs):
+            self.lignes.insertWidget(k, w)
+        # Jusqu’à 6 lignes visibles sans défiler, puis la barre de défilement
+        hauteur = sum(w.sizeHint().height() for w in rangs[:6]) + 3 * min(len(rangs), 6)
+        self.zone.setFixedHeight(max(hauteur, 0) + 4)
+        self.setVisible(bool(rangs))
         self._titre()
 
     def _ligne_paire(self, p) -> QWidget:
@@ -92,6 +111,8 @@ class ListePairesFiche(QWidget):
         etat.setStyleSheet(StyleManager.TEXTE_AVERTISSEMENT if p['statut'] == 'conflit'
                            else StyleManager.TEXTE_SECONDAIRE)
         h.addWidget(etat, 1)
+        # Pas d'écrasement quand la fenêtre manque de hauteur
+        ligne.setMinimumHeight(max(case.sizeHint().height(), etat.sizeHint().height()))
         return ligne
 
     def _basculer(self, cle, coche: bool) -> None:
@@ -110,5 +131,5 @@ class ListePairesFiche(QWidget):
         self.titre.setText(f"Paires de réf. associées ({n} à lier)")
 
     def _deplier(self, ouvert: bool) -> None:
-        self.contenu.setVisible(ouvert)
+        self.zone.setVisible(ouvert)
         self.titre.setArrowType(Qt.DownArrow if ouvert else Qt.RightArrow)
