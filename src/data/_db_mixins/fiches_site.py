@@ -236,8 +236,8 @@ class DatabaseFichesSiteMixin:
             n += 1
         return n
 
-    def lier_paires_remplace(self, paires: Iterable[Tuple[str, str]], le: str) -> int:
-        """Paires de « Remplace les références » d'une fiche (1ʳᵉ avec 2ᵉ…, CDC
+    def lier_paires_fiche(self, paires: Iterable[Tuple[str, str]], le: str) -> int:
+        """Paires Whirlpool / Indesit / Beko des lignes « Remplace » et « Équivalentes » (CDC
         § 5.4) : chaque paire devient réf. associée et équivalente, comme la paire
         du code produit, mais SANS la marque « ligne 0 » (ce sont d'anciennes
         références, pas le code produit). Une réponse déjà mémorisée pour l'une
@@ -256,7 +256,7 @@ class DatabaseFichesSiteMixin:
                 continue
             ok, message = self.add_equivalence(principale, associee)
             if not ok:
-                app_logger.warning(f"Paire de « Remplace » {principale} ≡ {associee} : {message}")
+                app_logger.warning(f"Paire {principale} ≡ {associee} : {message}")
                 continue
             with self._query_lock:
                 self.cursor.execute(

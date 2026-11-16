@@ -130,9 +130,9 @@ class PlanEnregistrement:
     # (ancienne référence, position dans « Remplace » de la fiche) : complétée à
     # chaque lecture, comme les origines ; ne compte pas dans `vide`
     rangs_remplace: List[Tuple[str, int]] = field(default_factory=list)
-    # (principale, associée) : paires de « Remplace les références » à lier en
-    # réf. associées (§ 5.4) ; seulement les nouvelles
-    paires_remplace: List[Tuple[str, str]] = field(default_factory=list)
+    # (ligne, principale, associée) : paires à lier en réf. associées (§ 5.4),
+    # lignes « remplace » / « equivalentes » ; seulement les nouvelles, cochées
+    paires: List[Tuple[str, str, str]] = field(default_factory=list)
     produit: Optional[Dict[str, object]] = None
     # Nom commercial vide d'un appareil connu, complété depuis la fiche :
     # id → {colonne d'appareils: valeur} (sauvegarde événementielle, thread principal)
@@ -156,7 +156,7 @@ class PlanEnregistrement:
     def vide(self) -> bool:
         """Rien de nouveau à écrire (relecture d'une fiche déjà reprise)."""
         return not (self.appareils_a_creer or self.remplacements or self.equivalences
-                    or self.paires_remplace or self.decisions_ecritures or self.decisions_references
+                    or self.paires or self.decisions_ecritures or self.decisions_references
                     or self.maj_appareils
                     or self.statut_piece != 'reelle' or self.libelle)
 
@@ -198,9 +198,9 @@ class _Planificateur:
         for rp in self.r.remplacements:
             self._remplacement(rp)
         ignorees = {a for a, choix in self.d.remplacements.items() if choix == 'ignorer'}
-        p.paires_remplace = [(pr.principale, pr.associee) for pr in self.r.paires_remplace
-                             if pr.statut == 'nouveau'
-                             and not {pr.principale, pr.associee} & ignorees]
+        p.paires = [(pr.ligne, pr.principale, pr.associee) for pr in self.r.paires
+                    if pr.statut == 'nouveau'
+                    and not (pr.ligne == 'remplace' and {pr.principale, pr.associee} & ignorees)]
         for e in self.r.equivalences:
             self._equivalence(e)
         for app in self.r.absents_de_la_fiche:

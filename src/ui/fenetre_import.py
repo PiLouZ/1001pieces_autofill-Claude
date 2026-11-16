@@ -37,6 +37,7 @@ from ..utils.qt_imports import (
 from .style_manager import StyleManager
 from .ref_chips_input import RefChipsInput
 from .champ_reference_associee import ChampReferenceAssociee
+from .liste_paires_fiche import ListePairesFiche
 from ..core.logger import app_logger
 from ..core.import_manager import FileType, ImportConfiguration, ImportType, LabelConfiguration
 from ..utils.error_handler import handle_ui_operation_errors
@@ -384,6 +385,10 @@ class ImportDialog(QDialog):
         self.bandeau_fiche.setStyleSheet(StyleManager.BANDEAU_AVERTISSEMENT)
         self.bandeau_fiche.setVisible(False)
         format_layout.addWidget(self.bandeau_fiche)
+
+        # Fiche du site : paires de réf. associées à cocher (§ 5.4)
+        self.liste_paires = ListePairesFiche(au_changement=self._paires_changees)
+        format_layout.addWidget(self.liste_paires)
 
         # Bandeau d'alerte format non reconnu (masqué par défaut)
         self.format_warning_widget = QWidget()
@@ -1557,6 +1562,9 @@ class ImportDialog(QDialog):
         resume = QLabel(fiche.resume_carte())
         resume.setStyleSheet(StyleManager.TEXTE_SECONDAIRE)
         boite.addWidget(resume)
+        paires = ListePairesFiche(compact=True, au_changement=self._apercu_lot)
+        paires.definir(fiche)
+        boite.addWidget(paires)
         refaire = fiche.plan.a_refaire
         if refaire is not None:
             alerte = QLabel(f"À refaire depuis les PDF : {refaire.raison}")
@@ -1670,7 +1678,7 @@ class ImportDialog(QDialog):
         """Aperçu d'un lot de fiches : ce que deviennent leurs appareils."""
         fiches = [f.fiche for f in self._fiches_lot]
         total = {}
-        a_refaire = sans_code = paires = paires_non_liees = 0
+        a_refaire = sans_code = paires = suites_non_liees = 0
         for fiche in fiches:
             a = fiche.apercu()
             for etat, n in a['compte'].items():
@@ -1678,7 +1686,7 @@ class ImportDialog(QDialog):
             a_refaire += a['a_refaire'] is not None
             sans_code += bool(a['sans_code_produit'])
             paires += a['paires']['a_lier']
-            paires_non_liees += bool(a['paires']['sans'] or a['paires']['conflits'])
+            suites_non_liees += len(a['paires']['non_liees'])
         self.format_info_label.setText(f"Lot de {len(fiches)} fiches du site")
         self.format_info_label.setVisible(True)
         libelles = {"déjà lié": "déjà liés", "connu": "appareils connus à relier",
@@ -1688,9 +1696,9 @@ class ImportDialog(QDialog):
         if sans_code:
             texte += f" · {sans_code} fiche(s) sans code produit (référence à saisir)"
         texte += self._texte_paires({'a_lier': paires})
-        if paires_non_liees:
-            texte += (f" · {paires_non_liees} fiche(s) aux paires de « Remplace » non liées "
-                      f"(ligne mal formée ou réponse déjà donnée)")
+        if suites_non_liees:
+            texte += (f" · {suites_non_liees} suite(s) de références non liées en paires "
+                      f"(voir « Paires » sur les cartes)")
         self.format_desc_label.setText(texte)
         self.format_desc_label.setVisible(True)
         self.format_warning_widget.setVisible(False)
@@ -1710,24 +1718,15 @@ class ImportDialog(QDialog):
 
     @staticmethod
     def _texte_paires(paires) -> str:
-        """« · 6 paires de « Remplace » à lier » (CDC fiches du site § 5.4)."""
+        """« · 6 paire(s) de réf. associées à lier » (CDC fiches du site § 5.4)."""
         n = paires.get('a_lier', 0)
-        return f" · {n} paire(s) de « Remplace » à lier en réf. associées" if n else ''
+        return f" · {n} paire(s) de réf. associées à lier" if n else ''
 
-    @staticmethod
-    def _alertes_paires(paires):
-        """Paires de « Remplace » non liées : ligne mal formée, ou réponse déjà
-        mémorisée (jamais remplacée)."""
-        alertes = []
-        if paires.get('sans'):
-            alertes.append(f"« Remplace les références » non lue par paires : "
-                           f"{paires['sans']}. Aucune réf. associée n'en est tirée.")
-        conflits = paires.get('conflits') or []
-        if conflits:
-            alertes.append(f"{len(conflits)} paire(s) de « Remplace » non liée(s) : "
-                           + " ; ".join(conflits[:3]) + (" ; …" if len(conflits) > 3 else "")
-                           + ". La réponse déjà donnée est gardée.")
-        return alertes
+    def _paires_changees(self):
+        """Une paire cochée ou décochée : le compte « à lier » suit."""
+        if self._fiche is not None:
+            self.format_desc_label.setText(
+                getattr(self, '_desc_fiche', '') + self._texte_paires(self._fiche.apercu_paires()))
 
     # États des lignes d'une fiche, dans l'ordre de l'aperçu
     _ETATS_FICHE = ("déjà lié", "connu", "à créer", "à refaire", "couvert", "non importé")
@@ -1746,9 +1745,11 @@ class ImportDialog(QDialog):
                     "couvert": "couverts par une ancienne référence",
                     "non importé": "non importés"}
         compte = a['compte']
-        self.format_desc_label.setText((" · ".join(
+        self._desc_fiche = (" · ".join(
             f"{compte[e]} {libelles[e]}" for e in self._ETATS_FICHE if compte.get(e)) or
-            "Aucun appareil sur la fiche (relations seules)") + self._texte_paires(a['paires']))
+            "Aucun appareil sur la fiche (relations seules)")
+        self.format_desc_label.setText(self._desc_fiche + self._texte_paires(a['paires']))
+        self.liste_paires.definir(self._fiche)
         self.format_desc_label.setVisible(True)
         self.format_warning_widget.setVisible(False)
         lignes = a['lignes']
@@ -1779,7 +1780,6 @@ class ImportDialog(QDialog):
         if a['non_importees']:
             alertes.append(f"{len(a['non_importees'])} ligne(s) non importée(s) "
                            f"(appareil à choisir, référence illisible, marque inconnue).")
-        alertes += self._alertes_paires(a['paires'])
         if a['sans_code_produit']:
             lien = self._fiche.lien_site
             consulter = (f' Consultez <a href="{lien}">la fiche sur le site</a> pour la trouver.'

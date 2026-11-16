@@ -203,10 +203,10 @@ class Rapprochement:
     appareils: List[AppareilRapproche] = field(default_factory=list)
     remplacements: List[Remplacement] = field(default_factory=list)
     equivalences: List[Equivalence] = field(default_factory=list)
-    # Paires de « Remplace les références » (§ 5.4) : 1ʳᵉ réf. avec la 2ᵉ, etc.,
-    # quand toute la ligne a cette structure ; sinon vide et la raison (code)
-    paires_remplace: List[object] = field(default_factory=list)     # PaireRemplace
-    paires_sans: str = ''                                           # RAISONS_SANS_PAIRES
+    # Paires de réf. associées des lignes « Remplace » et « Équivalentes » (§ 5.4),
+    # et les suites de réf. Whirlpool / Indesit / Beko qui n'ont pas pu être liées
+    paires: List[object] = field(default_factory=list)              # PaireFiche
+    suites_non_liees: List[object] = field(default_factory=list)    # SuiteNonLiee
     lignee: Dict[str, str] = field(default_factory=dict)    # ref → 'depart'/'succession'/'equivalence'
     doutes: List[Doute] = field(default_factory=list)
     liste_tronquee: bool = False        # aucun « absent » de la fiche n'est à tirer (§ 4.6)
