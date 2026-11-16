@@ -14,7 +14,9 @@ et où les doutes sont regroupés par catégorie, pour l'aperçu de l'étape 3.
   fois par fiche pour « déjà lié » / « déjà couvert » ; union avec la table du
   site (§ 5.7) ; type appareil par appareil (§ 5.6).
 - Remplacements (§ 5.4) : appariement par la forme dans une paire
-  Whirlpool/Indesit, vérification de la chaîne avant de signaler un conflit.
+  Whirlpool/Indesit, vérification de la chaîne avant de signaler un conflit ;
+  paires Whirlpool / Indesit / Beko qui se suivent sur les lignes « Remplace »
+  et « Équivalentes » en réf. associées (`paires_fiche`).
 - Équivalences (§ 5.3, 5.5) : étiquette d'origine déduite du format.
 
 Mémoires du § 9 (étape 3) : passées en paramètre (décisions sur les paires
@@ -37,6 +39,7 @@ from src.utils.rapprochement_fiche.acces_base import (
 from src.utils.rapprochement_fiche.configuration import (
     ConfigurationRapprochement, charger_configuration,
 )
+from src.utils.rapprochement_fiche.paires_fiche import paires_de_la_ligne
 from src.utils.rapprochement_fiche.resultat import (
     AppareilRapproche, Doute, Ecart, Equivalence, Identite, Rapprochement, Remplacement,
 )
@@ -161,6 +164,8 @@ class _Rapprochement:
         r = Rapprochement(identite=identite, lignee=self.lignee,
                           liste_tronquee=self.l.liste_tronquee)
         r.remplacements = self._remplacements(principale) if principale else []
+        if principale:
+            r.paires, r.suites_non_liees = self._paires(principale)
         r.equivalences = self._equivalences(principale) if principale else []
         r.appareils = self._appareils(principale)
         for nc in self.l.non_compris:
@@ -327,6 +332,53 @@ class _Rapprochement:
             if r.sens == 'remplace':
                 r.rang = rangs.get(r.ancienne)
         return resultat
+
+    def _paires(self, principale: str):
+        """Paires de réf. associées des lignes « Remplace » et « Équivalentes »
+        (`paires_fiche`), et leur statut face aux réf. associées et aux groupes
+        d'équivalence de la base."""
+        origine = lambda ref: self.config.origine(ref).etiquette
+        lignes = [('remplace', self.l.remplace)] + [
+            ('equivalentes', le.references) for le in self.l.equivalentes]
+        paires, non_liees = [], []
+        for nom, refs in lignes:
+            p, n = paires_de_la_ligne(nom, refs, principale, origine)
+            paires += p
+            non_liees += n
+        if not paires:
+            return [], non_liees
+        refs = [r for p in paires for r in (p.principale, p.associee)]
+        connues = self.acces.associees_connues(refs)
+        groupes = self.acces.groupes(refs)
+        prises: Dict[str, str] = {}             # réf. → sa jumelle dans la fiche
+        for p in paires:
+            a, b = p.principale, p.associee
+            autre = next((r for r in (a, b) if r in prises and prises[r] not in (a, b)), None)
+            if autre:
+                p.statut = 'conflit'
+                p.raison = f"{autre} va déjà avec {prises[autre]} sur la fiche"
+                continue
+            prises[a], prises[b] = b, a
+            if connues.get(a) == b or connues.get(b) == a:
+                p.statut = 'deja_present'
+            elif a in connues or b in connues:
+                p.statut = 'conflit'
+                ref = a if a in connues else b
+                p.raison = (f"{ref} a déjà la réf. associée {connues[ref]}" if connues[ref]
+                            else f"{ref} : « aucune » réf. associée déjà répondu")
+            elif a in groupes and b in groupes and groupes[a] != groupes[b]:
+                p.statut = 'conflit'
+                p.raison = f"{a} et {b} sont dans deux groupes d'équivalence différents"
+            else:
+                p.statut = 'nouveau'
+        # Même paire sur les deux lignes : une seule fois
+        vues, uniques = set(), []
+        for p in paires:
+            cle = frozenset((p.principale, p.associee))
+            if cle not in vues:
+                vues.add(cle)
+                uniques.append(p)
+        return uniques, non_liees
 
     def _cibles_par_origine(self) -> Dict[str, str]:
         """Origine → réf. du code produit, pour les origines portées par une seule réf."""

@@ -262,6 +262,23 @@ class AccesBaseLecture:
                 f"WHERE ref_piece IN ({q})", lot))
         return out
 
+    def associees_connues(self, refs: Iterable[str]) -> Dict[str, Optional[str]]:
+        """ref → sa réf. associée mémorisée, dans les deux sens (None = « aucune »),
+        pour les refs qui ont une réponse (CDC fiches du site § 10.17)."""
+        refs = list(dict.fromkeys(r for r in refs if r))
+        if not refs or not self._a_table('references_associees'):
+            return {}
+        out: Dict[str, Optional[str]] = {}
+        for lot in _tranches(refs):
+            q = ','.join('?' * len(lot))
+            for ref, associee in self._lignes(
+                    f"SELECT ref_piece, associee FROM references_associees "
+                    f"WHERE ref_piece IN ({q}) OR associee IN ({q})", lot + lot):
+                out.setdefault(ref, associee)
+                if associee:
+                    out.setdefault(associee, ref)
+        return {r: out[r] for r in refs if r in out}
+
     def membres_groupes(self, group_ids: Iterable[int]) -> List[str]:
         ids = list(dict.fromkeys(g for g in group_ids if g is not None))
         out: List[str] = []

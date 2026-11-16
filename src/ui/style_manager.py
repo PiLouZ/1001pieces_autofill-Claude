@@ -157,6 +157,8 @@ class StyleManager:
     ZONE_DEFILEMENT_NUE = 'QScrollArea { background: transparent; border: none; }'
     # Cadre gris clair arrondi (4 px) autour d'un groupe
     CADRE_GRIS_CLAIR = 'QWidget { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; }'
+    # Contenu posé dans un cadre stylé : ni fond ni bordure hérités du cadre
+    CONTENU_SANS_CADRE = 'QWidget { background: transparent; border: none; }'
     # Petit libellé gris foncé posé sur un cadre
     LIBELLE_PETIT_TRANSPARENT = 'font-size: 11px; color: #495057; background: transparent; border: none;'
     # Carte gris clair arrondie (6 px)

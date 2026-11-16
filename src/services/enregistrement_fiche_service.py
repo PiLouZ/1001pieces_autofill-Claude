@@ -13,7 +13,8 @@ est un import de plusieurs fichiers.
 Ce qui est propre à la reprise s'écrit dans le crochet `apres_ecriture` de
 l'import, fiche par fiche : provenance des liens, remplacements et équivalences
 (`import_relations.apply_relations`), marques d'origine, ordre des « Remplace »,
-produit du site, décisions consignées. La pièce (fantôme → réelle, libellé) est
+produit du site, décisions consignées, paires Whirlpool / Indesit / Beko des
+lignes « Remplace » et « Équivalentes » liées en réf. associées (§ 5.4). La pièce (fantôme → réelle, libellé) est
 posée avant l'import, pour que les relations propagent son libellé.
 
 Ajout seul (§ 6.2) : rien n'est supprimé. Relire une fiche ne crée aucun
@@ -93,6 +94,7 @@ class ResultatEnregistrement:
     liens_completes: int = 0
     liens_inchanges: int = 0
     relations: Dict[str, int] = field(default_factory=dict)
+    paires_liees: int = 0               # paires de réf. associées liées (§ 5.4)
     journal: List[str] = field(default_factory=list)
     erreur: str = ''
     # Champs d'appareils connus pris sur le site (id → {colonne: valeur}) : écrits
@@ -109,7 +111,9 @@ class ResultatEnregistrement:
         return (f"pièce {self.piece} ; {self.appareils_crees} appareil(s) créé(s) ; "
                 f"{self.liens_crees} lien(s) créé(s), {self.liens_completes} complété(s) ; "
                 f"{r.get('successions', 0)} remplacement(s), {r.get('equivalences', 0)} "
-                f"équivalence(s)" + (f", {r['errors']} refus" if r.get('errors') else ''))
+                f"équivalence(s)"
+                + (f", {self.paires_liees} paire(s) de réf. associées liée(s)" if self.paires_liees else '')
+                + (f", {r['errors']} refus" if r.get('errors') else ''))
 
 
 class EnregistrementFicheService(BaseService):
@@ -354,6 +358,11 @@ class EnregistrementFicheService(BaseService):
             db._enregistrer_decisions_ecritures(plan.decisions_ecritures, le)
             db._enregistrer_decisions_references(plan.decisions_references, le)
             db.conn.commit()
+        # 6. Paires des lignes « Remplace » et « Équivalentes » en réf. associées
+        # (§ 5.4), après les relations
+        if plan.paires:
+            res.paires_liees = db.lier_paires_fiche([(a, b) for _, a, b in plan.paires],
+                                                    le or self._maintenant())
         for ident, colonnes in plan.maj_appareils.items():
             res.maj_appareils.setdefault(ident, {}).update(colonnes)
 
@@ -425,6 +434,29 @@ class FicheAImporter:
     plan: PlanEnregistrement
     url: str = ''
     nom_produit: str = ''         # nom du produit dans l'export (secours du titre)
+    # Paires de réf. associées décochées dans la fenêtre d'import (frozenset {a, b})
+    paires_decochees: set = field(default_factory=set)
+
+    def __post_init__(self):
+        self._paires_du_plan = list(self.plan.paires)
+
+    def paires_a_lier(self, ref: str, remplace, equivalentes) -> List[Tuple[str, str, str]]:
+        """Paires du plan (§ 5.4) restées cochées, dont les deux références sont
+        encore dans leur champ (Remplace ou Équivalentes). La principale est du même
+        groupe que la pièce (« ⇄ » inverse donc les rôles). Rejouable."""
+        from ..utils.rapprochement_fiche.associee import origine_associable
+        groupe = origine_associable(ref or '')
+        champs = {'remplace': set(remplace), 'equivalentes': set(equivalentes)}
+        paires = []
+        for ligne, a, b in self._paires_du_plan:
+            if frozenset((a, b)) in self.paires_decochees:
+                continue
+            if not {a, b} <= champs.get(ligne, set()):
+                continue
+            if groupe and origine_associable(b) == groupe:
+                a, b = b, a
+            paires.append((ligne, a, b))
+        return paires
 
     @property
     def lien_site(self) -> str:
@@ -523,7 +555,27 @@ class FicheAImporter:
         return {'titre': r.identite.libelle or self._libelle_du_nom(), 'id_product': self.id_product,
                 'lignes': lignes, 'compte': compte, 'a_refaire': p.a_refaire,
                 'non_importees': list(p.non_importees),
-                'sans_code_produit': not p.ref_piece or p.a_completer}
+                'sans_code_produit': not p.ref_piece or p.a_completer,
+                'paires': self.apercu_paires()}
+
+    def apercu_paires(self) -> Dict[str, object]:
+        """Paires de réf. associées de la fiche (§ 5.4), pour la liste de la fenêtre
+        d'import : chacune avec sa ligne, son statut, sa raison, et si elle est
+        cochée ; puis les suites de références qui n'ont pas pu être liées."""
+        from ..utils.rapprochement_fiche.paires_fiche import LIGNES, RAISONS_SUITE
+        r = self.rapprochement
+        paires = []
+        for pr in r.paires:
+            cle = frozenset((pr.principale, pr.associee))
+            paires.append({'ligne': LIGNES.get(pr.ligne, pr.ligne), 'principale': pr.principale,
+                           'associee': pr.associee, 'statut': pr.statut, 'raison': pr.raison,
+                           'cle': cle, 'modifiable': pr.statut == 'nouveau',
+                           'cochee': pr.statut == 'nouveau' and cle not in self.paires_decochees})
+        return {'paires': paires,
+                'a_lier': sum(1 for p in paires if p['cochee']),
+                'non_liees': [{'ligne': LIGNES.get(n.ligne, n.ligne), 'references': n.references,
+                               'raison': RAISONS_SUITE.get(n.raison, n.raison)}
+                              for n in r.suites_non_liees]}
 
     def resume_carte(self) -> str:
         """Une ligne pour la carte de la fiche (import d'un lot)."""
@@ -597,4 +649,5 @@ class FicheAImporter:
         ecartees = self.equivalentes_ecartees(remplace, remplacee_par, equivalentes, ref)
         p.decisions_references += [(ref, e, 'ecartee', None, forme_reference(e))
                                    for e in sorted(ecartees)]
+        p.paires = self.paires_a_lier(ref, remplace, equivalentes)
         return p

@@ -37,6 +37,7 @@ from ..utils.qt_imports import (
 from .style_manager import StyleManager
 from .ref_chips_input import RefChipsInput
 from .champ_reference_associee import ChampReferenceAssociee
+from .liste_paires_fiche import ListePairesFiche
 from ..core.logger import app_logger
 from ..core.import_manager import FileType, ImportConfiguration, ImportType, LabelConfiguration
 from ..utils.error_handler import handle_ui_operation_errors
@@ -386,6 +387,11 @@ class ImportDialog(QDialog):
         self.bandeau_fiche.setVisible(False)
         format_layout.addWidget(self.bandeau_fiche)
 
+        # Fiche du site : paires de réf. associées à cocher (§ 5.4), placées dans la
+        # section Succession, sous les champs qu'elles relient
+        self.liste_paires = ListePairesFiche(self, au_changement=self._paires_changees)
+        self.liste_paires.setVisible(False)
+
         # Bandeau d'alerte format non reconnu (masqué par défaut)
         self.format_warning_widget = QWidget()
         self.format_warning_widget.setStyleSheet(
@@ -718,6 +724,7 @@ class ImportDialog(QDialog):
                 self.succ_replaces_input.set_refs(self._fiche.remplace())
                 self.succ_replaced_by_input.set_refs(self._fiche.remplacee_par())
                 self.equiv_input.set_refs(self._fiche.equivalentes())
+                succ_layout.addWidget(self.liste_paires)
             self._succ_content.setVisible(True)
             succ_container_layout.addWidget(self._succ_content)
             layout.addWidget(succ_container)
@@ -1635,6 +1642,10 @@ class ImportDialog(QDialog):
             ligne.addWidget(chips, etirement)
             champs[cle] = chips
         boite.addLayout(ligne)
+        # Paires de réf. associées, sous les champs qu'elles relient (§ 5.4)
+        paires = ListePairesFiche(compact=True, au_changement=self._apercu_lot)
+        paires.definir(fiche)
+        boite.addWidget(paires)
         self._cartes_fiches.append({'file': file, 'importer': importer, 'ref': ref_edit,
                                     'libelle': libelle, 'obsolete': obsolete, **champs})
         return carte
@@ -1726,13 +1737,15 @@ class ImportDialog(QDialog):
         """Aperçu d'un lot de fiches : ce que deviennent leurs appareils."""
         fiches = [f.fiche for f in self._fiches_lot]
         total = {}
-        a_refaire = sans_code = 0
+        a_refaire = sans_code = paires = suites_non_liees = 0
         for fiche in fiches:
             a = fiche.apercu()
             for etat, n in a['compte'].items():
                 total[etat] = total.get(etat, 0) + n
             a_refaire += a['a_refaire'] is not None
             sans_code += bool(a['sans_code_produit'])
+            paires += a['paires']['a_lier']
+            suites_non_liees += len(a['paires']['non_liees'])
         self.format_info_label.setText(f"Lot de {len(fiches)} fiches du site")
         self.format_info_label.setVisible(True)
         libelles = {"déjà lié": "déjà liés", "connu": "appareils connus à relier",
@@ -1741,6 +1754,10 @@ class ImportDialog(QDialog):
         texte = " · ".join(f"{total[e]} {libelles[e]}" for e in self._ETATS_FICHE if total.get(e))
         if sans_code:
             texte += f" · {sans_code} fiche(s) sans code produit (référence à saisir)"
+        texte += self._texte_paires({'a_lier': paires})
+        if suites_non_liees:
+            texte += (f" · {suites_non_liees} suite(s) de références non liées en paires "
+                      f"(voir « Paires » sur les cartes)")
         self.format_desc_label.setText(texte)
         self.format_desc_label.setVisible(True)
         self.format_warning_widget.setVisible(False)
@@ -1757,6 +1774,18 @@ class ImportDialog(QDialog):
         self.bandeau_fiche.setVisible(bool(a_refaire))
         if hasattr(self, 'ok_btn'):
             self.ok_btn.setEnabled(True)
+
+    @staticmethod
+    def _texte_paires(paires) -> str:
+        """« · 6 paire(s) de réf. associées à lier » (CDC fiches du site § 5.4)."""
+        n = paires.get('a_lier', 0)
+        return f" · {n} paire(s) de réf. associées à lier" if n else ''
+
+    def _paires_changees(self):
+        """Une paire cochée ou décochée : le compte « à lier » suit."""
+        if self._fiche is not None:
+            self.format_desc_label.setText(
+                getattr(self, '_desc_fiche', '') + self._texte_paires(self._fiche.apercu_paires()))
 
     # États des lignes d'une fiche, dans l'ordre de l'aperçu
     _ETATS_FICHE = ("déjà lié", "connu", "à créer", "à refaire", "couvert", "non importé")
@@ -1775,9 +1804,11 @@ class ImportDialog(QDialog):
                     "couvert": "couverts par une ancienne référence",
                     "non importé": "non importés"}
         compte = a['compte']
-        self.format_desc_label.setText(" · ".join(
+        self._desc_fiche = (" · ".join(
             f"{compte[e]} {libelles[e]}" for e in self._ETATS_FICHE if compte.get(e)) or
             "Aucun appareil sur la fiche (relations seules)")
+        self.format_desc_label.setText(self._desc_fiche + self._texte_paires(a['paires']))
+        self.liste_paires.definir(self._fiche)
         self.format_desc_label.setVisible(True)
         self.format_warning_widget.setVisible(False)
         lignes = a['lignes']
