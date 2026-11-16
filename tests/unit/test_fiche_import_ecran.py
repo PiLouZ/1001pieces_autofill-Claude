@@ -121,9 +121,15 @@ def test_fiche_7285_par_la_fenetre_d_import(qapp, qtbot, tmp_path, rendus):
     assert 'C00319033' in equivalentes and '00145522' in equivalentes
     dialogue.resize(1100, 820)
     dialogue.grab().save(str(rendus / 'fiche_7285_fenetre_import.png'))
-    # On retire une équivalente : elle est écartée, et n'est plus proposée
+    # On retire une équivalente : confirmation demandée, puis elle est écartée,
+    # et n'est plus proposée
     dialogue.equiv_input.remove_ref('00145522')
-    resultats = _importer(qtbot, dialogue, fenetre, 1)
+    dialogue._validate_and_accept()
+    boite = dialogue._boite_ecartees
+    assert boite is not None and '481073071153 : 00145522' in boite.text()
+    boite.buttons()[0].click()          # « Écarter et importer »
+    qtbot.waitUntil(lambda: len(fenetre.imports) == 1, timeout=30000)
+    resultats = fenetre.imports[-1]
     assert resultats["total_files"] == 1 and resultats["associations_created"] > 0
     assert 'similarity_suggestions' in resultats
     assert fenetre.pieces == ['481073071153']
@@ -194,3 +200,75 @@ def test_lien_colle_dans_le_tableau_ouvre_la_fiche(qapp):
     QApplication.clipboard().setText(' https://www.1001pieces.com/7196-crochet.html\n')
     MainWindow._safe_handle_paste(f)
     assert f.ouvertes == ['https://www.1001pieces.com/7196-crochet.html']
+
+
+def test_equivalente_deplacee_dans_remplace_pas_ecartee(qapp, qtbot, tmp_path):
+    """Fiche mal structurée (cas 00648024) : une ancienne référence citée en
+    équivalente est déplacée dans « Remplace » à l'import. Le remplacement est
+    écrit, l'équivalence non, et la référence n'est pas écartée."""
+    db = _db_extrait(tmp_path)
+    fenetre = _fenetre(qapp, db)
+    page = (FIXTURES / 'produit_7285.html').read_text(encoding='utf-8')
+    saisie = SaisieFicheSite(fenetre, service=_service(db, fenetre))
+    saisie.analyser_page(page, URL_7285)
+    dialogue = _dialogue_import(qapp)
+    dialogue._load_data_deferred()
+    dialogue.equiv_input.remove_ref('00145522')
+    dialogue.succ_replaces_input.set_refs(dialogue.succ_replaces_input.refs() + ['00145522'])
+    _importer(qtbot, dialogue, fenetre, 1)            # sans confirmation : rien d'écarté
+    assert dialogue._boite_ecartees is None
+    assert db.conn.execute("SELECT COUNT(*) FROM decisions_references WHERE ref_piece = "
+                           "'481073071153' AND reference = '00145522'").fetchone()[0] == 0
+    assert db.conn.execute("SELECT ref_new FROM piece_supersessions WHERE ref_old = "
+                           "'00145522'").fetchone() == ('481073071153',)
+    # Rangée comme les autres anciennes références de la pièce (même groupe)
+    groupe = dict(db.conn.execute("SELECT ref_piece, group_id FROM piece_equivalence_groups"))
+    assert groupe.get('00145522') == groupe.get('488000535957') == groupe['481073071153']
+
+
+def test_retrait_d_equivalente_revenir_au_dialogue(qapp, qtbot, tmp_path):
+    """« Revenir au dialogue » : rien n'est importé ni écarté, la fenêtre reste ouverte."""
+    db = _db_extrait(tmp_path)
+    fenetre = _fenetre(qapp, db)
+    page = (FIXTURES / 'produit_7285.html').read_text(encoding='utf-8')
+    saisie = SaisieFicheSite(fenetre, service=_service(db, fenetre))
+    saisie.analyser_page(page, URL_7285)
+    dialogue = _dialogue_import(qapp)
+    dialogue._load_data_deferred()
+    dialogue.equiv_input.remove_ref('00145522')
+    dialogue._validate_and_accept()
+    boite = dialogue._boite_ecartees
+    boite.buttons()[1].click()          # « Revenir au dialogue »
+    qapp.processEvents()
+    assert dialogue.isVisible() and dialogue.result_config is None
+    assert fenetre.imports == []
+    assert db.conn.execute("SELECT COUNT(*) FROM decisions_references").fetchone()[0] == 0
+    dialogue.close()
+
+
+def test_ecartees_d_un_lot_par_carte():
+    """Lot en cartes : seules les cartes cochées comptent ; une référence déplacée
+    vers « Remplace » ou « Remplacée par » n'est pas écartée."""
+    from types import SimpleNamespace as NS
+    from src.core.import_manager import ImportConfiguration
+    from src.services.enregistrement_fiche_service import FicheAImporter
+
+    def fiche(ref, equivalentes):
+        f = NS(plan=NS(ref_piece=ref), equivalentes=lambda: list(equivalentes))
+        f.equivalentes_ecartees = lambda *a, **k: \
+            FicheAImporter.equivalentes_ecartees(f, *a, **k)
+        return f
+
+    def carte(chemin, f, coche, remplace=(), equivalentes=(), remplacee_par=()):
+        champ = lambda refs: NS(refs=lambda: list(refs))
+        return {'file': NS(path=chemin, fiche=f), 'importer': NS(isChecked=lambda: coche),
+                'remplace': champ(remplace), 'equivalentes': champ(equivalentes),
+                'remplacee_par': champ(remplacee_par)}
+
+    dlg = NS(_fiche=None, equiv_input=None, _cartes_fiches=[
+        carte('a', fiche('P1', ['E1', 'E2', 'E3']), True, remplace=['E1'], remplacee_par=['E3']),
+        carte('b', fiche('P2', ['F1']), False),
+        carte('c', fiche('P3', ['G1', 'G2']), True, equivalentes=['G2'])])
+    config = ImportConfiguration(files=[], import_type=ImportType.MULTI_FILE)
+    config.saisies_fiches = {'a': {'ref': ''}, 'c': {'ref': 'P3'}}
+    assert ImportDialog._equivalentes_ecartees(dlg, config) == [('P1', ['E2']), ('P3', ['G1'])]

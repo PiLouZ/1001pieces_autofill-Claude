@@ -240,6 +240,21 @@ class TestFichesExemple:
         refs = _fiche_service(db).references_fiche('481073071153')
         assert '481949' not in str(refs)
 
+    def test_ecartee_dans_la_chaine_reste_dans_remplace(self, tmp_path):
+        """Cas 00648024 : ancienne réf. citée en équivalente par la fiche, retirée du
+        champ « Équivalentes » (donc écartée) : elle reste dans « Remplace »."""
+        db = _db_extrait(tmp_path)
+        _enregistrer_exemples(db)
+        db.add_supersession('ANC_ECARTEE', '481073071153')
+        db.conn.execute(
+            "INSERT INTO decisions_references (ref_piece, reference, nature, origine, forme, "
+            "decide_le) VALUES ('481073071153', 'ANC_ECARTEE', 'ecartee', NULL, 'AAA', '')")
+        db.conn.commit()
+        refs = _fiche_service(db).references_fiche('481073071153')
+        assert 'ANC_ECARTEE' in refs['remplace']
+        assert refs['remplace'][:4] == ['C00535957', '488000535957', 'C00309416', '482000032568']
+        assert '481949' not in str(refs)                 # l'écartée hors chaîne reste absente
+
     def test_piece_sans_produit_comme_avant(self, tmp_path):
         """La 2ᵉ réf. du code produit cherchée seule : pas de produit, pas de paire."""
         db = _db_extrait(tmp_path)
