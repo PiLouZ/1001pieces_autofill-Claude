@@ -523,6 +523,13 @@ class FicheAImporter:
             e.reference for e in self.rapprochement.equivalences
             if e.statut != 'ecartee' and e.reference != self.plan.ref_piece))
 
+    def equivalentes_ecartees(self, remplace, remplacee_par, equivalentes,
+                              ref: str = '') -> List[str]:
+        """Équivalentes de la fiche supprimées des trois zones (ni gardées, ni
+        déplacées vers « Remplace » / « Remplacée par ») : elles seront écartées."""
+        gardees = {*remplace, *remplacee_par, *equivalentes, (ref or '').strip()}
+        return [e for e in self.equivalentes() if e not in gardees]
+
     def apercu(self) -> Dict[str, object]:
         """Ce que la fenêtre d'import montre : comptes et premières lignes."""
         p, r = self.plan, self.rapprochement
@@ -598,7 +605,8 @@ class FicheAImporter:
     def appliquer(self, ref, libelle, remplace, remplacee_par, equivalentes) -> PlanEnregistrement:
         """Saisies de la fenêtre d'import (carte ou fiche seule) dans le plan. Les
         relations retirées ne sont pas écrites (une équivalente retirée est écartée et
-        n'est plus proposée) ; celles ajoutées le sont."""
+        n'est plus proposée, sauf si elle a seulement changé de zone) ; celles
+        ajoutées le sont."""
         from ..utils.rapprochement_fiche.decisions import forme_reference
         from ..utils.rapprochement_fiche.regles_import import SANS_CODE_PRODUIT
         p = self.plan
@@ -636,7 +644,10 @@ class FicheAImporter:
         p.equivalences = [e for e in p.equivalences if e not in retirees and e != ref]
         p.equivalences += [e for e in sorted(equivalentes - fiche_eq) if e != ref]
         p.origines = [o for o in p.origines if o[0] not in retirees and o[0] != ref]
+        # Déplacée vers « Remplace » / « Remplacée par » (fiche mal structurée) :
+        # n'est plus une équivalente, mais n'est pas écartée pour autant
+        ecartees = self.equivalentes_ecartees(remplace, remplacee_par, equivalentes, ref)
         p.decisions_references += [(ref, e, 'ecartee', None, forme_reference(e))
-                                   for e in sorted(retirees)]
+                                   for e in sorted(ecartees)]
         p.paires = self.paires_a_lier(ref, remplace, equivalentes)
         return p

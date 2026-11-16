@@ -169,7 +169,8 @@ class FicheProduitService:
           vient toujours en premier, quelle que soit la référence recherchée ;
         - les autres lignées sont regroupées par marque d'origine, puis par
           ligne mémorisée (`lignes_par_origine`) ;
-        - les références écartées à la reprise disparaissent ;
+        - les références écartées à la reprise disparaissent du code produit et
+          des équivalentes, pas de « Remplace » (écartée = pas une équivalente) ;
         - « Remplace » suit l'ordre de la ligne de la fiche (`rang_fiche`), les
           références sans position mémorisée à la suite, dans l'ordre actuel.
         Sans mémoire (pièce saisie dans l'outil, base non migrée) : comme avant,
@@ -214,7 +215,9 @@ class FicheProduitService:
         if principale and principale in code[1:]:
             # Ordre fixe : la principale d'abord, puis la référence recherchée
             code = [principale] + [r for r in code if r != principale]
-        return {'code_produit': [code[0]] + garder(code[1:]), 'remplace': garder(remplace),
+        # « Remplace » non filtré : une réf. écartée l'est comme équivalente (§ 5.3) ;
+        # si elle est dans la chaîne de remplacements, elle garde sa place ici
+        return {'code_produit': [code[0]] + garder(code[1:]), 'remplace': remplace,
                 'equivalentes': autres, 'lignes_equivalentes': lignes}
 
     @staticmethod

@@ -261,6 +261,7 @@ class ImportDialog(QDialog):
         # Lot de fiches (une carte par fiche) ou fiche seule
         self._fiches_lot = fiches if self.import_config.import_type == ImportType.MULTI_FILE else []
         self._cartes_fiches = []
+        self._boite_ecartees = None         # confirmation des équivalentes écartées
         self._champs_associes = []      # (fichier, ChampReferenceAssociee)
         self._refs_inversees = {}       # chemin → réf. de pièce choisie par « ⇄ »
         self._fiche = fiches[0].fiche if fiches and not self._fiches_lot else None
@@ -1244,8 +1245,63 @@ class ImportDialog(QDialog):
                 config, "Aucune pièce ne sera associée", warning_ref)
             return
 
-        self.result_config = config
-        self.accept()
+        self._accepter(config)
+
+    def _equivalentes_ecartees(self, config: ImportConfiguration) -> List[Tuple[str, List[str]]]:
+        """(pièce, équivalentes de la fiche supprimées) : elles seront écartées et
+        ne seront plus proposées. Une référence déplacée d'une zone à l'autre ne
+        l'est pas."""
+        resultat = []
+        if self._fiche is not None and self.equiv_input is not None:
+            ref = next((config.individual_references.get(f.path) or '' for f in config.files), '')
+            refs = self._fiche.equivalentes_ecartees(
+                self.succ_replaces_input.refs(), self.succ_replaced_by_input.refs(),
+                self.equiv_input.refs(), ref)
+            if refs:
+                resultat.append((ref.strip() or self._fiche.plan.ref_piece, refs))
+        for c in self._cartes_fiches:
+            fiche = getattr(c['file'], 'fiche', None)
+            if fiche is None or not c['importer'].isChecked():
+                continue
+            ref = (getattr(config, 'saisies_fiches', None) or {}).get(
+                c['file'].path, {}).get('ref', '') or ''
+            refs = fiche.equivalentes_ecartees(c['remplace'].refs(), c['remplacee_par'].refs(),
+                                               c['equivalentes'].refs(), ref)
+            if refs:
+                resultat.append((ref.strip() or fiche.plan.ref_piece, refs))
+        return resultat
+
+    def _accepter(self, config: ImportConfiguration):
+        """Accepter l'import, après confirmation si des équivalentes de la fiche
+        ont été supprimées (show + callbacks, jamais exec_)."""
+        ecartees = self._equivalentes_ecartees(config)
+        if not ecartees:
+            self.result_config = config
+            self.accept()
+            return
+        from PyQt5.QtWidgets import QMessageBox
+        lignes = "\n".join(f"{piece} : {' '.join(refs)}" for piece, refs in ecartees)
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Question)
+        box.setWindowTitle("Équivalentes écartées")
+        box.setText("Ces équivalentes de la fiche ont été retirées. Elles seront écartées "
+                    "et ne vous seront plus proposées pour cette pièce :\n\n" + lignes +
+                    "\n\nPour une ancienne référence, déplacez-la plutôt dans "
+                    "« Remplace » (elle ne sera pas écartée).")
+        btn_ok = box.addButton("Écarter et importer", QMessageBox.AcceptRole)
+        box.addButton("Revenir au dialogue", QMessageBox.RejectRole)
+        box.setWindowModality(Qt.WindowModal)
+        self._boite_ecartees = box
+
+        def _on_finished(*_):
+            if box.clickedButton() is btn_ok:
+                self.result_config = config
+                self.accept()
+            self._boite_ecartees = None
+            box.deleteLater()
+
+        box.finished.connect(_on_finished)
+        box.show()
 
     def _collecter_references_et_libelles(self, config: ImportConfiguration):
         """Référence commune (multi-fichiers) puis référence et libellé de chaque fichier."""
@@ -1829,8 +1885,7 @@ class ImportDialog(QDialog):
 
         def _on_finished(*_):
             if box.clickedButton() is btn_import:
-                self.result_config = config
-                self.accept()
+                self._accepter(config)
             box.deleteLater()
 
         box.finished.connect(_on_finished)
