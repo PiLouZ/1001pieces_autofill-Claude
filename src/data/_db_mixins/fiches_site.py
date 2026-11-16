@@ -236,6 +236,36 @@ class DatabaseFichesSiteMixin:
             n += 1
         return n
 
+    def lier_paires_remplace(self, paires: Iterable[Tuple[str, str]], le: str) -> int:
+        """Paires de « Remplace les références » d'une fiche (1ʳᵉ avec 2ᵉ…, CDC
+        § 5.4) : chaque paire devient réf. associée et équivalente, comme la paire
+        du code produit, mais SANS la marque « ligne 0 » (ce sont d'anciennes
+        références, pas le code produit). Une réponse déjà mémorisée pour l'une
+        des deux n'est jamais remplacée. Retourne le nombre de paires liées."""
+        n = 0
+        for principale, associee in paires:
+            principale, associee = (principale or '').strip(), (associee or '').strip()
+            if not principale or not associee or principale == associee:
+                continue
+            with self._query_lock:
+                deja = self.cursor.execute(
+                    "SELECT 1 FROM references_associees WHERE ref_piece IN (?, ?) "
+                    "OR associee IN (?, ?) LIMIT 1",
+                    [principale, associee, principale, associee]).fetchone()
+            if deja:
+                continue
+            ok, message = self.add_equivalence(principale, associee)
+            if not ok:
+                app_logger.warning(f"Paire de « Remplace » {principale} ≡ {associee} : {message}")
+                continue
+            with self._query_lock:
+                self.cursor.execute(
+                    "INSERT OR IGNORE INTO references_associees (ref_piece, associee, decide_le) "
+                    "VALUES (?, ?, ?)", [principale, associee, le])
+                self.conn.commit()
+            n += 1
+        return n
+
     # --- Fiches à refaire depuis les PDF (§ 10.14) ---------------------------------
     def _noter_fiche_a_refaire(self, ref_piece: str, id_product: Optional[int], a_refaire,
                                le: str):

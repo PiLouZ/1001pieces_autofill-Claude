@@ -199,6 +199,14 @@ En cas de conflit (X a déjà un autre successeur Z) :
 
 Entre paires Whirlpool/Indesit, le remplacement se fait **terme à terme** : `481244019535 → 481244010747` et `C00338369 → C00314482`. On ne croise jamais les marques. L'appariement s'appuie sur la forme des références (§ 5.5), pas sur leur position dans la ligne.
 
+**Paires de la ligne « Remplace » (réf. associées).** Quand le code produit est une paire Whirlpool / Indesit / Beko, une fiche bien écrite donne aussi « Remplace » par paires, dans l'ordre : la 1ʳᵉ référence avec la 2ᵉ, la 3ᵉ avec la 4ᵉ, etc. (`481010467690 C00380758` remplace `480132102633 C00323671 480132102002 C00314426 …`). Chaque paire devient une **référence associée** (§ 10.17) et une équivalente, comme la paire du code produit (module `paires_remplace.py`).
+- Règle stricte, **toute la ligne ou rien** : code produit de deux références de deux groupes différents parmi Whirlpool, Indesit, Beko ; nombre pair de références, sans doublon ni référence du code produit ; chaque paire a une référence de chacun des deux groupes, dans un ordre ou dans l'autre. Sinon aucune paire n'est liée : une référence manquante décalerait toutes les paires suivantes. Les remplacements, eux, se font comme avant.
+- La principale d'une paire est la référence du même groupe que la pièce (« ⇄ » inverse donc les rôles).
+- Une réponse déjà mémorisée pour l'une des deux (autre associée, ou « aucune ») n'est **jamais remplacée** ; deux références dans deux groupes d'équivalence différents ne sont pas fusionnées. L'aperçu le signale.
+- Les paires ne sont **pas** marquées « ligne 0 » : seule la 2ᵉ référence du code produit l'est, la référence associée proposée pour la pièce ne change pas.
+- Une référence retirée de la Succession dans la fenêtre d'import retire sa paire ; la 2ᵉ référence du code produit retirée retire toutes les paires.
+- Mesure sur l'export du site (2026-11-16), avec cette règle : sur 3 061 fiches avec code produit et « Remplace », **588 fiches en paires** (1 384 paires) ; restent sans paires 57 impaires, 18 aux formes non alternées, 2 avec un doublon ; 2 396 n'ont pas de code produit en paire Whirlpool / Indesit / Beko.
+
 ### 5.5 Table des formats de références
 
 La table est tirée des pièces de la base (marque dominante des appareils liés). Elle est validée dans les grandes lignes et doit vivre **en configuration**, modifiable sans PR. Les règles sont appliquées de la plus précise à la plus large : la première qui correspond l'emporte.

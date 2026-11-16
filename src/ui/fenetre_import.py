@@ -1670,13 +1670,15 @@ class ImportDialog(QDialog):
         """Aperçu d'un lot de fiches : ce que deviennent leurs appareils."""
         fiches = [f.fiche for f in self._fiches_lot]
         total = {}
-        a_refaire = sans_code = 0
+        a_refaire = sans_code = paires = paires_non_liees = 0
         for fiche in fiches:
             a = fiche.apercu()
             for etat, n in a['compte'].items():
                 total[etat] = total.get(etat, 0) + n
             a_refaire += a['a_refaire'] is not None
             sans_code += bool(a['sans_code_produit'])
+            paires += a['paires']['a_lier']
+            paires_non_liees += bool(a['paires']['sans'] or a['paires']['conflits'])
         self.format_info_label.setText(f"Lot de {len(fiches)} fiches du site")
         self.format_info_label.setVisible(True)
         libelles = {"déjà lié": "déjà liés", "connu": "appareils connus à relier",
@@ -1685,6 +1687,10 @@ class ImportDialog(QDialog):
         texte = " · ".join(f"{total[e]} {libelles[e]}" for e in self._ETATS_FICHE if total.get(e))
         if sans_code:
             texte += f" · {sans_code} fiche(s) sans code produit (référence à saisir)"
+        texte += self._texte_paires({'a_lier': paires})
+        if paires_non_liees:
+            texte += (f" · {paires_non_liees} fiche(s) aux paires de « Remplace » non liées "
+                      f"(ligne mal formée ou réponse déjà donnée)")
         self.format_desc_label.setText(texte)
         self.format_desc_label.setVisible(True)
         self.format_warning_widget.setVisible(False)
@@ -1701,6 +1707,27 @@ class ImportDialog(QDialog):
         self.bandeau_fiche.setVisible(bool(a_refaire))
         if hasattr(self, 'ok_btn'):
             self.ok_btn.setEnabled(True)
+
+    @staticmethod
+    def _texte_paires(paires) -> str:
+        """« · 6 paires de « Remplace » à lier » (CDC fiches du site § 5.4)."""
+        n = paires.get('a_lier', 0)
+        return f" · {n} paire(s) de « Remplace » à lier en réf. associées" if n else ''
+
+    @staticmethod
+    def _alertes_paires(paires):
+        """Paires de « Remplace » non liées : ligne mal formée, ou réponse déjà
+        mémorisée (jamais remplacée)."""
+        alertes = []
+        if paires.get('sans'):
+            alertes.append(f"« Remplace les références » non lue par paires : "
+                           f"{paires['sans']}. Aucune réf. associée n'en est tirée.")
+        conflits = paires.get('conflits') or []
+        if conflits:
+            alertes.append(f"{len(conflits)} paire(s) de « Remplace » non liée(s) : "
+                           + " ; ".join(conflits[:3]) + (" ; …" if len(conflits) > 3 else "")
+                           + ". La réponse déjà donnée est gardée.")
+        return alertes
 
     # États des lignes d'une fiche, dans l'ordre de l'aperçu
     _ETATS_FICHE = ("déjà lié", "connu", "à créer", "à refaire", "couvert", "non importé")
@@ -1719,9 +1746,9 @@ class ImportDialog(QDialog):
                     "couvert": "couverts par une ancienne référence",
                     "non importé": "non importés"}
         compte = a['compte']
-        self.format_desc_label.setText(" · ".join(
+        self.format_desc_label.setText((" · ".join(
             f"{compte[e]} {libelles[e]}" for e in self._ETATS_FICHE if compte.get(e)) or
-            "Aucun appareil sur la fiche (relations seules)")
+            "Aucun appareil sur la fiche (relations seules)") + self._texte_paires(a['paires']))
         self.format_desc_label.setVisible(True)
         self.format_warning_widget.setVisible(False)
         lignes = a['lignes']
@@ -1752,6 +1779,7 @@ class ImportDialog(QDialog):
         if a['non_importees']:
             alertes.append(f"{len(a['non_importees'])} ligne(s) non importée(s) "
                            f"(appareil à choisir, référence illisible, marque inconnue).")
+        alertes += self._alertes_paires(a['paires'])
         if a['sans_code_produit']:
             lien = self._fiche.lien_site
             consulter = (f' Consultez <a href="{lien}">la fiche sur le site</a> pour la trouver.'

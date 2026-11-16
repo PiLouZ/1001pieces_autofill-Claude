@@ -13,7 +13,8 @@ est un import de plusieurs fichiers.
 Ce qui est propre à la reprise s'écrit dans le crochet `apres_ecriture` de
 l'import, fiche par fiche : provenance des liens, remplacements et équivalences
 (`import_relations.apply_relations`), marques d'origine, ordre des « Remplace »,
-produit du site, décisions consignées. La pièce (fantôme → réelle, libellé) est
+produit du site, décisions consignées, paires de « Remplace » liées en réf.
+associées (1ʳᵉ avec 2ᵉ…, § 5.4). La pièce (fantôme → réelle, libellé) est
 posée avant l'import, pour que les relations propagent son libellé.
 
 Ajout seul (§ 6.2) : rien n'est supprimé. Relire une fiche ne crée aucun
@@ -93,6 +94,7 @@ class ResultatEnregistrement:
     liens_completes: int = 0
     liens_inchanges: int = 0
     relations: Dict[str, int] = field(default_factory=dict)
+    paires_liees: int = 0               # paires de « Remplace » liées (§ 5.4)
     journal: List[str] = field(default_factory=list)
     erreur: str = ''
     # Champs d'appareils connus pris sur le site (id → {colonne: valeur}) : écrits
@@ -109,7 +111,9 @@ class ResultatEnregistrement:
         return (f"pièce {self.piece} ; {self.appareils_crees} appareil(s) créé(s) ; "
                 f"{self.liens_crees} lien(s) créé(s), {self.liens_completes} complété(s) ; "
                 f"{r.get('successions', 0)} remplacement(s), {r.get('equivalences', 0)} "
-                f"équivalence(s)" + (f", {r['errors']} refus" if r.get('errors') else ''))
+                f"équivalence(s)"
+                + (f", {self.paires_liees} paire(s) de « Remplace » liée(s)" if self.paires_liees else '')
+                + (f", {r['errors']} refus" if r.get('errors') else ''))
 
 
 class EnregistrementFicheService(BaseService):
@@ -354,6 +358,10 @@ class EnregistrementFicheService(BaseService):
             db._enregistrer_decisions_ecritures(plan.decisions_ecritures, le)
             db._enregistrer_decisions_references(plan.decisions_references, le)
             db.conn.commit()
+        # 6. Paires de « Remplace » en réf. associées (§ 5.4), après les relations
+        if plan.paires_remplace:
+            res.paires_liees = db.lier_paires_remplace(plan.paires_remplace,
+                                                       le or self._maintenant())
         for ident, colonnes in plan.maj_appareils.items():
             res.maj_appareils.setdefault(ident, {}).update(colonnes)
 
@@ -516,7 +524,20 @@ class FicheAImporter:
         return {'titre': r.identite.libelle or self._libelle_du_nom(), 'id_product': self.id_product,
                 'lignes': lignes, 'compte': compte, 'a_refaire': p.a_refaire,
                 'non_importees': list(p.non_importees),
-                'sans_code_produit': not p.ref_piece or p.a_completer}
+                'sans_code_produit': not p.ref_piece or p.a_completer,
+                'paires': self.apercu_paires()}
+
+    def apercu_paires(self) -> Dict[str, object]:
+        """Paires de « Remplace » (§ 5.4) : à lier, déjà liées, en conflit (raisons),
+        et pourquoi la ligne n'est pas lue par paires ('' : elle l'est, ou le code
+        produit n'est pas une paire, cas ordinaire qu'on ne signale pas)."""
+        from ..utils.rapprochement_fiche.paires_remplace import RAISONS_SANS_PAIRES
+        r = self.rapprochement
+        sans = r.paires_sans if r.paires_sans != 'code_produit' else ''
+        return {'a_lier': len(self.plan.paires_remplace),
+                'deja': sum(1 for pr in r.paires_remplace if pr.statut == 'deja_present'),
+                'conflits': [pr.raison for pr in r.paires_remplace if pr.statut == 'conflit'],
+                'sans': RAISONS_SANS_PAIRES.get(sans, '')}
 
     def resume_carte(self) -> str:
         """Une ligne pour la carte de la fiche (import d'un lot)."""
@@ -586,4 +607,17 @@ class FicheAImporter:
         p.origines = [o for o in p.origines if o[0] not in retirees and o[0] != ref]
         p.decisions_references += [(ref, e, 'ecartee', None, forme_reference(e))
                                    for e in sorted(retirees)]
+        # Paires de « Remplace » (§ 5.4) : les deux références restées dans la
+        # Succession, et la paire du code produit gardée. La principale de chaque
+        # paire est du même groupe que la pièce (« ⇄ » inverse donc les rôles)
+        from ..utils.rapprochement_fiche.associee import origine_associable
+        code_retire = any(e.ligne == 0 and e.reference in retirees
+                          for e in self.rapprochement.equivalences)
+        if code_retire:
+            p.paires_remplace = []
+        else:
+            groupe = origine_associable(ref)
+            p.paires_remplace = [(a, b) if origine_associable(a) == groupe else (b, a)
+                                 for a, b in p.paires_remplace
+                                 if a in remplace and b in remplace]
         return p
