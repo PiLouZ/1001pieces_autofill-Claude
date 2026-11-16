@@ -256,12 +256,15 @@ class TestFichesExemple:
         assert '481949' not in str(refs)                 # l'écartée hors chaîne reste absente
 
     def test_piece_sans_produit_comme_avant(self, tmp_path):
-        """La 2ᵉ réf. du code produit cherchée seule : pas de produit, pas de paire."""
+        """La 2ᵉ réf. du code produit cherchée seule : pas de produit, pas de paire au
+        code produit. Les anciennes Whirlpool suivent leur jumelle Indesit dans
+        « Remplace » (paires de la fiche), comme sur le site."""
         db = _db_extrait(tmp_path)
         _enregistrer_exemples(db)
         refs = _fiche_service(db).references_fiche('C00319033')
         assert refs['code_produit'] == ['C00319033']
-        assert ['481073071153', '488000535957', '482000032568'] in refs['lignes_equivalentes']
+        assert refs['remplace'] == ['C00535957', '488000535957', 'C00309416', '482000032568']
+        assert ['481073071153'] in refs['lignes_equivalentes']
 
     def test_les_3_fiches_regenerees_puis_relues_sans_rien_ajouter(self, tmp_path, config_exports):
         db = _db_extrait(tmp_path)
