@@ -4,6 +4,39 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.103.0] - 2026-11-16 (PR #152, #153, #154)
+
+Fiches du site : paires de réf. associées lues sur « Remplace » et « Équivalentes »,
+jumelles côte à côte dans la Fiche complète.
+
+### Fiche du site : référence déplacée, pas écartée (PR #152)
+- À l'import d'une fiche du site, une référence passée d'« Équivalentes » à
+  « Remplace » (ou « Remplacée par ») n'est plus écartée ; retirer une équivalente
+  demande confirmation.
+- La Fiche complète garde toutes les anciennes références dans « Remplace les
+  références » (00648024 retrouve ses 3 anciennes références).
+
+### Paires de réf. associées des fiches du site (PR #153)
+- Sur « Remplace les références » et « Références équivalentes », les références
+  Whirlpool / Indesit / Beko qui se suivent sont liées deux par deux dans l'ordre, en
+  réf. associées et équivalentes, même au milieu d'autres marques (fiche 8865 :
+  C00316028 ⇄ 481246688999). Lecture par suites (`paires_fiche.py`) : une suite
+  impaire, avec doublon ou avec deux réf. du même groupe côte à côte n'est pas liée.
+- Une réponse déjà mémorisée n'est jamais remplacée ; pas de marque « ligne 0 »
+  (`lier_paires_fiche`).
+- Fenêtre d'import : liste « Paires de réf. associées » dans la section Succession,
+  une case par paire (repliable sur les cartes d'un lot).
+- Mesure sur l'export du site : 736 fiches donnent des paires (1 413 sur « Remplace »,
+  317 sur « Équivalentes »).
+
+### Fiche complète : les jumelles se suivent (PR #154)
+- Deux réf. associées se suivent toujours sur la même ligne
+  (`FicheProduitService.jumelles_a_la_suite`) : la jumelle d'une ancienne référence
+  passe dans « Remplace », juste derrière elle (C00647231 : « 481010771228
+  C00446909 ») ; une paire déjà côte à côte garde l'ordre de la fiche du site.
+- La réponse « Référence associée » d'une ancienne référence ne marque plus sa
+  jumelle « ligne 0 » (code produit).
+
 ## [3.102.0] - 2026-11-13 (PR #150)
 
 Aller aux appareils auto-complétés à vérifier depuis le tableau.
