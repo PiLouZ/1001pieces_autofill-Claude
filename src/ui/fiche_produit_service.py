@@ -172,7 +172,10 @@ class FicheProduitService:
         - les références écartées à la reprise disparaissent du code produit et
           des équivalentes, pas de « Remplace » (écartée = pas une équivalente) ;
         - « Remplace » suit l'ordre de la ligne de la fiche (`rang_fiche`), les
-          références sans position mémorisée à la suite, dans l'ordre actuel.
+          références sans position mémorisée à la suite, dans l'ordre actuel ;
+        - chaque paire de réf. associées (Whirlpool / Indesit / Beko) se suit sur
+          la même ligne : la jumelle d'une ancienne référence rejoint « Remplace »
+          juste derrière elle (`jumelles_a_la_suite`).
         Sans mémoire (pièce saisie dans l'outil, base non migrée) : comme avant,
         une seule ligne d'équivalentes et la seule référence en code produit.
         """
@@ -212,6 +215,17 @@ class FicheProduitService:
         autres = [l for l in (garder(l) for l in autres) if l]
         lignes = [l for l in (garder(l) for l in self.lignes_par_origine(autres, memoire)) if l]
         remplace = self.ordre_de_la_fiche(remplace, rangs)
+        try:
+            paires = db.paires_associees_parmi(
+                [*remplace, *(r for l in lignes for r in l)])
+        except Exception as e:
+            app_logger.debug(f"Fiche: paires de réf. associées de {reference} non lues : {e}")
+            paires = []
+        if paires:
+            remplace, *lignes = self.jumelles_a_la_suite([remplace, *lignes], paires)
+            lignes = [l for l in lignes if l]
+            dans_remplace = set(remplace)
+            autres = [l for l in ([r for r in l if r not in dans_remplace] for l in autres) if l]
         if principale and principale in code[1:]:
             # Ordre fixe : la principale d'abord, puis la référence recherchée
             code = [principale] + [r for r in code if r != principale]
@@ -229,6 +243,41 @@ class FicheProduitService:
             return refs
         avec = sorted((r for r in refs if r in rangs), key=lambda r: rangs[r])
         return avec + [r for r in refs if r not in rangs]
+
+    @staticmethod
+    def jumelles_a_la_suite(lignes: List[List[str]],
+                            paires: List[Tuple[str, str]]) -> List[List[str]]:
+        """Chaque paire (principale, associée) à la suite, sur la même ligne :
+        celle des deux qui vient la première (« Remplace » avant les équivalentes,
+        puis à gauche) garde sa place, l'autre se range juste derrière. Une paire
+        déjà côte à côte garde son ordre (celui de la fiche du site). Une référence
+        absente des lignes, ou déjà rangée avec une autre jumelle, laisse la paire
+        telle quelle. Lignes vidées gardées (vides)."""
+        lignes = [list(l) for l in lignes]
+        rangees = set()
+        for principale, associee in paires:
+            if principale in rangees or associee in rangees:
+                continue
+            places = {}
+            for n, ligne in enumerate(lignes):
+                for i, ref in enumerate(ligne):
+                    if ref in (principale, associee) and ref not in places:
+                        places[ref] = (n, i)
+            if len(places) < 2:
+                continue
+            rangees.update((principale, associee))
+            n, i = min(places.values())
+            if sorted(places.values()) == [(n, i), (n, i + 1)]:
+                continue                        # déjà à la suite
+            tete = lignes[n][i]
+            paire = [tete, associee if tete == principale else principale]
+            avant = [r for r in lignes[n][:i] if r not in paire]
+            apres = [r for r in lignes[n][i:] if r not in paire]
+            for m in range(len(lignes)):
+                if m != n:
+                    lignes[m] = [r for r in lignes[m] if r not in paire]
+            lignes[n] = avant + paire + apres
+        return lignes
 
     @staticmethod
     def lignes_par_origine(lignees: List[List[str]],

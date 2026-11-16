@@ -157,6 +157,45 @@ def test_reference_associee_a_la_suite_dans_le_code_produit(tmp_path):
     assert svc.references_fiche('482000029398')['code_produit'] == ['C00138863', '482000029398']
 
 
+def test_jumelle_d_une_ancienne_reference_a_la_suite_dans_remplace(tmp_path):
+    """Import PDF de C00647231 : sa jumelle va dans le code produit, celle de son
+    ancienne référence 481010771228 juste derrière elle dans « Remplace » (et pas
+    en équivalente, ni en « ligne 0 » du code produit)."""
+    from tests.unit.test_fiche_export_site import _fiche_service
+    b = Construite(tmp_path)
+    b.db.add_supersession('481010771228', 'C00647231')
+    b.db.definir_references_associees(
+        [('C00647231', '488000647231'), ('481010771228', 'C00446909')], '2026-11-16T15:12:04',
+        {'488000647231': 'Whirlpool', 'C00446909': 'Indesit'})
+    ligne = b.db.conn.execute("SELECT ligne_fiche FROM piece_equivalence_groups "
+                              "WHERE ref_piece = 'C00446909'").fetchone()[0]
+    assert ligne is None
+    assert b.db.reference_associee('C00647231') == (True, '488000647231')
+    refs = _fiche_service(b.db).references_fiche('C00647231')
+    assert refs['code_produit'] == ['C00647231', '488000647231']
+    assert refs['remplace'] == ['481010771228', 'C00446909']
+    assert refs['lignes_equivalentes'] == [] and refs['equivalentes'] == []
+
+
+def test_jumelles_a_la_suite_sur_la_meme_ligne():
+    from src.ui.fiche_produit_service import FicheProduitService
+    suite = FicheProduitService.jumelles_a_la_suite
+    # Jumelle d'une ancienne réf. : de l'équivalente vers « Remplace »
+    assert suite([['A1'], ['I1', 'X']], [('A1', 'I1')]) == [['A1', 'I1'], ['X']]
+    # La première des deux garde sa place, sa jumelle juste derrière
+    assert suite([['X', 'I1', 'Y'], ['A1']], [('A1', 'I1')]) == [['X', 'I1', 'A1', 'Y'], []]
+    # Deux lignes d'équivalentes : sur la première
+    assert suite([[], ['P', 'Q'], ['R', 'S']], [('S', 'P')]) == [[], ['P', 'S', 'Q'], ['R']]
+    # Même ligne, écartées : rapprochées
+    assert suite([['A1', 'X', 'I1']], [('A1', 'I1')]) == [['A1', 'I1', 'X']]
+    # Déjà à la suite (dans un sens ou l'autre, ordre du site), ou une réf. absente : inchangé
+    assert suite([['A1', 'I1', 'X']], [('A1', 'I1')]) == [['A1', 'I1', 'X']]
+    assert suite([['I1', 'A1', 'X']], [('A1', 'I1')]) == [['I1', 'A1', 'X']]
+    assert suite([['A1', 'X']], [('A1', 'I9')]) == [['A1', 'X']]
+    # Une réf. déjà rangée avec une jumelle n'en change pas
+    assert suite([['A1', 'I1', 'B1']], [('A1', 'I1'), ('B1', 'I1')]) == [['A1', 'I1', 'B1']]
+
+
 def test_champ_juste_apres_la_reference(qapp, tmp_path, rendus):
     """Fichier seul : « Réf. associée » suit la référence, sans vide entre les deux."""
     b = Construite(tmp_path)

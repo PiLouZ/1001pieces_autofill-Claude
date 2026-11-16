@@ -196,6 +196,21 @@ class DatabaseFichesSiteMixin:
                 [ref_piece, ref_piece]).fetchall()
         return {r[0] for r in rows if r[0] and r[0] != ref_piece}
 
+    def paires_associees_parmi(self, refs: Iterable[str]) -> List[Tuple[str, str]]:
+        """Paires (principale, associée) mémorisées dont les DEUX références sont
+        dans `refs` : dans la Fiche complète, chacune va à la suite de sa jumelle,
+        sur la même ligne. Ordre stable : décision la plus ancienne d'abord."""
+        refs = list(dict.fromkeys(r for r in refs if r))
+        if len(refs) < 2:
+            return []
+        q = ','.join('?' * len(refs))
+        with self._query_lock:
+            rows = self.cursor.execute(
+                f"SELECT ref_piece, associee FROM references_associees "
+                f"WHERE associee IS NOT NULL AND ref_piece IN ({q}) AND associee IN ({q}) "
+                f"ORDER BY decide_le, ref_piece", refs + refs).fetchall()
+        return [(p, a) for p, a in rows if p != a]
+
     def reference_principale_de(self, ref: str) -> Optional[str]:
         """Référence principale d'une référence associée (« ⇄ » ou réponse de
         l'import) : elle vient en premier dans le code produit. None : `ref` n'est
@@ -212,7 +227,9 @@ class DatabaseFichesSiteMixin:
                                      le: str, origines: Optional[Dict[str, str]] = None) -> int:
         """Mémorise chaque réponse (référence associée, ou None = « aucune »). Une
         référence associée devient une équivalente de la pièce, marquée ligne 0
-        (code produit, § 8.1) avec sa marque d'origine. Retourne le nombre de réponses."""
+        (code produit, § 8.1) avec sa marque d'origine — sauf si la pièce est une
+        ancienne référence (remplacée) : sa jumelle n'est pas du code produit, elle
+        suit la pièce dans « Remplace ». Retourne le nombre de réponses."""
         n = 0
         for ref, associee in reponses:
             ref = (ref or '').strip()
@@ -228,9 +245,13 @@ class DatabaseFichesSiteMixin:
                     "INSERT OR REPLACE INTO references_associees (ref_piece, associee, decide_le) "
                     "VALUES (?, ?, ?)", [ref, associee, le])
                 if associee:
+                    ancienne = self.cursor.execute(
+                        "SELECT 1 FROM piece_supersessions WHERE ref_old = ? LIMIT 1",
+                        [ref]).fetchone() is not None
                     self.cursor.execute(
-                        "UPDATE piece_equivalence_groups SET ligne_fiche = 0, "
-                        "origine = COALESCE(origine, ?) WHERE ref_piece = ?",
+                        "UPDATE piece_equivalence_groups SET "
+                        + ("" if ancienne else "ligne_fiche = 0, ")
+                        + "origine = COALESCE(origine, ?) WHERE ref_piece = ?",
                         [(origines or {}).get(associee), associee])
                 self.conn.commit()
             n += 1

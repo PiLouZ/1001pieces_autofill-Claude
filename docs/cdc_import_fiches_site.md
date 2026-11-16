@@ -632,10 +632,12 @@ Vérification : `test_lecteur_fiche.py::TestCorrectifsDuLot1` et `test_reprise_r
   - le **code produit** : la pièce, puis ses équivalentes de ligne 0 si la pièce a un produit du site (et qu'elles n'en ont pas elles-mêmes) ;
   - « **Remplace** » : les anciennes références des deux ;
   - **une ligne d'équivalentes par marque d'origine**, puis par ligne mémorisée (`lignes_par_origine`), rangées par n° de ligne de la fiche ; chaque équivalente garde ses anciennes références ;
-  - sans les **références écartées** (`decisions_references`).
+  - sans les **références écartées** (`decisions_references`) ;
+  - **chaque paire de réf. associées à la suite, sur la même ligne** (`jumelles_a_la_suite`, lecture `paires_associees_parmi`) : la jumelle d'une ancienne référence rejoint « Remplace » juste derrière elle, et celle d'une équivalente sa ligne. Une paire déjà côte à côte garde l'ordre de la fiche du site ; sinon celle des deux qui vient la première garde sa place. Exemple (import PDF, 2026-11-16) : C00647231 ⇄ 488000647231 en code produit, 481010771228 ⇄ C00446909 → « Remplace les références : 481010771228 C00446909 », plus de ligne d'équivalentes. Sur la vraie base, 6 fiches changent, dont 7234, dont les paires de « Remplace » étaient dispersées.
+- Une réponse « Référence associée » donnée à l'import pour une **ancienne référence** (remplacée) ne marque plus sa jumelle « ligne 0 » : celle-ci n'est pas du code produit (§ 10.17).
 - Sans rien de mémorisé (pièce de l'outil, 754 réf. existantes, base non migrée) : une seule ligne d'équivalentes et la seule référence, comme avant.
 - `FicheProduitGenerator` : `{reference}` reçoit la paire jointe par le séparateur ; une ligne `equivalentes_template` par liste. Les profils enregistrés n'ont pas à changer, et le lecteur accepte déjà `{reference}` comme `{references}`. L'onglet Fiche montre deux lignes d'équivalentes dans son aperçu.
-- Limite connue : la 2ᵉ réf. du code produit recherchée seule (`C00319033`) n'a pas de produit. Sa fiche est celle d'avant : pas de paire, et la pièce principale y figure en équivalente.
+- Limite connue : la 2ᵉ réf. du code produit recherchée seule (`C00319033`) n'a pas de produit. Sa fiche est celle d'avant : pas de paire, et la pièce principale y figure en équivalente ; ses anciennes références suivent toutefois leurs jumelles dans « Remplace ».
 
 **Export EveryParts** (§ 8.2) :
 - Le terme recherché passe par `resolve_current_ref`, puis par `produits_site_de` (`00703010` → `11051894` → `GAU11051894`).
