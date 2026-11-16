@@ -196,7 +196,7 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
   <li>La fenêtre d'import habituelle s'ouvre, comme pour un PDF. En haut, ce que l'import fera des appareils de la fiche : <b>déjà liés</b> à la pièce, <b>connus</b> à relier, <b>à créer</b>, <b>couverts</b> par une ancienne référence, <b>non importés</b> (appareil à choisir parmi plusieurs, référence illisible, marque inconnue).</li>
   <li><b>Référence de pièce</b> : le code produit de la fiche. Une fiche sans code produit demande de la saisir : son libellé est repris pour savoir de quelle pièce il s'agit, et un lien ouvre la fiche sur le site pour trouver la référence.</li>
   <li><b>Libellé</b> : celui de l'outil, ou le titre de la fiche sans le type d'appareil pour une pièce nouvelle (« Pompe de vidange R2.5Y »). Modifiez-le au besoin.</li>
-  <li><b>Succession</b> : les anciennes références et les équivalentes lues sur la fiche. Retirez une référence erronée (une équivalente retirée est écartée et ne vous sera plus proposée), ou ajoutez-en une.</li>
+  <li><b>Succession</b> : les anciennes références et les équivalentes lues sur la fiche. Retirez une référence erronée, ajoutez-en une, ou déplacez-la d'une zone à l'autre si la fiche était mal rangée (une ancienne référence citée en équivalente va dans « Remplace »). Une équivalente supprimée est écartée et ne vous sera plus proposée : l'import vous le fait confirmer (<b>Écarter et importer</b> ou <b>Revenir au dialogue</b>). Une référence seulement déplacée n'est pas écartée.</li>
   <li><b>Importer</b> : comme après tout import, le récapitulatif va dans l'historique, et les boutons <b>Suggestions à valider</b> et <b>Auto-complétés à vérifier</b> apparaissent si besoin. La pièce s'affiche ensuite dans la recherche. Relire une fiche déjà importée n'ajoute rien.</li>
   <li><b>Fiche à refaire depuis les PDF</b> : une fiche aux données en vrac (nom commercial mêlé d'une description comme « ARG8612 Réfrigérateur 1 porte », n° d'article collé, mot coupé, en-tête de série pris pour une marque) ne crée aucun appareil bancal. Un bandeau orange le signale : les appareils connus sont reliés, les autres ne sont pas créés. Si au moins 20 % des appareils à créer sont douteux, aucun n'est créé. La référence de la pièce est notée « à refaire » dans l'historique : cherchez ses PDF et importez-les. Un import PDF, CSV ou collage de cette référence la retire de la liste.</li>
 </ul>
@@ -258,7 +258,7 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
 <h2>Nouveautés depuis la version 3.78</h2>
 <h3>En préparation</h3>
 <ul>
-  <li><b>Fiche complète : anciennes références toutes présentes</b> : une ancienne référence retirée du champ « Équivalentes » à l'import d'une fiche du site (donc écartée comme équivalente) reste dans « Remplace les références ». Exemple : 00648024 affiche à nouveau ses 3 anciennes références.</li>
+  <li><b>Fiche du site : référence déplacée, pas écartée</b> : à l'import d'une fiche du site, une référence passée d'« Équivalentes » à « Remplace » (ou « Remplacée par ») n'est plus écartée ; supprimer une équivalente demande désormais confirmation. La <b>Fiche complète</b> garde toujours toutes les anciennes références dans « Remplace les références » (00648024 affiche à nouveau ses 3 anciennes références).</li>
 </ul>
 <h3>Versions livrées</h3>
 <ul>
