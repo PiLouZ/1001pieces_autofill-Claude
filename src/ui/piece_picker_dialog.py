@@ -4,7 +4,10 @@ RefTagList        : widget de liste de références supprimables (chips).
 """
 
 import qtawesome as qta
-from typing import Optional, List
+from typing import Callable, Optional, List
+from PyQt5.QtCore import QEvent, QSortFilterProxyModel, QTimer
+from PyQt5.QtGui import QKeySequence, QStandardItem, QStandardItemModel
+from PyQt5.QtWidgets import QShortcut, QTableView
 from ..utils.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QWidget,
                           QLabel, QPushButton, QLineEdit, QTableWidget,
                           QTableWidgetItem, QHeaderView, Qt, QFrame, QScrollArea,
@@ -214,253 +217,301 @@ class RefTagList(QWidget):
 
 # ── PiecePickerDialog ────────────────────────────────────────────────────────
 
+class _FiltreRefLibelle(QSortFilterProxyModel):
+    """Filtre sur la référence ou le libellé (pas sur le statut)."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._texte = ''
+
+    def definir_texte(self, texte: str):
+        self._texte = (texte or '').strip().lower()
+        self.invalidateFilter()
+
+    def filterAcceptsRow(self, ligne, parent):
+        if not self._texte:
+            return True
+        modele = self.sourceModel()
+        return any(self._texte in (modele.index(ligne, c, parent).data() or '').lower()
+                   for c in (0, 1))
+
+
 class PiecePickerDialog(QDialog):
     """
-    Dialog de sélection d'une pièce avec recherche en temps réel.
+    Fenêtre de sélection de pièces avec un panier.
 
-    Affiche un tableau (ref | description | statut) filtrables.
-    Mode 'single' : retourne une référence via selected_ref().
+    - En haut, le panier (`RefChipsInput`, comme à l'import) : les réfs retenues,
+      retirables (✕, Retour arrière) ; on peut y taper ou coller des réfs. Une
+      réf. inconnue est signalée : elle sera créée en fantôme.
+    - Dessous, la recherche (réf. ou libellé) filtre le tableau sans jamais vider
+      le panier ; double-clic ou Entrée sur une ligne l'ajoute au panier (ou la
+      remplace, panier à une réf.).
+    - « Ajouter N références » (⌘Entrée) valide. `valider(refs)` peut refuser
+      avec un motif : il s'affiche sous le panier, la fenêtre reste ouverte.
 
     Usage :
         dlg = PiecePickerDialog(db_manager, parent=self, exclude_ref='AS001')
-        ouvrir_modal(dlg, sur_accepte=lambda: traiter(dlg.selected_ref()))
+        ouvrir_modal(dlg, sur_accepte=lambda: traiter(dlg.selected_refs()))
         # (ouverture_modale.ouvrir_modal : show() + callbacks, jamais exec_)
     """
 
     def __init__(self, db_manager, parent=None, exclude_ref: Optional[str] = None,
                  title: str = "Sélectionner une pièce",
-                 multi_select: bool = False):
+                 multi_select: bool = False, max_refs: Optional[int] = -1,
+                 filtre: Optional[Callable[[str], bool]] = None,
+                 valider: Optional[Callable[[List[str]], str]] = None,
+                 recherche_initiale: str = ''):
         super().__init__(parent)
         self.db_manager = db_manager
         self.exclude_ref = exclude_ref
-        self._multi_select = multi_select
-        self._selected_ref: Optional[str] = None
-        self._selected_refs: List[str] = []
-        self._all_rows: list = []  # cache des données
+        # max_refs : None = illimité ; par défaut, déduit de multi_select
+        self._max = (None if multi_select else 1) if max_refs == -1 else max_refs
+        self._filtre = filtre
+        self._valider = valider
+        self._connues: set = set()
+        self._items_statut: dict = {}     # réf → (item Statut, texte, icône d'origine)
+        self._marquees: set = set()
 
         self.setWindowTitle(title)
         self.setModal(True)
-        self.resize(560, 420)
+        self.resize(600, 480)
         self._init_ui()
         self._load_pieces()
+        if recherche_initiale:
+            self._recherche.setText(recherche_initiale)
+            self._filtrer()
+        self._maj_panier()
 
     # ── UI ───────────────────────────────────────────────────────────────────
 
     def _init_ui(self):
+        from .ref_chips_input import RefChipsInput
         layout = QVBoxLayout(self)
-        layout.setSpacing(8)
+        layout.setSpacing(6)
 
-        # Champ de recherche / saisie libre
-        search_row = QHBoxLayout()
-        search_row.addWidget(QLabel("Référence :"))
-        self._search_input = QLineEdit()
-        self._search_input.setPlaceholderText("Rechercher ou saisir une nouvelle référence…")
-        self._search_input.textChanged.connect(self._filter)
-        self._search_input.returnPressed.connect(self._on_search_confirmed)
-        search_row.addWidget(self._search_input)
-        layout.addLayout(search_row)
+        unique = self._max == 1
+        titre_panier = QLabel("Référence choisie :" if unique else "Références choisies :")
+        titre_panier.setStyleSheet(StyleManager.TEXTE_GRAS_TRANSPARENT)
+        layout.addWidget(titre_panier)
+        self._panier = RefChipsInput(
+            "Tapez ou collez une réf., ou double-cliquez une ligne" if unique
+            else "Tapez ou collez des réf., ou double-cliquez des lignes", max_refs=self._max)
+        self._panier.changed.connect(self._maj_panier)
+        self._panier.line_edit.textChanged.connect(lambda *_: self._maj_panier())
+        self._panier.line_edit.returnPressed.connect(self._entree_panier_vide)
+        layout.addWidget(self._panier)
 
-        # Tableau
-        self._table = QTableWidget(0, 3)
-        self._table.setHorizontalHeaderLabels(["Référence", "Libellé", "Statut"])
-        self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        sel_mode = (QTableWidget.SelectionMode.ExtendedSelection
-                    if self._multi_select
-                    else QTableWidget.SelectionMode.SingleSelection)
-        self._table.setSelectionMode(sel_mode)
+        self._etat = QLabel("")
+        self._etat.setStyleSheet(StyleManager.TEXTE_GRIS_PETIT)
+        self._etat.setWordWrap(True)
+        layout.addWidget(self._etat)
+        self._erreur = QLabel("")
+        self._erreur.setStyleSheet(StyleManager.TEXTE_ERREUR_PETIT)
+        self._erreur.setWordWrap(True)
+        self._erreur.setVisible(False)
+        layout.addWidget(self._erreur)
+
+        # Recherche : filtre le tableau, ne touche jamais au panier
+        ligne_recherche = QHBoxLayout()
+        ligne_recherche.addWidget(QLabel("Rechercher :"))
+        self._recherche = QLineEdit()
+        self._recherche.setPlaceholderText("Réf. ou libellé…")
+        self._recherche.setClearButtonEnabled(True)
+        self._delai = QTimer(self)
+        self._delai.setSingleShot(True)
+        self._delai.setInterval(150)
+        self._delai.timeout.connect(self._filtrer)
+        self._recherche.textChanged.connect(lambda *_: self._delai.start())
+        self._recherche.returnPressed.connect(self._entree_recherche)
+        self._recherche.installEventFilter(self)
+        ligne_recherche.addWidget(self._recherche)
+        layout.addLayout(ligne_recherche)
+
+        self._modele = QStandardItemModel(0, 3, self)
+        self._modele.setHorizontalHeaderLabels(["Référence", "Libellé", "Statut"])
+        self._proxy = _FiltreRefLibelle(self)
+        self._proxy.setSourceModel(self._modele)
+        self._table = QTableView()
+        self._table.setModel(self._proxy)
+        self._table.setEditTriggers(QTableView.NoEditTriggers)
+        self._table.setSelectionBehavior(QTableView.SelectRows)
+        self._table.setSelectionMode(QTableView.SingleSelection)
         self._table.setAlternatingRowColors(True)
         self._table.setSortingEnabled(True)
-        self._table.itemDoubleClicked.connect(self._on_double_click)
-        self._table.itemSelectionChanged.connect(self._on_selection_changed)
-
+        self._table.doubleClicked.connect(self._ajouter_ligne)
+        self._table.installEventFilter(self)
         hdr = self._table.horizontalHeader()
-        hdr.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        # Tri croissant par défaut : sans cela, Qt part de son indicateur par
-        # défaut (décroissant) et la liste s'ouvrait de Z à A.
+        hdr.setSectionResizeMode(QHeaderView.Interactive)
+        hdr.setStretchLastSection(True)
+        # Tri croissant par défaut (sinon Qt part de l'indicateur décroissant)
         hdr.setSortIndicator(0, Qt.AscendingOrder)
-        self._table.setColumnWidth(0, 130)   # Référence
-        self._table.setColumnWidth(1, 270)   # Libellé
-        self._table.setColumnWidth(2, 90)    # Statut
+        self._table.setColumnWidth(0, 140)
+        self._table.setColumnWidth(1, 300)
         self._table.verticalHeader().setVisible(False)
+        self._table.verticalHeader().setDefaultSectionSize(24)
         layout.addWidget(self._table)
 
-        # Hint fantôme (visible quand le texte saisi ne correspond à aucune ligne sélectionnée)
-        self._phantom_hint = QLabel("")
-        self._phantom_hint.setStyleSheet(
-            StyleManager.TEXTE_SECONDAIRE_ITALIQUE
-        )
-        self._phantom_hint.setVisible(False)
-        layout.addWidget(self._phantom_hint)
+        aide = QLabel("Double-clic ou Entrée sur une ligne : l'ajouter au choix  ·  "
+                      "⌘Entrée : valider")
+        aide.setStyleSheet(StyleManager.TEXTE_SECONDAIRE_ITALIQUE)
+        layout.addWidget(aide)
 
-        # Boutons OK / Annuler
         btn_row = QHBoxLayout()
         btn_row.addStretch()
-        self._ok_btn = QPushButton("Sélectionner (plusieurs avec Ctrl/⇧)" if self._multi_select else "Sélectionner")
+        cancel_btn = QPushButton("Annuler")
+        cancel_btn.setAutoDefault(False)
+        cancel_btn.clicked.connect(self.reject)
+        self._ok_btn = QPushButton("")
         self._ok_btn.setIcon(qta.icon('fa5s.check', color='white'))
         self._ok_btn.setIconSize(QSize(11, 11))
         self._ok_btn.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
-        self._ok_btn.setEnabled(False)
-        self._ok_btn.setDefault(True)
+        self._ok_btn.setAutoDefault(False)     # Entrée dans la recherche n'accepte pas
         self._ok_btn.clicked.connect(self.accept)
-        cancel_btn = QPushButton("Annuler")
-        cancel_btn.clicked.connect(self.reject)
-        btn_row.addWidget(self._ok_btn)
         btn_row.addWidget(cancel_btn)
+        btn_row.addWidget(self._ok_btn)
         layout.addLayout(btn_row)
+        QShortcut(QKeySequence("Ctrl+Return"), self, activated=self.accept)
+        QShortcut(QKeySequence("Ctrl+Enter"), self, activated=self.accept)
 
     # ── Chargement ───────────────────────────────────────────────────────────
 
     def _load_pieces(self):
-        """Charger toutes les pièces depuis la base."""
+        """Charger les pièces une fois ; la recherche filtre sans recharger."""
         try:
-            rows = self.db_manager.lister_pieces_selecteur()
-            self._all_rows = [r for r in (rows or [])
-                              if r[0] and r[0] != self.exclude_ref]
-            self._populate(self._all_rows)
+            rows = self.db_manager.lister_pieces_selecteur() or []
         except Exception as e:
             app_logger.error(f"PiecePickerDialog: erreur chargement pièces: {e}")
-
-    def _populate(self, rows: list):
-        """Remplir le tableau avec les lignes fournies."""
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(len(rows))
-
-        _italic = QFont()
-        _italic.setItalic(True)
-        _phantom_color = QColor(150, 150, 150)
-
-        for i, (ref, desc, is_obsolete, is_phantom) in enumerate(rows):
-            # Col 0 : référence
-            ref_item = QTableWidgetItem(ref or "")
-            ref_item.setData(Qt.UserRole, ref)
+            rows = []
+        self._connues = {r[0] for r in rows if r[0]}
+        italique = QFont()
+        italique.setItalic(True)
+        gris = QColor(150, 150, 150)
+        for ref, desc, is_obsolete, is_phantom in rows:
+            if not ref or ref == self.exclude_ref:
+                continue
+            if self._filtre is not None and not self._filtre(ref):
+                continue
+            ref_item, desc_item = QStandardItem(ref), QStandardItem(desc or "")
+            # Mêmes icônes et libellés que la colonne Statut du gestionnaire
             if is_phantom:
-                ref_item.setForeground(_phantom_color)
-                ref_item.setFont(_italic)
-            self._table.setItem(i, 0, ref_item)
-
-            # Col 1 : libellé
-            desc_item = QTableWidgetItem(desc or "")
-            if is_phantom:
-                desc_item.setForeground(_phantom_color)
-                desc_item.setFont(_italic)
-            self._table.setItem(i, 1, desc_item)
-
-            # Col 2 : statut — mêmes icônes et libellés que la colonne Statut du
-            # gestionnaire de pièces (et non plus des glyphes ✓ / ⚠)
-            if is_phantom:
-                status_text, icone, couleur = "Fantôme", 'fa5s.ghost', '#999999'
+                texte, icone, couleur = "Fantôme", 'fa5s.ghost', '#999999'
             elif is_obsolete:
-                status_text, icone, couleur = "Obsolète", 'fa5s.ban', '#c62828'
+                texte, icone, couleur = "Obsolète", 'fa5s.ban', '#c62828'
             else:
-                status_text, icone, couleur = "OK", 'fa5s.check-circle', '#2e7d32'
-
-            st_item = QTableWidgetItem(status_text)
-            st_item.setIcon(qta.icon(icone, color=couleur))
+                texte, icone, couleur = "OK", 'fa5s.check-circle', '#2e7d32'
+            st_item = QStandardItem(qta.icon(icone, color=couleur), texte)
             if is_phantom:
-                st_item.setForeground(_phantom_color)
-            self._table.setItem(i, 2, st_item)
+                for item in (ref_item, desc_item, st_item):
+                    item.setForeground(gris)
+                ref_item.setFont(italique)
+                desc_item.setFont(italique)
+            self._items_statut[ref] = (st_item, texte, st_item.icon())
+            self._modele.appendRow([ref_item, desc_item, st_item])
+        self._proxy.sort(0, Qt.AscendingOrder)
 
-        self._table.setSortingEnabled(True)
+    # ── Recherche et ajout au panier ─────────────────────────────────────────
 
-    # ── Filtrage ─────────────────────────────────────────────────────────────
+    def _filtrer(self):
+        self._proxy.definir_texte(self._recherche.text())
 
-    def _filter(self, text: str):
-        """Filtrer la liste et mettre à jour le hint fantôme.
+    def _ref_ligne(self, index) -> Optional[str]:
+        if not index.isValid():
+            return None
+        return self._proxy.index(index.row(), 0).data()
 
-        En mode multi_select, la saisie « REF1; REF2 » filtre les lignes
-        correspondantes et les sélectionne automatiquement toutes.
-        """
-        t = text.lower().strip()
-
-        # Mode multi-ref : termes séparés par « ; »
-        if self._multi_select and ';' in t:
-            parts = [p.strip() for p in t.split(';') if p.strip()]
-            filtered = [
-                r for r in self._all_rows
-                if any(p in (r[0] or '').lower() or p in (r[1] or '').lower()
-                       for p in parts)
-            ]
-            self._populate(filtered)
-            if filtered:
-                self._table.selectAll()   # → déclenche _on_selection_changed
-            else:
-                self._table.clearSelection()
-                self._selected_ref = None
-            self._update_ok_btn()
+    def _ajouter_ligne(self, index=None):
+        ref = self._ref_ligne(index if index is not None else self._table.currentIndex())
+        if not ref:
             return
-
-        if not t:
-            self._populate(self._all_rows)
+        if self._max == 1:
+            self._panier.set_refs([ref])
+            self._maj_panier()
         else:
-            filtered = [
-                r for r in self._all_rows
-                if t in (r[0] or '').lower() or t in (r[1] or '').lower()
-            ]
-            self._populate(filtered)
+            self._panier.add_refs([ref])
 
-        # Désélectionner si le texte a changé
-        self._table.clearSelection()
-        self._selected_ref = None
-        self._update_ok_btn()
+    def _entree_recherche(self):
+        """Entrée dans la recherche : une seule ligne visible → l'ajouter ;
+        sinon la ligne sélectionnée."""
+        if self._delai.isActive():
+            self._delai.stop()
+            self._filtrer()
+        if self._proxy.rowCount() == 1:
+            self._ajouter_ligne(self._proxy.index(0, 0))
+        elif self._table.currentIndex().isValid():
+            self._ajouter_ligne()
 
-    # ── Sélection tableau ────────────────────────────────────────────────────
-
-    def _on_selection_changed(self):
-        selected_rows = sorted(set(item.row() for item in self._table.selectedItems()))
-        self._selected_refs = []
-        for row in selected_rows:
-            ref_item = self._table.item(row, 0)
-            if ref_item:
-                ref = ref_item.data(Qt.UserRole)
-                if ref:
-                    self._selected_refs.append(ref)
-        self._selected_ref = self._selected_refs[0] if self._selected_refs else None
-        self._update_ok_btn()
-
-    def _on_double_click(self, item):
-        row = self._table.currentRow()
-        ref_item = self._table.item(row, 0)
-        if ref_item:
-            self._selected_ref = ref_item.data(Qt.UserRole)
+    def _entree_panier_vide(self):
+        if not self._panier.line_edit.text().strip():
             self.accept()
 
-    def _on_search_confirmed(self):
-        """Entrée clavier dans le champ de recherche : valider si quelque chose est disponible."""
-        if self._ok_btn.isEnabled():
-            self.accept()
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.KeyPress:
+            if obj is self._table and event.key() in (Qt.Key_Return, Qt.Key_Enter) \
+                    and not event.modifiers() & Qt.ControlModifier:
+                self._ajouter_ligne()
+                return True
+            if obj is self._recherche and event.key() == Qt.Key_Down:
+                self._table.setFocus()
+                if not self._table.currentIndex().isValid() and self._proxy.rowCount():
+                    self._table.setCurrentIndex(self._proxy.index(0, 0))
+                return True
+        return super().eventFilter(obj, event)
 
-    # ── Hint + bouton OK ─────────────────────────────────────────────────────
+    # ── Panier ───────────────────────────────────────────────────────────────
 
-    def _update_ok_btn(self):
-        text = self._search_input.text().strip()
-        has_selection = bool(self._selected_ref)
-        has_text = bool(text)
-
-        self._ok_btn.setEnabled(has_selection or has_text)
-
-        # En mode multi-select : afficher le nombre de sélections dans le bouton
-        if self._multi_select and len(self._selected_refs) > 1:
-            self._ok_btn.setText(f"Sélectionner ({len(self._selected_refs)})")
-        elif self._multi_select:
-            self._ok_btn.setText("Sélectionner (plusieurs avec Ctrl/⇧)")
-
-        # Hint fantôme : visible quand texte saisi mais aucune ligne sélectionnée
-        if has_text and not has_selection:
-            self._phantom_hint.setText(f"↵  Utiliser « {text} » comme nouvelle référence fantôme")
-            self._phantom_hint.setVisible(True)
+    def _maj_panier(self):
+        refs = self._panier.refs()
+        self._erreur.setVisible(False)
+        # « ✓ Ajoutée » sur les lignes du panier (elles restent visibles)
+        for ref in self._marquees - set(refs):
+            if ref in self._items_statut:
+                item, texte, icone = self._items_statut[ref]
+                item.setText(texte)
+                item.setIcon(icone)
+        for ref in set(refs) - self._marquees:
+            if ref in self._items_statut:
+                item = self._items_statut[ref][0]
+                item.setText("Ajoutée")
+                item.setIcon(qta.icon('fa5s.check', color='#2e7d32'))
+        self._marquees = set(refs)
+        inconnues = [r for r in refs if r not in self._connues]
+        if not refs:
+            self._etat.setText("Rien de choisi pour l'instant.")
         else:
-            self._phantom_hint.setVisible(False)
+            texte = (f"{len(refs)} choisie{'s' if len(refs) > 1 else ''}")
+            if inconnues:
+                texte += (f" · {len(inconnues)} inconnue{'s' if len(inconnues) > 1 else ''}"
+                          f" (sera{'ont' if len(inconnues) > 1 else ''} créée"
+                          f"{'s' if len(inconnues) > 1 else ''} en fantôme) : "
+                          + ", ".join(inconnues))
+            self._etat.setText(texte)
+        n = len(refs)
+        if self._max == 1:
+            self._ok_btn.setText("Choisir")
+        else:
+            self._ok_btn.setText(f"Ajouter {n} référence{'s' if n > 1 else ''}" if n
+                                 else "Ajouter")
+        self._ok_btn.setEnabled(bool(refs))
+
+    def accept(self):
+        refs = self.selected_refs()
+        if not refs:
+            return
+        if self._valider is not None:
+            motif = self._valider(refs)
+            if motif:
+                self._erreur.setText(motif)
+                self._erreur.setVisible(True)
+                return
+        super().accept()
 
     # ── API publique ─────────────────────────────────────────────────────────
 
     def selected_ref(self) -> Optional[str]:
-        """Retourne la première référence sélectionnée (ou le texte brut saisi)."""
-        return self._selected_ref or self._search_input.text().strip() or None
+        """La première réf. choisie (ou None)."""
+        refs = self._panier.refs()
+        return refs[0] if refs else None
 
     def selected_refs(self) -> List[str]:
-        """Retourne toutes les références sélectionnées (mode multi_select)."""
-        if self._selected_refs:
-            return list(self._selected_refs)
-        text = self._search_input.text().strip()
-        return [text] if text else []
+        """Toutes les réfs choisies, y compris le texte tapé non validé."""
+        return self._panier.refs()

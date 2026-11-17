@@ -43,6 +43,12 @@ class DatabasePiecesMixin:
         """Références de pièces (5 000 au plus), pour l'autocomplétion de l'import."""
         return self.execute_query("SELECT ref_piece FROM pieces ORDER BY ref_piece LIMIT 5000")
 
+    def lister_toutes_refs_pieces(self) -> List[str]:
+        """Toutes les références de pièces (complétion du gestionnaire de pièces :
+        `lister_refs_pieces` s'arrête à 5 000)."""
+        return [r[0] for r in self.execute_query(
+            "SELECT ref_piece FROM pieces ORDER BY ref_piece") or [] if r[0]]
+
     def lister_pieces_apercu(self) -> List[Tuple]:
         """Premier affichage rapide du gestionnaire de pièces, sans comptages :
         (ref_piece, description, 0, NULL, is_phantom)."""

@@ -33,7 +33,9 @@ from ..utils.qt_imports import (
     QEvent,
     QStackedWidget,
     QProgressBar,
-    QItemSelectionModel
+    QItemSelectionModel,
+    QCompleter,
+    QStringListModel,
 )
 from typing import List, Tuple
 import html as _html
@@ -112,6 +114,10 @@ from ..core.logger import app_logger
 from .pieces_list_service import PieceRelationsPopup, _format_piece_edit_history
 from .style_manager import StyleManager, inline_icon_html
 from .piece_picker_dialog import PiecePickerDialog, RefTagList
+from .saisie_relation import SaisieRelation
+from .ligne_reference_associee import (AUCUNE, JUMELLE, PROPOSEE, VIDE,
+                                       LigneReferenceAssociee)
+from ..utils.rapprochement_fiche.associee import autres_origines, origine_associable
 from ..utils.ouverture_modale import ouvrir_modal
 from ..utils.boites import demander_oui_non, choisir_fichier_a_enregistrer, saisir_texte, choisir_element
 
@@ -520,6 +526,25 @@ class PiecesManagerWindow(QDialog):
         equiv_hdr.addWidget(self.btn_link_equiv)
         eq_sec_layout.addLayout(equiv_hdr)
 
+        # Réf. associée (jumelle Whirlpool / Indesit / Beko) : une équivalente
+        # particulière, en tête de la carte ; masquée pour les autres pièces
+        self.ligne_associee = LigneReferenceAssociee()
+        self.ligne_associee.ajouter.connect(self._on_ajouter_associee)
+        self.ligne_associee.retirer.connect(self._on_retirer_associee)
+        self.ligne_associee.inverser.connect(self._on_inverser_associee)
+        self.ligne_associee.confirmer.connect(self._on_confirmer_associee)
+        self.ligne_associee.refuser.connect(self._on_refuser_associee)
+        self.ligne_associee.marquer_aucune.connect(self._on_marquer_aucune_associee)
+        self.ligne_associee.oublier_aucune.connect(self._on_oublier_aucune_associee)
+        self.ligne_associee.ref_clicked.connect(self._search_in_manager)
+        self.ligne_associee.ref_right_clicked.connect(self._on_chip_right_click)
+        eq_sec_layout.addWidget(self.ligne_associee)
+
+        # Saisie directe (sans fenêtre) : Espace / Entrée / collage écrit aussitôt
+        self._saisies_relation = {}
+        self.saisie_equiv = self._creer_saisie(self.EQUIVALENTES, "Réf. équivalente…")
+        eq_sec_layout.addWidget(self.saisie_equiv)
+
         self.equiv_status_label = QLabel("")
         self.equiv_status_label.setStyleSheet(StyleManager.TEXTE_GRIS_PETIT)
         self.equiv_status_label.setWordWrap(True)
@@ -571,6 +596,8 @@ class PiecesManagerWindow(QDialog):
         self.btn_mark_replaces.clicked.connect(self._on_mark_replaces)
         replaces_hdr.addWidget(self.btn_mark_replaces)
         rep_sec_layout.addLayout(replaces_hdr)
+        self.saisie_remplace = self._creer_saisie(self.REMPLACE, "Ancienne réf. remplacée…")
+        rep_sec_layout.addWidget(self.saisie_remplace)
 
         self.replaces_tag_list = RefTagList()
         self.replaces_tag_list.enable_full_height_mode()
@@ -605,6 +632,8 @@ class PiecesManagerWindow(QDialog):
         self.btn_mark_superseded.clicked.connect(self._on_mark_superseded)
         superseded_hdr.addWidget(self.btn_mark_superseded)
         sup_sec_layout.addLayout(superseded_hdr)
+        self.saisie_remplacee_par = self._creer_saisie(self.REMPLACEE_PAR, "Réf. qui la remplace…")
+        sup_sec_layout.addWidget(self.saisie_remplacee_par)
 
         self.superseded_by_tag_list = RefTagList()
         self.superseded_by_tag_list.enable_full_height_mode()
@@ -646,6 +675,15 @@ class PiecesManagerWindow(QDialog):
         self.btn_mark_equivalent_group.setVisible(False)
         self.btn_mark_equivalent_group.clicked.connect(self._on_mark_equivalent_group)
 
+        self.btn_lier_associees = QPushButton("Lier comme réf. associées")
+        self.btn_lier_associees.setIcon(qta.icon('fa5s.exchange-alt', color='#8e44ad'))
+        self.btn_lier_associees.setIconSize(QSize(11, 11))
+        self.btn_lier_associees.setToolTip(
+            "La pièce affichée devient la principale, l'autre son associée (et son équivalente)")
+        self.btn_lier_associees.setStyleSheet(f"{StyleManager.SECONDARY_COMPACT_BUTTON} QPushButton {{ color: #8e44ad; }}")
+        self.btn_lier_associees.setVisible(False)
+        self.btn_lier_associees.clicked.connect(self._on_lier_associees)
+
         self.btn_harmonize_labels = QPushButton("Harmoniser les libellés…")
         self.btn_harmonize_labels.setIcon(qta.icon('fa5s.palette', color='#d35400'))
         self.btn_harmonize_labels.setIconSize(QSize(11, 11))
@@ -679,7 +717,8 @@ class PiecesManagerWindow(QDialog):
         self._action_sections = []
         for section_title, buttons in [
             ("SUCCESSION",   [self.btn_cancel_succession]),
-            ("ÉQUIVALENCES", [self.btn_unlink_equiv, self.btn_harmonize_labels]),
+            ("ÉQUIVALENCES", [self.btn_unlink_equiv, self.btn_lier_associees,
+                              self.btn_harmonize_labels]),
         ]:
             title_lbl = QLabel(section_title)
             title_lbl.setStyleSheet("color: #adb5bd; font-size: 11px; font-weight: bold;")
@@ -1666,7 +1705,10 @@ class PiecesManagerWindow(QDialog):
             self.superseded_section.setVisible(True)
             self.replaces_section.setVisible(True)
             self.btn_mark_superseded.setEnabled(True)
-            self.btn_mark_replaces.setEnabled(True)
+            # Une réf. n'a qu'une remplaçante : « Remplace » vise une seule pièce
+            self.btn_mark_replaces.setEnabled(False)
+            self.btn_mark_replaces.setToolTip(
+                "Une réf. n'a qu'une remplaçante : sélectionnez une seule pièce")
             self.btn_cancel_succession.setVisible(True)
             self.btn_cancel_succession.setEnabled(True)
             self.btn_harmonize_labels.setVisible(False)
@@ -1718,6 +1760,7 @@ class PiecesManagerWindow(QDialog):
         self.replaces_section.setVisible(True)
         self.btn_mark_superseded.setEnabled(True)
         self.btn_mark_replaces.setEnabled(True)
+        self.btn_mark_replaces.setToolTip("Ajouter des références remplacées")
         self.btn_cancel_succession.setVisible(False)  # chips suffisent en mono-sélection
 
         # Libellés divergents au sein du groupe d'équivalence (C)
@@ -1725,87 +1768,219 @@ class PiecesManagerWindow(QDialog):
         self.btn_harmonize_labels.setVisible(bool(equivalents) and labels_differ)
         self.btn_harmonize_labels.setEnabled(bool(equivalents) and labels_differ)
 
+    # ── Écriture des relations (saisie directe et fenêtre de sélection) ─────
+
+    REMPLACE, REMPLACEE_PAR, EQUIVALENTES = 'remplace', 'remplacee_par', 'equivalentes'
+
+    def _refs_inconnues(self, refs) -> List[str]:
+        """Réfs absentes des pièces : l'écriture les créera en fantôme."""
+        return [r for r in refs if not self.db_manager.lire_piece_exacte(r)]
+
+    def _ecrire_relation(self, genre: str, refs: list):
+        """Écrit une relation pour la sélection et retourne (lignes d'historique,
+        erreurs, réfs créées en fantôme). Mêmes écritures qu'avant la saisie
+        directe : add_supersession / add_equivalence puis propagate_description.
+
+        - REMPLACE : chaque réf. est remplacée par LA pièce sélectionnée (une
+          seule : une réf. n'a qu'une remplaçante ; à plusieurs pièces, l'ancien
+          code la faisait remplacer par la dernière, sans message) ;
+        - REMPLACEE_PAR : chaque pièce sélectionnée est remplacée par la réf.
+          (une seule) ;
+        - EQUIVALENTES : la pièce affichée devient équivalente à chaque réf."""
+        pieces = self._get_selected_refs()
+        refs = [r for r in dict.fromkeys(refs) if r]
+        lignes, erreurs = [], []
+        if not refs or (not pieces and genre != self.EQUIVALENTES):
+            return lignes, erreurs, []
+        fantomes = self._refs_inconnues(refs)
+        if genre == self.REMPLACE:
+            if len(pieces) != 1:
+                return lignes, ["Une réf. n'a qu'une remplaçante : sélectionnez une seule pièce."], []
+            couples = [(ref_old, pieces[0]) for ref_old in refs]
+        elif genre == self.REMPLACEE_PAR:
+            if len(refs) != 1:
+                return lignes, ["Une pièce n'a qu'une remplaçante : saisissez une seule réf."], []
+            couples = [(ref_old, refs[0]) for ref_old in pieces]
+        else:
+            courante = self._current_ref_piece
+            if not courante:
+                return lignes, erreurs, []
+            for ref_b in refs:
+                # add_equivalence renvoie (ok, message) : ne propager qu'après succès
+                ok, message = self.db_manager.add_equivalence(courante, ref_b)
+                if ok:
+                    lignes.append(f"==> '{courante}' ≡ '{ref_b}'")
+                    self.db_manager.propagate_description(courante, ref_b)
+                else:
+                    erreurs.append(f"{ref_b} : {message}")
+            return lignes, erreurs, [f for f in fantomes if any(f"'{f}'" in l for l in lignes)]
+        for ref_old, ref_new in couples:
+            ok, message = self.db_manager.add_supersession(ref_old, ref_new)
+            if ok:
+                lignes.append(f"==> '{ref_old}' → '{ref_new}'")
+                # Une réf. inconnue est créée en fantôme, donc anonyme : elle hérite
+                # du libellé, comme à l'import (sans écraser deux libellés existants)
+                self.db_manager.propagate_description(ref_old, ref_new)
+            else:
+                erreurs.append(f"{ref_old} → {ref_new} : {message}")
+        return lignes, erreurs, [f for f in fantomes if any(f"'{f}'" in l for l in lignes)]
+
+    def _apres_relation(self, genre: str, lignes: list, fantomes: list):
+        """Historique, rafraîchissement et rechargement — une fois par lot de réfs."""
+        if not lignes:
+            return
+        titre = "Équivalence :\n" if genre == self.EQUIVALENTES else "Succession :\n"
+        self._notify_history(titre + "\n".join(lignes))
+        if fantomes:
+            self._recharger_completion()
+        self._refresh_succession_panel(self._current_ref_piece)
+        self._refresh_equivalence_panel(self._current_ref_piece)
+        # add_supersession / add_equivalence peuvent créer des fantômes et changer
+        # les statuts : le cache all_statuses est périmé
+        self._load_pieces_data()
+
+    def _remplacantes_existantes(self, ref_new: str) -> List[Tuple[str, str]]:
+        """(pièce, remplaçante actuelle) des pièces sélectionnées déjà remplacées
+        par une autre réf. que `ref_new`."""
+        existantes = []
+        for piece in self._get_selected_refs():
+            actuelle = self.db_manager.get_piece_status(piece).get('ref_new')
+            if actuelle and actuelle != ref_new:
+                existantes.append((piece, actuelle))
+        return existantes
+
+    def _appliquer_relation(self, genre: str, refs: list, sur_fin=None):
+        """Écrit puis rend compte : `sur_fin(lignes, erreurs, fantomes)` (saisie
+        directe : ligne d'état), sinon boîte d'erreurs (fenêtre de sélection).
+        « Remplacée par » sur une pièce qui a déjà une remplaçante : confirmation."""
+        def _ecrire():
+            lignes, erreurs, fantomes = self._ecrire_relation(genre, refs)
+            self._apres_relation(genre, lignes, fantomes)
+            if sur_fin is not None:
+                sur_fin(lignes, erreurs, fantomes)
+            elif erreurs:
+                titre = "Erreurs d'équivalence" if genre == self.EQUIVALENTES else "Erreurs de succession"
+                QMessageBox.warning(self, titre, "\n".join(erreurs))
+
+        if genre == self.REMPLACEE_PAR and len(refs) == 1:
+            existantes = self._remplacantes_existantes(refs[0])
+            if existantes:
+                detail = "\n".join(f"{p} : {a} → {refs[0]}" for p, a in existantes[:8])
+                demander_oui_non(self, "Changer de remplaçante",
+                                 f"Une pièce n'a qu'une remplaçante. Remplacer :\n{detail}\n ?",
+                                 _ecrire, defaut=None)
+                return
+        _ecrire()
+
+    # ── Saisie directe dans les cartes ──────────────────────────────────────
+
+    def _creer_saisie(self, genre: str, aide: str) -> SaisieRelation:
+        saisie = SaisieRelation(aide)
+        saisie.activer(False, "Sélectionnez une pièce")
+        saisie.refs_saisies.connect(lambda refs, g=genre: self._sur_saisie_relation(g, refs))
+        # Une complétion par champ, toutes sur le même modèle gardé sur la fenêtre
+        # (piège GC du QCompleter : un modèle sans référence Python disparaît)
+        completer = QCompleter(self._modele_completion(), saisie)
+        completer.setCaseSensitivity(Qt.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchContains)
+        saisie.setCompleter(completer)
+        self._saisies_relation[genre] = saisie
+        return saisie
+
+    def _modele_completion(self) -> QStringListModel:
+        """Modèle partagé des réfs de pièces (toutes : pas de limite à 5 000)."""
+        if getattr(self, '_completion_refs', None) is None:
+            self._completion_refs = QStringListModel(self)
+            self._recharger_completion()
+        return self._completion_refs
+
+    def _recharger_completion(self):
+        try:
+            refs = self.db_manager.lister_toutes_refs_pieces()
+        except Exception as exc:
+            app_logger.warning(f"Complétion des réfs de pièces non chargée : {exc}")
+            refs = []
+        self._modele_completion().setStringList(refs)
+
+    def _sur_saisie_relation(self, genre: str, refs: list):
+        saisie = self._saisies_relation[genre]
+        self._appliquer_relation(
+            genre, refs, sur_fin=lambda lignes, erreurs, fantomes:
+            saisie.afficher_bilan(lignes, erreurs, fantomes))
+
+    def _maj_saisies_relation(self, n: int):
+        """Activer / décrire les saisies selon la sélection (0, 1 ou N pièces)."""
+        if not hasattr(self, '_saisies_relation'):
+            return
+        # Le bilan d'une saisie survit au rechargement qui la suit (même
+        # sélection) ; il s'efface quand on change de pièce
+        selection = (tuple(self._get_selected_refs()) if n else (), self._current_ref_piece)
+        if selection != getattr(self, '_selection_saisies', None):
+            self._selection_saisies = selection
+            for saisie in self._saisies_relation.values():
+                saisie.effacer_etat()
+        if n == 0:
+            for saisie in self._saisies_relation.values():
+                saisie.activer(False, "Sélectionnez une pièce")
+            return
+        courante = self._current_ref_piece or ''
+        self.saisie_equiv.activer(bool(courante))
+        self.saisie_equiv.definir_aide(
+            "Réf. équivalente…" if n == 1 else f"Réf. équivalente à {courante}…")
+        if n == 1:
+            self.saisie_remplace.activer(True)
+            self.saisie_remplace.definir_aide("Ancienne réf. remplacée…")
+            self.saisie_remplacee_par.activer(True)
+            self.saisie_remplacee_par.definir_aide("Réf. qui la remplace…")
+        else:
+            self.saisie_remplace.activer(
+                False, "Une réf. n'a qu'une remplaçante : sélectionnez une seule pièce")
+            self.saisie_remplace.definir_aide(
+                "Une seule pièce", "Une réf. n'a qu'une remplaçante : sélectionnez une seule pièce")
+            self.saisie_remplacee_par.activer(True)
+            self.saisie_remplacee_par.definir_aide(f"Réf. qui remplace les {n} pièces…")
+
+    def _ouvrir_selecteur_relation(self, genre: str):
+        """Bouton + d'une carte : fenêtre de sélection avec panier."""
+        refs = self._get_selected_refs()
+        if not refs and genre != self.EQUIVALENTES:
+            return
+        cible = f"{refs[0]}" if len(refs) == 1 else f"{len(refs)} pièces"
+        if genre == self.REMPLACE:
+            if len(refs) != 1:
+                return
+            titre, maxi = f"Ajouter des réf. remplacées par {cible}", None
+        elif genre == self.REMPLACEE_PAR:
+            titre, maxi = f"Choisir la réf. qui remplace {cible}", 1
+        else:
+            cible = self._current_ref_piece
+            if not cible:
+                return
+            titre, maxi = f"Ajouter des réf. équivalentes à {cible}", None
+        saisie = self._saisies_relation.get(genre) if hasattr(self, '_saisies_relation') else None
+        exclure = cible if genre == self.EQUIVALENTES else (refs[0] if len(refs) == 1 else None)
+        dlg = PiecePickerDialog(
+            self.db_manager, self,
+            exclude_ref=exclure,
+            title=titre, multi_select=maxi is None, max_refs=maxi,
+            recherche_initiale=saisie.texte_en_cours() if saisie is not None else '')
+
+        def _sur_accepte():
+            choisies = dlg.selected_refs()
+            if choisies:
+                if saisie is not None:
+                    saisie.vider()
+                self._appliquer_relation(genre, choisies)
+
+        ouvrir_modal(dlg, sur_accepte=_sur_accepte)  # jamais exec_ (gel macOS)
+
     def _on_mark_superseded(self):
         """Déclarer que les pièces sélectionnées sont remplacées par une autre."""
-        refs = self._get_selected_refs()
-        if not refs:
-            return
-
-        label = f"'{refs[0]}'" if len(refs) == 1 else f"{len(refs)} pièces sélectionnées"
-        exclude = refs[0] if len(refs) == 1 else None
-        dlg = PiecePickerDialog(
-            self.db_manager, self,
-            exclude_ref=exclude,
-            title=f"Référence qui remplace {label}"
-        )
-
-        def _sur_accepte():
-            ref_new = dlg.selected_ref()
-            if not ref_new:
-                return
-
-            errors = []
-            details_lines = []
-            for ref_old in refs:
-                success, error = self.db_manager.add_supersession(ref_old, ref_new)
-                if success:
-                    details_lines.append(f"==> '{ref_old}' → '{ref_new}'")
-                    # Le picker autorise la saisie d'une réf inexistante, créée en
-                    # fantôme donc anonyme : lui faire hériter du libellé, comme à
-                    # l'import. Sans écrasement si les deux sont déjà nommées.
-                    self.db_manager.propagate_description(ref_old, ref_new)
-                else:
-                    errors.append(f"{ref_old} : {error}")
-
-            if details_lines:
-                self._notify_history("Succession :\n" + "\n".join(details_lines))
-                self._refresh_succession_panel(self._current_ref_piece)
-                # Recharger depuis la DB : add_supersession peut créer des refs
-                # fantômes et modifier les statuts — le cache all_statuses est périmé
-                self._load_pieces_data()
-            if errors:
-                QMessageBox.warning(self, "Erreurs de succession", "\n".join(errors))
-
-        ouvrir_modal(dlg, sur_accepte=_sur_accepte)  # jamais exec_ (gel macOS)
+        self._ouvrir_selecteur_relation(self.REMPLACEE_PAR)
 
     def _on_mark_replaces(self):
-        """Déclarer qu'une autre référence est remplacée par la pièce courante (ou les pièces sélectionnées)."""
-        refs = self._get_selected_refs()
-        if not refs:
-            return
-
-        label = f"'{refs[0]}'" if len(refs) == 1 else f"{len(refs)} pièces sélectionnées"
-        dlg = PiecePickerDialog(
-            self.db_manager, self,
-            exclude_ref=refs[0] if len(refs) == 1 else None,
-            title=f"Référence(s) remplacée(s) par {label}",
-            multi_select=True
-        )
-
-        def _sur_accepte():
-            refs_old = dlg.selected_refs()
-            if not refs_old:
-                return
-
-            errors = []
-            details_lines = []
-            for ref_old in refs_old:
-                for ref_new in refs:
-                    success, error = self.db_manager.add_supersession(ref_old, ref_new)
-                    if success:
-                        details_lines.append(f"==> '{ref_old}' → '{ref_new}'")
-                        self.db_manager.propagate_description(ref_old, ref_new)
-                    else:
-                        errors.append(f"{ref_old} → {ref_new} : {error}")
-
-            if details_lines:
-                self._notify_history("Succession :\n" + "\n".join(details_lines))
-                self._refresh_succession_panel(self._current_ref_piece)
-                self._load_pieces_data()
-            if errors:
-                QMessageBox.warning(self, "Erreurs de succession", "\n".join(errors))
-
-        ouvrir_modal(dlg, sur_accepte=_sur_accepte)  # jamais exec_ (gel macOS)
+        """Déclarer que d'autres réfs sont remplacées par la pièce sélectionnée."""
+        self._ouvrir_selecteur_relation(self.REMPLACE)
 
     def _show_relations_popup(self):
         """Afficher la popup de synthèse des relations pour la pièce courante."""
@@ -2011,12 +2186,15 @@ class PiecesManagerWindow(QDialog):
             "Aucune équivalence" if has_selection and ref_piece is not None and n == 1 else "")
 
         # ── Aucune sélection ──────────────────────────────────────────────
+        self.btn_lier_associees.setVisible(n == 2 and self._paire_associable(selected))
+        self._maj_saisies_relation(n if ref_piece is not None else 0)
         if not has_selection or ref_piece is None:
             self.equiv_status_label.setText("Sélectionnez une pièce pour voir ses équivalences.")
             self.equiv_status_label.setStyleSheet(StyleManager.TEXTE_GRIS_MOYEN)
             self.equiv_status_label.setVisible(True)
             self.equiv_tag_list.set_refs([])
             self.btn_unlink_equiv.setVisible(False)
+            self.ligne_associee.masquer()
             return
 
         # ── Multi-sélection ────────────────────────────────────────────────
@@ -2025,10 +2203,15 @@ class PiecesManagerWindow(QDialog):
             self.equiv_tag_list.set_refs([])
             self.btn_unlink_equiv.setVisible(True)
             self.btn_unlink_equiv.setEnabled(True)
+            self.ligne_associee.masquer()
             return
 
         # ── Sélection unique : chips ──────────────────────────────────────
-        equivs = self.db_manager.get_equivalents(ref_piece)
+        jumelle = self._afficher_reference_associee(ref_piece)
+        # La jumelle (ou la réf. proposée) est en tête : pas deux fois
+        equivs = [e for e in self.db_manager.get_equivalents(ref_piece) if e != jumelle]
+        if jumelle:
+            self.equiv_tag_list.set_empty_text("Aucune autre équivalence")
         if equivs:
             self.equiv_tag_list.set_refs(equivs, '#8e44ad')
             self.equiv_status_label.setText("")
@@ -2043,42 +2226,153 @@ class PiecesManagerWindow(QDialog):
             self.equiv_status_label.setVisible(False)
             self.btn_unlink_equiv.setVisible(False)
 
-    def _on_link_equiv(self):
-        """Lier la pièce courante à une référence équivalente (via PiecePickerDialog)."""
-        ref_piece = self._current_ref_piece
-        if not ref_piece:
+    # ── Réf. associée (jumelle Whirlpool / Indesit / Beko) ──────────────────
+
+    @staticmethod
+    def _paire_associable(refs) -> bool:
+        """Deux réf. de groupes différents parmi Whirlpool / Indesit / Beko."""
+        origines = [origine_associable(r) for r in refs]
+        return len(origines) == 2 and all(origines) and origines[0] != origines[1]
+
+    def _etat_reference_associee(self, ref_piece: str):
+        """(état, référence, rôle de la pièce) de la ligne « Réf. associée »."""
+        db = self.db_manager
+        origine = origine_associable(ref_piece)
+        connue, associee = db.reference_associee(ref_piece)
+        if connue and associee:
+            return JUMELLE, associee, "principale"
+        principale = db.reference_principale_de(ref_piece)
+        if principale:
+            return JUMELLE, principale, "associée"
+        if connue:
+            return AUCUNE, '', ''
+        # Proposée (ligne 0 du groupe) : d'un autre groupe, et pas déjà la jumelle
+        # d'une autre pièce du groupe
+        if (associee and origine_associable(associee) not in ('', origine)
+                and not db.references_associees_de(associee)):
+            return PROPOSEE, associee, ''
+        return VIDE, '', ''
+
+    def _afficher_reference_associee(self, ref_piece: str) -> str:
+        """Met la ligne à jour ; retourne la référence affichée (ou '')."""
+        origine = origine_associable(ref_piece)
+        if not origine:
+            self.ligne_associee.masquer()
+            return ''
+        etat, reference, role = self._etat_reference_associee(ref_piece)
+        libelle = ''
+        if reference:
+            lignes = self.db_manager.lire_libelle_piece(reference)
+            libelle = (lignes[0][0] or '') if lignes else ''
+        self.ligne_associee.afficher(etat, origine, autres_origines(origine), reference,
+                                     libelle, role, piece=ref_piece)
+        return reference
+
+    @staticmethod
+    def _maintenant() -> str:
+        from datetime import datetime
+        return datetime.now().isoformat(timespec='seconds')
+
+    def _apres_associee(self, message: str):
+        """Historique puis rafraîchissement, comme les autres actions du panneau."""
+        self._notify_history("Réf. associée :\n" + message)
+        self._refresh_equivalence_panel(self._current_ref_piece)
+        self._load_pieces_data()
+
+    def _lier_associee(self, principale: str, associee: str):
+        ok, motif = self.db_manager.lier_reference_associee(principale, associee,
+                                                            self._maintenant())
+        if not ok:
+            QMessageBox.warning(self, "Réf. associée", motif)
             return
+        self._apres_associee(f"==> '{principale}' ⇄ '{associee}'")
+
+    def _on_ajouter_associee(self):
+        ref_piece = self._current_ref_piece
+        origine = origine_associable(ref_piece or '')
+        if not origine:
+            return
+        # Seuls les deux autres groupes sont proposés ; un refus (déjà liée…)
+        # s'affiche sous le choix, la fenêtre reste ouverte
         dlg = PiecePickerDialog(
-            self.db_manager, self,
-            exclude_ref=ref_piece,
-            title=f"Référence(s) équivalente(s) à '{ref_piece}'",
-            multi_select=True
-        )
+            self.db_manager, self, exclude_ref=ref_piece, max_refs=1,
+            title=f"Réf. associée de {ref_piece} ({autres_origines(origine)})",
+            filtre=lambda ref: origine_associable(ref) not in ('', origine),
+            valider=lambda refs: self.db_manager.motif_refus_associee(ref_piece, refs[0]))
 
         def _sur_accepte():
-            refs_b = dlg.selected_refs()
-            if not refs_b:
-                return
-            errors = []
-            details_lines = []
-            for ref_b in refs_b:
-                # add_equivalence renvoie (ok, message) : sans déballage, `success`
-                # valait le tuple — toujours vrai — et les échecs passaient pour des
-                # succès. Le déballage est nécessaire pour ne propager qu'après succès.
-                success, error_msg = self.db_manager.add_equivalence(ref_piece, ref_b)
-                if success:
-                    details_lines.append(f"==> '{ref_piece}' ≡ '{ref_b}'")
-                    self.db_manager.propagate_description(ref_piece, ref_b)
-                else:
-                    errors.append(f"Impossible de créer l'équivalence pour {ref_b} : {error_msg}")
-            if details_lines:
-                self._notify_history("Équivalence :\n" + "\n".join(details_lines))
-                self._refresh_equivalence_panel(ref_piece)
-                self._load_pieces_data()
-            if errors:
-                QMessageBox.warning(self, "Erreur", "\n".join(errors))
+            choisie = (dlg.selected_ref() or '').strip()
+            if choisie:
+                self._lier_associee(ref_piece, choisie)
 
         ouvrir_modal(dlg, sur_accepte=_sur_accepte)  # jamais exec_ (gel macOS)
+
+    def _on_retirer_associee(self):
+        ref_piece = self._current_ref_piece
+        jumelle = self.ligne_associee.reference
+        if not ref_piece or not jumelle:
+            return
+
+        def _suite():
+            if self.db_manager.retirer_reference_associee(ref_piece):
+                self._apres_associee(f"==> '{ref_piece}' ⇄ '{jumelle}' → (retirée)")
+
+        demander_oui_non(self, "Retirer la réf. associée",
+                         f"{jumelle} ne sera plus la réf. associée de {ref_piece}.\n"
+                         f"Les deux pièces restent équivalentes.", _suite, defaut=None)
+
+    def _on_inverser_associee(self):
+        ref_piece = self._current_ref_piece
+        if ref_piece and self.db_manager.inverser_reference_associee(ref_piece,
+                                                                     self._maintenant()):
+            principale = self.db_manager.reference_principale_de(ref_piece)
+            nouvelle = principale if principale else ref_piece
+            self._apres_associee(f"==> '{nouvelle}' devient la référence principale")
+
+    def _on_confirmer_associee(self):
+        ref_piece, proposee = self._current_ref_piece, self.ligne_associee.reference
+        if ref_piece and proposee:
+            self._lier_associee(ref_piece, proposee)
+
+    def _on_refuser_associee(self):
+        ref_piece, proposee = self._current_ref_piece, self.ligne_associee.reference
+        if not ref_piece or not proposee:
+            return
+
+        def _suite():
+            self.db_manager.refuser_reference_proposee(proposee)
+            self._apres_associee(f"==> '{proposee}' n'est pas la réf. associée de "
+                                 f"'{ref_piece}' (reste équivalente)")
+
+        demander_oui_non(self, "Réf. associée proposée",
+                         f"{proposee} n'est pas la réf. associée de {ref_piece} ?\n"
+                         f"Elle reste équivalente, mais ne sera plus proposée.",
+                         _suite, defaut=None)
+
+    def _on_marquer_aucune_associee(self):
+        ref_piece = self._current_ref_piece
+        if ref_piece:
+            self.db_manager.definir_references_associees([(ref_piece, None)], self._maintenant())
+            self._apres_associee(f"==> '{ref_piece}' → aucune")
+
+    def _on_oublier_aucune_associee(self):
+        ref_piece = self._current_ref_piece
+        if ref_piece:
+            self.db_manager.oublier_reponse_aucune(ref_piece)
+            self._apres_associee(f"==> '{ref_piece}' → (réponse « aucune » oubliée)")
+
+    def _on_lier_associees(self):
+        """Deux pièces sélectionnées : la pièce affichée devient la principale."""
+        refs = self._get_selected_refs()
+        if len(refs) != 2:
+            return
+        principale = self._current_ref_piece if self._current_ref_piece in refs else refs[0]
+        associee = refs[1] if principale == refs[0] else refs[0]
+        self._lier_associee(principale, associee)
+
+    def _on_link_equiv(self):
+        """Lier la pièce affichée à des réfs équivalentes (fenêtre de sélection)."""
+        self._ouvrir_selecteur_relation(self.EQUIVALENTES)
 
     def _on_unlink_equiv(self):
         """Retirer la pièce courante de son groupe d'équivalence (multi-sélection)."""

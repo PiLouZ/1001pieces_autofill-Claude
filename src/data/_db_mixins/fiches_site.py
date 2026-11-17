@@ -287,6 +287,132 @@ class DatabaseFichesSiteMixin:
             n += 1
         return n
 
+    # --- Réf. associée depuis le gestionnaire de pièces ------------------------------
+    def motif_refus_associee(self, principale: str, associee: str) -> str:
+        """Motif du refus de lier `associee` comme réf. associée de `principale`
+        ('' = possible) : l'une n'existe pas, n'est pas Whirlpool / Indesit / Beko,
+        les deux sont du même groupe ou l'une a déjà une autre jumelle. Sans écrire."""
+        from src.utils.rapprochement_fiche.associee import autres_origines, origine_associable
+        principale, associee = (principale or '').strip(), (associee or '').strip()
+        if not principale or not associee or principale == associee:
+            return "Choisissez deux références différentes."
+        for ref in (principale, associee):
+            if not self.lire_piece_exacte(ref):
+                return f"{ref} n'existe pas dans les pièces. Créez-la d'abord (Nouvelle pièce)."
+        origine_p, origine_a = origine_associable(principale), origine_associable(associee)
+        for ref, origine in ((principale, origine_p), (associee, origine_a)):
+            if not origine:
+                return (f"{ref} n'est ni Whirlpool, ni Indesit, ni Beko : "
+                        f"elle ne peut pas avoir de réf. associée.")
+        if origine_p == origine_a:
+            return (f"Deux réf. {origine_p} ne peuvent pas être jumelles : la réf. "
+                    f"associée doit être {autres_origines(origine_p)}.")
+        for ref in (principale, associee):
+            jumelles = self.references_associees_de(ref) - {principale, associee}
+            if jumelles:
+                return f"{ref} est déjà liée à {sorted(jumelles)[0]}. Retirez d'abord ce lien."
+        return ''
+
+    def lier_reference_associee(self, principale: str, associee: str,
+                                le: str) -> Tuple[bool, str]:
+        """Lien posé à la main (gestionnaire de pièces) : mêmes effets que la réponse
+        de l'import (équivalence, ligne 0 sauf ancienne réf.). Refusé, avec le motif
+        (`motif_refus_associee`). Une réponse « aucune » de l'une ou l'autre est
+        remplacée : le lien explicite l'emporte."""
+        from src.utils.rapprochement_fiche.associee import origine_associable
+        motif = self.motif_refus_associee(principale, associee)
+        if motif:
+            return False, motif
+        principale, associee = principale.strip(), associee.strip()
+        if principale in self.references_associees_de(associee):
+            return True, ""                          # déjà jumelles : rien à faire
+        with self._query_lock:
+            self.cursor.execute(
+                "DELETE FROM references_associees WHERE ref_piece IN (?, ?) AND associee IS NULL",
+                [principale, associee])
+            self.conn.commit()
+        self.definir_references_associees([(principale, associee)], le,
+                                          {associee: origine_associable(associee)})
+        return True, ""
+
+    def retirer_reference_associee(self, ref: str) -> Optional[str]:
+        """Défait la paire dont `ref` fait partie (dans un sens ou dans l'autre).
+        L'équivalence est gardée : seul le rôle de jumelle disparaît, et avec lui
+        la marque « ligne 0 » de l'associée (sinon elle serait reproposée aussitôt).
+        Retourne la jumelle retirée, ou None."""
+        if not ref:
+            return None
+        with self._query_lock:
+            row = self.cursor.execute(
+                "SELECT ref_piece, associee FROM references_associees "
+                "WHERE associee IS NOT NULL AND (ref_piece = ? OR associee = ?) LIMIT 1",
+                [ref, ref]).fetchone()
+            if row is None:
+                return None
+            principale, associee = row
+            self.cursor.execute(
+                "DELETE FROM references_associees WHERE ref_piece = ? AND associee = ?",
+                [principale, associee])
+            self.cursor.execute(
+                "UPDATE piece_equivalence_groups SET ligne_fiche = NULL "
+                "WHERE ref_piece = ? AND ligne_fiche = 0", [associee])
+            self.conn.commit()
+        return associee if principale == ref else principale
+
+    def refuser_reference_proposee(self, proposee: str) -> None:
+        """La réf. proposée (équivalente de ligne 0) n'est pas la jumelle : elle reste
+        équivalente mais perd la marque « ligne 0 », et n'est plus proposée."""
+        if not proposee:
+            return
+        with self._query_lock:
+            self.cursor.execute(
+                "UPDATE piece_equivalence_groups SET ligne_fiche = NULL "
+                "WHERE ref_piece = ? AND ligne_fiche = 0", [proposee])
+            self.conn.commit()
+
+    def inverser_reference_associee(self, ref: str, le: str) -> bool:
+        """La principale devient l'associée et inversement ; la marque « ligne 0 »
+        suit l'associée (une paire qui ne l'avait pas ne la prend pas)."""
+        with self._query_lock:
+            row = self.cursor.execute(
+                "SELECT ref_piece, associee FROM references_associees "
+                "WHERE associee IS NOT NULL AND (ref_piece = ? OR associee = ?) LIMIT 1",
+                [ref, ref]).fetchone()
+            if row is None:
+                return False
+            principale, associee = row
+            ligne_0 = self.cursor.execute(
+                "SELECT 1 FROM piece_equivalence_groups WHERE ref_piece = ? AND ligne_fiche = 0",
+                [associee]).fetchone() is not None
+            self.cursor.execute(
+                "DELETE FROM references_associees WHERE ref_piece IN (?, ?)", [principale, associee])
+            self.cursor.execute(
+                "INSERT INTO references_associees (ref_piece, associee, decide_le) VALUES (?, ?, ?)",
+                [associee, principale, le])
+            if ligne_0:
+                self.cursor.execute(
+                    "UPDATE piece_equivalence_groups SET ligne_fiche = NULL WHERE ref_piece = ?",
+                    [associee])
+                self.cursor.execute(
+                    "UPDATE piece_equivalence_groups SET ligne_fiche = 0 WHERE ref_piece = ?",
+                    [principale])
+            self.conn.commit()
+        return True
+
+    def oublier_reponse_aucune(self, ref: str) -> None:
+        """Efface la réponse « aucune » : l'import redemandera la réf. associée."""
+        with self._query_lock:
+            self.cursor.execute(
+                "DELETE FROM references_associees WHERE ref_piece = ? AND associee IS NULL", [ref])
+            self.conn.commit()
+
+    def _oublier_paires_de(self, ref_piece: str) -> None:
+        """Pièce retirée de son groupe d'équivalence : ses paires de jumelles ne
+        tiennent plus (la réponse « aucune » reste). Sans commit."""
+        self.cursor.execute(
+            "DELETE FROM references_associees WHERE associee IS NOT NULL "
+            "AND (ref_piece = ? OR associee = ?)", [ref_piece, ref_piece])
+
     # --- Fiches à refaire depuis les PDF (§ 10.14) ---------------------------------
     def _noter_fiche_a_refaire(self, ref_piece: str, id_product: Optional[int], a_refaire,
                                le: str):
