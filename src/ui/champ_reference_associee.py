@@ -52,8 +52,11 @@ class ChampReferenceAssociee(QWidget):
         self.libelle.setStyleSheet(StyleManager.LIBELLE_PETIT_TRANSPARENT if petit
                                    else StyleManager.TEXTE_GRAS_TRANSPARENT)
         disposition.addWidget(self.libelle)
-        self.champ = RefChipsInput("Réf. jumelle", max_refs=1)
-        self.champ.setFixedWidth(largeur)
+        # Dépôt d'une réf glissée (tuile « Non groupées », pastille d'un autre champ)
+        self.champ = RefChipsInput("Réf. jumelle", max_refs=1, accepte_depot=True)
+        # Largeur souple : `largeur` au plus, moins si la ligne manque de place
+        # (sinon la carte déborde de sa colonne et se fait couper à droite)
+        self.champ.setMaximumWidth(largeur)
         self.champ.changed.connect(self._maj_bouton)
         disposition.addWidget(self.champ)
         # Juste après la référence de la pièce : le champ ne prend que sa place

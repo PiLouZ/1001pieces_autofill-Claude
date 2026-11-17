@@ -92,31 +92,86 @@ class DatabaseSupersessionMixin:
             self.conn.commit()
         except Exception as e:
             app_logger.error(f"Erreur création table piece_equivalence_groups: {e}")
+            return
+        self._reparer_groupes_scindes()
+
+    def _reparer_groupes_scindes(self):
+        """Une référence ne doit être que dans un groupe d'équivalence. Avant le
+        2026-11-17, la propagation des anciennes versions pouvait en ranger une
+        dans un 2ᵉ groupe (ex. C00962305, déjà ≡ sa jumelle 264440194, ajoutée au
+        groupe de sa remplaçante C00871425) : la jumelle manquait à la Fiche
+        complète. Les groupes qui partagent une référence sont fusionnés.
+        Sans effet si rien n'est scindé."""
+        try:
+            with self._query_lock:
+                fusions = 0
+                while True:
+                    row = self.cursor.execute(
+                        "SELECT MIN(group_id), MAX(group_id) FROM piece_equivalence_groups "
+                        "GROUP BY ref_piece HAVING COUNT(DISTINCT group_id) > 1 LIMIT 1"
+                    ).fetchone()
+                    if not row:
+                        break
+                    self._fusionner_groupes(row[0], row[1])
+                    fusions += 1
+                if fusions:
+                    self.conn.commit()
+                    app_logger.info(f"Réparation : {fusions} groupe(s) d'équivalence scindé(s) "
+                                    f"fusionné(s)")
+        except Exception as e:
+            app_logger.error(f"Réparation des groupes d'équivalence scindés impossible : {e}")
+
+    def _fusionner_groupes(self, gid_garde: int, gid_absorbe: int):
+        """Membres de `gid_absorbe` versés dans `gid_garde` ; une référence déjà
+        dans les deux garde sa ligne de `gid_garde` (origine, ligne de la fiche).
+        Sous _query_lock, sans commit."""
+        if gid_garde == gid_absorbe:
+            return
+        self.cursor.execute(
+            "UPDATE OR IGNORE piece_equivalence_groups SET group_id = ? WHERE group_id = ?",
+            [gid_garde, gid_absorbe])
+        self.cursor.execute(
+            "DELETE FROM piece_equivalence_groups WHERE group_id = ?", [gid_absorbe])
+
+    def _rattacher_au_groupe(self, group_id: int, ref: str):
+        """Faire entrer `ref` dans le groupe : si elle est déjà dans un autre
+        groupe, ce groupe est fusionné (jamais une référence dans deux groupes).
+        Sous _query_lock, sans commit."""
+        self.cursor.execute(
+            "INSERT OR IGNORE INTO pieces(ref_piece, is_phantom) VALUES (?, 1)", [ref])
+        autres = [r[0] for r in self.cursor.execute(
+            "SELECT DISTINCT group_id FROM piece_equivalence_groups "
+            "WHERE ref_piece = ? AND group_id != ?", [ref, group_id]).fetchall()]
+        for gid in autres:
+            self._fusionner_groupes(group_id, gid)
+        self.cursor.execute(
+            "INSERT OR IGNORE INTO piece_equivalence_groups(group_id, ref_piece) VALUES (?, ?)",
+            [group_id, ref])
 
     def _propagate_predecessors_to_group(self, group_id: int):
         """
         Ajouter dans le groupe tous les prédécesseurs (via chaîne de supersession)
         de ses membres actuels, afin de garantir la transitivité supersession→équivalence.
 
-        Ex : si A ≡ B et C → A, alors C est ajouté au groupe {A, B}.
+        Ex : si A ≡ B et C → A, alors C est ajouté au groupe {A, B}. Si C a déjà
+        son propre groupe (C ≡ sa jumelle D), ce groupe est fusionné : D suit C,
+        au lieu de C rangée dans deux groupes et D perdue pour {A, B}. Les membres
+        venus de la fusion ont à leur tour leurs anciennes versions propagées.
         Doit être appelé sous _query_lock (utilise self.cursor directement).
         """
-        members = {r[0] for r in self.cursor.execute(
-            "SELECT ref_piece FROM piece_equivalence_groups WHERE group_id = ?", [group_id]
-        ).fetchall()}
-        to_add = set()
-        for member in members:
-            for pred in self.get_all_predecessors(member):
-                if pred not in members:
-                    to_add.add(pred)
-        for pred in to_add:
-            self.cursor.execute(
-                "INSERT OR IGNORE INTO pieces(ref_piece, is_phantom) VALUES (?, 1)", [pred]
-            )
-            self.cursor.execute(
-                "INSERT OR IGNORE INTO piece_equivalence_groups(group_id, ref_piece) VALUES (?, ?)",
-                [group_id, pred]
-            )
+        while True:
+            members = {r[0] for r in self.cursor.execute(
+                "SELECT ref_piece FROM piece_equivalence_groups WHERE group_id = ?", [group_id]
+            ).fetchall()}
+            to_add = set()
+            for member in members:
+                for pred in self.get_all_predecessors(member):
+                    if pred not in members:
+                        to_add.add(pred)
+            if not to_add:
+                return
+            for pred in sorted(to_add):
+                self._rattacher_au_groupe(group_id, pred)
 
     def add_equivalence(self, ref_a: str, ref_b: str) -> tuple:
         """
@@ -161,9 +216,7 @@ class DatabaseSupersessionMixin:
                     )
                 elif gid_a != gid_b:
                     # Fusion : déplacer tous les membres du groupe B vers le groupe A
-                    self.cursor.execute(
-                        "UPDATE piece_equivalence_groups SET group_id = ? WHERE group_id = ?", [gid_a, gid_b]
-                    )
+                    self._fusionner_groupes(gid_a, gid_b)
                 # else: déjà dans le même groupe
 
                 # Propager les prédécesseurs (transitivité supersession → équivalence)
@@ -728,13 +781,8 @@ class DatabaseSupersessionMixin:
                     "SELECT group_id FROM piece_equivalence_groups WHERE ref_piece = ?", [ref_new]
                 ).fetchone()
                 if gid_row:
-                    self.cursor.execute(
-                        "INSERT OR IGNORE INTO pieces(ref_piece, is_phantom) VALUES (?, 1)", [ref_old]
-                    )
-                    self.cursor.execute(
-                        "INSERT OR IGNORE INTO piece_equivalence_groups(group_id, ref_piece) VALUES (?, ?)",
-                        [gid_row[0], ref_old]
-                    )
+                    # (son propre groupe, s'il en a un, est fusionné : sa jumelle suit)
+                    self._rattacher_au_groupe(gid_row[0], ref_old)
                     self._propagate_predecessors_to_group(gid_row[0])
                 self.conn.commit()
             return True, ""

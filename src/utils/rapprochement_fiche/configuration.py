@@ -49,7 +49,8 @@ CONFIGURATION_PAR_DEFAUT: Dict[str, Any] = {
         {'motif': r'14\d{10}', 'origine': 'Electrolux'},
         {'motif': r'(?:61|71|74|95)\d{7}', 'origine': 'Liebherr'},
         {'motif': r'(?:69|75|81)\d{7}', 'origine': 'Smeg'},
-        {'motif': r'(?:16|26)\d{7}', 'origine': '', 'doute': 'Beko ?'},
+        # 9 chiffres en 16 / 26 : 22 pièces en base, toutes du groupe Beko (2026-11-17)
+        {'motif': r'(?:16|26)\d{7}', 'origine': 'Beko'},
         {'motif': r'\d{7}', 'origine': 'Miele'},
         {'motif': r'0\d{5}', 'origine': 'Atlantic / Thermor'},
         {'motif': r'\d{2}X\d{4}', 'origine': 'Brandt'},
