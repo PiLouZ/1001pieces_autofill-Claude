@@ -288,34 +288,42 @@ class DatabaseFichesSiteMixin:
         return n
 
     # --- Réf. associée depuis le gestionnaire de pièces ------------------------------
-    def lier_reference_associee(self, principale: str, associee: str,
-                                le: str) -> Tuple[bool, str]:
-        """Lien posé à la main (gestionnaire de pièces) : mêmes effets que la réponse
-        de l'import (équivalence, ligne 0 sauf ancienne réf.). Refusé, avec le motif,
-        si l'une des deux n'existe pas, n'est pas Whirlpool / Indesit / Beko, si les
-        deux sont du même groupe ou si l'une a déjà une autre jumelle. Une réponse
-        « aucune » de l'une ou l'autre est remplacée : le lien explicite l'emporte."""
+    def motif_refus_associee(self, principale: str, associee: str) -> str:
+        """Motif du refus de lier `associee` comme réf. associée de `principale`
+        ('' = possible) : l'une n'existe pas, n'est pas Whirlpool / Indesit / Beko,
+        les deux sont du même groupe ou l'une a déjà une autre jumelle. Sans écrire."""
         from src.utils.rapprochement_fiche.associee import autres_origines, origine_associable
         principale, associee = (principale or '').strip(), (associee or '').strip()
         if not principale or not associee or principale == associee:
-            return False, "Choisissez deux références différentes."
+            return "Choisissez deux références différentes."
         for ref in (principale, associee):
             if not self.lire_piece_exacte(ref):
-                return False, (f"{ref} n'existe pas dans les pièces. "
-                               f"Créez-la d'abord (Nouvelle pièce).")
+                return f"{ref} n'existe pas dans les pièces. Créez-la d'abord (Nouvelle pièce)."
         origine_p, origine_a = origine_associable(principale), origine_associable(associee)
         for ref, origine in ((principale, origine_p), (associee, origine_a)):
             if not origine:
-                return False, (f"{ref} n'est ni Whirlpool, ni Indesit, ni Beko : "
-                               f"elle ne peut pas avoir de réf. associée.")
+                return (f"{ref} n'est ni Whirlpool, ni Indesit, ni Beko : "
+                        f"elle ne peut pas avoir de réf. associée.")
         if origine_p == origine_a:
-            return False, (f"Deux réf. {origine_p} ne peuvent pas être jumelles : la réf. "
-                           f"associée doit être {autres_origines(origine_p)}.")
+            return (f"Deux réf. {origine_p} ne peuvent pas être jumelles : la réf. "
+                    f"associée doit être {autres_origines(origine_p)}.")
         for ref in (principale, associee):
             jumelles = self.references_associees_de(ref) - {principale, associee}
             if jumelles:
-                return False, (f"{ref} est déjà liée à {sorted(jumelles)[0]}. "
-                               f"Retirez d'abord ce lien.")
+                return f"{ref} est déjà liée à {sorted(jumelles)[0]}. Retirez d'abord ce lien."
+        return ''
+
+    def lier_reference_associee(self, principale: str, associee: str,
+                                le: str) -> Tuple[bool, str]:
+        """Lien posé à la main (gestionnaire de pièces) : mêmes effets que la réponse
+        de l'import (équivalence, ligne 0 sauf ancienne réf.). Refusé, avec le motif
+        (`motif_refus_associee`). Une réponse « aucune » de l'une ou l'autre est
+        remplacée : le lien explicite l'emporte."""
+        from src.utils.rapprochement_fiche.associee import origine_associable
+        motif = self.motif_refus_associee(principale, associee)
+        if motif:
+            return False, motif
+        principale, associee = principale.strip(), associee.strip()
         if principale in self.references_associees_de(associee):
             return True, ""                          # déjà jumelles : rien à faire
         with self._query_lock:
@@ -323,7 +331,8 @@ class DatabaseFichesSiteMixin:
                 "DELETE FROM references_associees WHERE ref_piece IN (?, ?) AND associee IS NULL",
                 [principale, associee])
             self.conn.commit()
-        self.definir_references_associees([(principale, associee)], le, {associee: origine_a})
+        self.definir_references_associees([(principale, associee)], le,
+                                          {associee: origine_associable(associee)})
         return True, ""
 
     def retirer_reference_associee(self, ref: str) -> Optional[str]:

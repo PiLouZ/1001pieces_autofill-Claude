@@ -461,6 +461,12 @@ class StyleManager:
     REF_ASSOCIEE_ROLE = 'color: #6c757d; font-size: 11px; background: transparent; border: none;'
     REF_ASSOCIEE_PIECE = ('color: #868e96; font-weight: bold; font-size: 11px; font-family: monospace;'
                           ' background: transparent; border: none;')
+    # Saisie directe d'une relation dans une carte (src/ui/saisie_relation.py)
+    SAISIE_RELATION = ('QLineEdit { background: white; border: 1px solid #ced4da; border-radius: 4px;'
+                       ' padding: 2px 6px; font-size: 11px; }'
+                       ' QLineEdit:focus { border-color: #80bdff; }'
+                       ' QLineEdit:disabled { background: #f1f3f5; color: #adb5bd; }')
+    SAISIE_RELATION_BILAN = 'color: #2e7d32; font-size: 11px; padding: 1px 0;'
     REF_ASSOCIEE_TRAIT = 'border: none; border-top: 1px dashed #d7c4e0; margin-top: 2px;'
 
     @staticmethod

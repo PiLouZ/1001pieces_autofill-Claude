@@ -36,8 +36,12 @@ class RefSaisieLineEdit(QLineEdit):
     refs_saisies = pyqtSignal(list)
     retour_arriere_vide = pyqtSignal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, valider_en_sortant: bool = True):
         super().__init__(parent)
+        # False : quitter le champ ne valide rien (gestionnaire de pièces, où une
+        # validation écrit aussitôt en base — un clic ailleurs n'écrit pas une
+        # réf. tapée à moitié)
+        self._valider_en_sortant = valider_en_sortant
         self.textChanged.connect(self._sur_texte_change)
 
     def setCompleter(self, completer):
@@ -83,7 +87,7 @@ class RefSaisieLineEdit(QLineEdit):
         # Ne rien laisser en suspens si l'utilisateur quitte le champ sans espace
         # (sauf vers le popup de complétion, qui prend le focus un instant).
         popup = self.completer().popup() if self.completer() is not None else None
-        if popup is None or not popup.isVisible():
+        if self._valider_en_sortant and (popup is None or not popup.isVisible()):
             self.valider_saisie()
         super().focusOutEvent(event)
 

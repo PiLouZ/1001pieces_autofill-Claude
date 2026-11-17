@@ -180,7 +180,14 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
 
 <h3>Dans le gestionnaire de pièces</h3>
 <ul>
-  <li>Sélectionnez une pièce : le panneau de droite affiche ses <b>équivalences</b>, ce qu'elle <b>remplace</b> et ce qui la <b>remplace</b>. Les boutons <b>+</b> ajoutent une relation.</li>
+  <li>Sélectionnez une pièce : le panneau de droite affiche ses <b>équivalences</b>, ce qu'elle <b>remplace</b> et ce qui la <b>remplace</b>.</li>
+  <li><b>Ajouter une relation sans ouvrir de fenêtre</b> : chaque carte a un champ de saisie, comme à l'import. Tapez une référence (la liste propose celles de la base) puis <b>Espace</b> ou <b>Entrée</b>, ou collez-en plusieurs d'un coup : elles sont enregistrées aussitôt et apparaissent dans la carte. Une ligne verte dit ce qui a été fait (« ✓ 2 ajoutées · X91 créée (fantôme) ») ; une erreur s'affiche en rouge. Une référence inconnue est créée en fantôme ; la croix de sa puce annule. Quitter le champ n'enregistre rien.
+    <ul>
+      <li><b>Remplacée par</b> : une seule référence. Si la pièce a déjà une remplaçante, une confirmation est demandée avant de la changer.</li>
+      <li>Avec <b>plusieurs pièces sélectionnées</b>, « Remplacée par » s'applique à toutes ; « Remplace » est désactivée (une référence n'a qu'une remplaçante) ; « Équivalences » lie la pièce affichée.</li>
+    </ul>
+  </li>
+  <li><b>Le bouton +</b> d'une carte ouvre la fenêtre de sélection, pour chercher par libellé ou parcourir : en haut, les <b>références choisies</b> (une croix retire, on peut aussi y taper ou coller) ; en dessous, <b>Rechercher</b> filtre le tableau par référence ou libellé sans jamais vider le choix. <b>Double-clic</b> ou <b>Entrée</b> sur une ligne l'ajoute (elle reste affichée, « Ajoutée ») ; une référence inconnue est signalée (« sera créée en fantôme »). <b>Ajouter N références</b> (ou <b>⌘Entrée</b>) valide. Le texte déjà tapé dans le champ de la carte sert de recherche.</li>
   <li><b>Réf. associée</b> : pour une pièce Whirlpool, Indesit ou Beko, la ligne <b>Réf. associées</b> en tête de la carte « Équivalences » montre la paire dans l'ordre du code produit : <b>Principale</b> puis <b>Associée</b>, chaque référence avec son rôle ; la pièce affichée est grisée « (cette pièce) ». La jumelle n'est pas répétée dans la liste des équivalences en dessous.
     <ul>
       <li><b>+</b> choisit la référence associée ; <b>Aucune</b> retient que la pièce n'a pas de jumelle (l'import ne la demandera plus, la croix efface cette réponse).</li>
@@ -270,7 +277,8 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
 <h2>Nouveautés depuis la version 3.78</h2>
 <h3>En préparation</h3>
 <ul>
-  <li><b>Réf. associée dans le gestionnaire de pièces</b> : la jumelle Whirlpool / Indesit / Beko d'une pièce se voit, s'ajoute, s'inverse (⇄) et se retire depuis la carte « Équivalences », sans passer par un import ; la paire s'affiche principale d'abord, chaque référence avec son rôle. « Aucune » et la référence proposée par la fiche du site s'y gèrent aussi ; deux pièces sélectionnées se lient d'un clic (<b>Lier comme réf. associées</b>). Retirer une pièce de son groupe d'équivalence défait désormais sa paire, qui n'impose plus son ordre dans la Fiche complète.</li>
+  <li><b>Réf. associée dans le gestionnaire de pièces</b> : la jumelle Whirlpool / Indesit / Beko d'une pièce se voit, s'ajoute, s'inverse (⇄) et se retire depuis la carte « Équivalences », sans passer par un import ; la paire s'affiche principale d'abord, chaque référence avec son rôle. La fenêtre de choix ne liste que les deux autres groupes et affiche un refus sans se fermer. « Aucune » et la référence proposée par la fiche du site s'y gèrent aussi ; deux pièces sélectionnées se lient d'un clic (<b>Lier comme réf. associées</b>). Retirer une pièce de son groupe d'équivalence défait désormais sa paire, qui n'impose plus son ordre dans la Fiche complète.</li>
+  <li><b>Relations saisies directement dans le gestionnaire de pièces</b> : chaque carte (Équivalences, Remplace, Remplacée par) a un champ à cartouches comme à l'import — taper ou coller des références les enregistre aussitôt, avec un bilan sous le champ. La fenêtre du bouton <b>+</b> est refaite : les références choisies restent visibles en haut, la recherche (référence ou libellé) ne les efface plus, double-clic ou Entrée ajoute une ligne, plusieurs références se collent d'un coup. Correctif : « Remplace » avec plusieurs pièces sélectionnées faisait remplacer chaque référence par la dernière pièce seulement ; elle est maintenant réservée à une pièce. La complétion connaît toutes les références (elle s'arrêtait à 5 000).</li>
 </ul>
 <h3>Versions livrées</h3>
 <ul>
