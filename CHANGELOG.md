@@ -4,6 +4,40 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.104.0] - 2026-11-17 (PR #156, #157)
+
+Gestionnaire de pièces : réf. associée gérable sans import, relations saisies avec les
+cartouches de l'import, glisser entre cartes, filtre « Jumelle à renseigner ».
+
+### Réf. associée et relations à cartouches (PR #156)
+- Ligne « Réf. associées » en tête de la carte ≡ Équivalences : la paire Principale /
+  Associée (pièce affichée grisée « (cette pièce) »), ⇄ inverse, ✕ retire (l'équivalence
+  reste), « Aucune », réf. proposée par la fiche du site à confirmer ou refuser ;
+  « Lier comme réf. associées » pour deux pièces sélectionnées. Base :
+  `lier_reference_associee` (refus motivés, `motif_refus_associee`), `retirer_…`,
+  `inverser_…` (la ligne 0 suit l'associée), `refuser_reference_proposee`,
+  `oublier_reponse_aucune`.
+- Saisie directe dans chaque carte (`saisie_relation.py`) : Espace / Entrée / collage
+  écrit aussitôt, bilan sous le champ, quitter le champ n'écrit rien ; « Remplacée par »
+  confirme avant de changer une remplaçante.
+- Fenêtre de sélection refaite (`PiecePickerDialog`) : panier `RefChipsInput`, recherche
+  séparée par réf. ou libellé qui ne vide jamais le panier, double-clic / Entrée ajoute,
+  réfs inconnues signalées, refus affiché sans fermer.
+- Correctifs : retirer une pièce de son groupe défait sa paire (paire orpheline dans la
+  Fiche complète) ; renommage et suppression suivent l'associée ; « Remplace » avec
+  plusieurs pièces faisait remplacer chaque réf. par la dernière (réservée à une pièce) ;
+  complétion limitée à 5 000 réfs (`lister_toutes_refs_pieces`).
+
+### Glisser entre cartes, raccourcis, filtre « Jumelle à renseigner » (PR #157)
+- Glisser une réf. d'une carte vers une autre l'y ajoute (copie, carte survolée en
+  pointillés) ; le clic-recherche part au relâchement.
+- Raccourcis ⌘1 / ⌘2 / ⌘3 (saisies des cartes), ⌘F (recherche), Échap (efface la saisie).
+- Filtre « Jumelle à renseigner » : Whirlpool / Indesit / Beko hors fantômes, sans paire
+  ni « aucune » (`refs_avec_reponse_associee`).
+- « Retirer du groupe » en multi-sélection retire toutes les pièces sélectionnées.
+- Plantage à l'ouverture du gestionnaire (exception dans `eventFilter` avec le style
+  global) corrigé avant livraison ; test d'ouverture avec `get_modern_style()`.
+
 ## [3.103.0] - 2026-11-16 (PR #152, #153, #154)
 
 Fiches du site : paires de réf. associées lues sur « Remplace » et « Équivalentes »,
