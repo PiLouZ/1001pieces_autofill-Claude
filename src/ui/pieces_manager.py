@@ -971,10 +971,20 @@ class PiecesManagerWindow(QDialog):
     def eventFilter(self, obj, event):
         """Gérer le survol entre le tableau et le widget d'actions flottant, et le
         dépôt d'une réf. glissée sur une carte de relations."""
+        # Une exception ici fait avorter PyQt (plantage sans trace) : les cartes
+        # reçoivent des événements (style global, polish) dès l'installation du
+        # filtre, avant que le reste de la fenêtre existe — elles ne vont donc
+        # jamais plus loin que leur propre traitement.
         if obj in getattr(self, '_cartes_depot', {}):
-            traite = self._depot_carte(obj, event)
-            if traite is not None:
-                return traite
+            try:
+                traite = self._depot_carte(obj, event)
+            except Exception as exc:
+                app_logger.error(f"Glisser-déposer sur une carte : {exc}")
+                traite = None
+            return traite if traite is not None else super().eventFilter(obj, event)
+        flottant = getattr(self, '_floating_actions', None)
+        if flottant is None:
+            return super().eventFilter(obj, event)
         if obj is self.pieces_table.viewport() and event.type() == QEvent.Leave:
             # Cacher le widget flottant seulement si le curseur ne se trouve pas dessus
             cursor_pos = self.pieces_table.viewport().mapFromGlobal(QCursor.pos())

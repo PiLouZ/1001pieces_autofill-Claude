@@ -172,3 +172,25 @@ def test_raccourcis_et_echap(fenetre, qapp):
     assert fenetre.saisie_remplace.texte_en_cours() == ''
     fenetre.choisir('NEW1', 'EQ1')
     assert not fenetre.saisie_remplace.prendre_le_curseur()     # désactivée : rien
+
+
+# ── Ouverture avec le style global de l'application ──────────────────────────
+
+def test_ouverture_avec_le_style_global(qapp, db):
+    """Plantage du 2026-11-17 : avec la feuille de style globale (posée par la
+    fenêtre principale), les cartes reçoivent des événements dès que le filtre de
+    glisser-déposer est installé, avant que `_floating_actions` existe ;
+    l'exception dans eventFilter faisait avorter PyQt à l'ouverture."""
+    import src.ui.pieces_manager as pm
+    from src.ui.style_manager import StyleManager
+    ancien = qapp.styleSheet()
+    qapp.setStyleSheet(StyleManager.get_modern_style())
+    try:
+        fen = pm.PiecesManagerWindow(None, db)
+        fen.show()
+        _vider_boucle(qapp)
+        assert fen.isVisible()
+        fen.close()
+        _vider_boucle(qapp)
+    finally:
+        qapp.setStyleSheet(ancien)
