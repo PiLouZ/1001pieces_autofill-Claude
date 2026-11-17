@@ -65,8 +65,7 @@
     },
     {
       "motif": "(?:16|26)\\d{7}",
-      "origine": "",
-      "doute": "Beko ?"
+      "origine": "Beko"
     },
     {
       "motif": "\\d{7}",

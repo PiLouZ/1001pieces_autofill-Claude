@@ -945,10 +945,15 @@ class ImportDialog(QDialog):
                 row1.addWidget(self._champ_associee_carte(file, ref_label=ref_display))
 
             file_label = QLabel(file.filename)
+            file_label.setObjectName(f"nom_fichier_{file.path}")
+            file_label.setToolTip(file.filename)
             file_label.setStyleSheet(
                 "font-weight: bold; font-size: 12px; background: transparent; border: none;"
             )
             file_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            # Le nom de fichier cède la place (il ne fixe pas la largeur de la carte :
+            # sinon toutes les cartes débordent de la colonne et sont coupées à droite)
+            file_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
             row1.addWidget(file_label, 1)
 
             card_layout.addLayout(row1)
@@ -1195,10 +1200,12 @@ class ImportDialog(QDialog):
         for file in self.import_config.files:
             # Trouver le label de référence pour ce fichier
             ref_display = self.findChild(QLabel, f"ref_display_{file.path}")
+            self._maj_nom_fichier_carte(file)
             if ref_display:
                 if auto_references_enabled:
-                    # Affichage normal avec référence
-                    ref_display.setText(f"→ Réf. : {file.suggested_reference}")
+                    # Affichage normal avec référence (celle choisie par « ⇄ » s'il y a lieu)
+                    ref_display.setText(
+                        f"→ Réf. : {self._refs_inversees.get(file.path, file.suggested_reference)}")
                     ref_display.setStyleSheet("color: #0066cc; background-color: #f0f8ff; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-weight: bold;")
                 else:
                     # Affichage grisé indiquant que la référence ne sera pas créée
@@ -1687,8 +1694,23 @@ class ImportDialog(QDialog):
                 ref_label.setToolTip("" if nouvelle == file.suggested_reference else
                                      f"Référence principale choisie par « ⇄ » "
                                      f"(fichier : {file.suggested_reference})")
+                self._maj_nom_fichier_carte(file)
             self._pousser_cartes_relations()
         return inverser
+
+    def _maj_nom_fichier_carte(self, file):
+        """Nom de fichier d'une carte multi-fichiers : masqué quand il répète la
+        référence affichée (il passe alors dans l'infobulle de la référence)."""
+        nom_fichier = self.findChild(QLabel, f"nom_fichier_{file.path}")
+        ref_display = self.findChild(QLabel, f"ref_display_{file.path}")
+        if nom_fichier is None or ref_display is None:
+            return
+        repete = (self.auto_file_references_checkbox.isChecked()
+                  and file.path not in self._refs_inversees
+                  and file.name_without_ext == file.suggested_reference)
+        nom_fichier.setVisible(not repete)
+        if file.path not in self._refs_inversees:
+            ref_display.setToolTip(f"Fichier : {file.filename}" if repete else "")
 
     def _collecter_associees(self, config: ImportConfiguration):
         """Réf. associées répondues, pour la référence que la pièce aura vraiment."""

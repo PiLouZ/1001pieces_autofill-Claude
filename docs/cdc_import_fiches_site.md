@@ -223,6 +223,7 @@ La table est tirée des pièces de la base (marque dominante des appareils liés
 | 11 chiffres commençant par `50`, 12 chiffres commençant par `14` | Electrolux |
 | 9 chiffres commençant par `61`, `71`, `74`, `95` | Liebherr |
 | 9 chiffres commençant par `69`, `75`, `81` | Smeg |
+| 9 chiffres commençant par `16`, `26` | Beko |
 | 7 chiffres | Miele |
 | 6 chiffres commençant par `0` | Atlantic / Thermor |
 | 2 chiffres + `X` + 4 chiffres (`92X6108`, `31X1354`), `AS` + 7 chiffres | Brandt (De Dietrich, Sauter, Fagor) |
@@ -233,7 +234,9 @@ La base compte 407 références Brandt de la forme « 2 chiffres + `X` + 4 chiff
 
 Les débuts Beko ajoutés le 2026-11-13 (`2466300203` était lue Electrolux) sont ceux où la base ne compte que des pièces Beko (129 pièces) ; les débuts mélangés (`140`, `142`, `146`, `192`, `220`, `227`) restent Electrolux.
 
-Cas mélangés, donc des doutes : 10 chiffres commençant par `15`, hors `151` (Electrolux ou Beko), 8 chiffres commençant par `42` (Candy ou Sharp), 8 chiffres commençant par `32` (Sharp ?), 9 chiffres commençant par `16` ou `26` (Beko ?).
+Cas mélangés, donc des doutes : 10 chiffres commençant par `15`, hors `151` (Electrolux ou Beko), 8 chiffres commençant par `42` (Candy ou Sharp), 8 chiffres commençant par `32` (Sharp ?).
+
+Les 9 chiffres commençant par `16` ou `26`, d'abord en doute (« Beko ? »), sont Beko depuis le 2026-11-17 : les 22 pièces de la base sont toutes du groupe Beko (Beko, Grundig, Altus, Essentiel-B, Aya…) ; sans cela, le champ « Réf. associée » ne s'affichait pas pour elles.
 
 **Apprentissage :** les choix de l'utilisateur sur les cas inconnus sont consignés, comme le font déjà `reference_decisions` et `refus_completions`. Une série de choix identiques sur une même forme devient une **règle proposée**, ajoutée à la table seulement après validation.
 
