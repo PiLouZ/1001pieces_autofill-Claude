@@ -114,6 +114,8 @@ from ..core.logger import app_logger
 from .pieces_list_service import PieceRelationsPopup, _format_piece_edit_history
 from .style_manager import StyleManager, inline_icon_html
 from .piece_picker_dialog import PiecePickerDialog, RefTagList
+from PyQt5.QtGui import QKeySequence
+from PyQt5.QtWidgets import QShortcut
 from .saisie_relation import SaisieRelation
 from .ligne_reference_associee import (AUCUNE, JUMELLE, PROPOSEE, VIDE,
                                        LigneReferenceAssociee)
@@ -272,6 +274,9 @@ class PiecesManagerWindow(QDialog):
         search_layout.addWidget(QLabel("Recherche :"))
 
         self.search_input = QLineEdit()
+        # ⌘F : curseur dans la recherche du gestionnaire
+        QShortcut(QKeySequence.Find, self,
+                  activated=lambda: (self.search_input.setFocus(), self.search_input.selectAll()))
         self.search_input.setPlaceholderText("Référence ou libellé… (utiliser ; pour plusieurs refs)")
         self.search_input.setClearButtonEnabled(True)  # Bouton × natif intégré au champ
         self.search_input.textChanged.connect(self._filter_pieces)
@@ -329,6 +334,7 @@ class PiecesManagerWindow(QDialog):
             ('équivalences', [
                 ('equivalent',   'Équivalentes',         'fa5s.exchange-alt',       '#8e44ad'),
                 ('inconsistent', 'Libellés incohérents', 'fa5s.exclamation-circle', '#d35400'),
+                ('twin_missing', 'Jumelle à renseigner', 'fa5s.clone',              '#8e44ad'),
             ]),
         ]
 
@@ -372,6 +378,10 @@ class PiecesManagerWindow(QDialog):
                 btn_index += 1
                 cluster_row.addWidget(btn)
                 self._filter_btns[key] = btn
+                if key == 'twin_missing':
+                    btn.setToolTip("Pièces Whirlpool, Indesit ou Beko (hors fantômes) dont la "
+                                   "réf. associée n'est pas renseignée : ni jumelle, ni « Aucune ». "
+                                   "Une réf. seulement proposée par la fiche du site en fait partie.")
 
             cluster_col.addLayout(cluster_row)
             filter_layout.addLayout(cluster_col)
@@ -740,6 +750,17 @@ class PiecesManagerWindow(QDialog):
 
         side_layout.addWidget(sections_splitter, 1)
 
+        # Glisser une réf. d'une carte vers une autre l'y ajoute (copie : le lien
+        # d'origine reste) ; dépôt sur toute la carte
+        self._cartes_depot = {equiv_section: self.EQUIVALENTES,
+                              replaces_section: self.REMPLACE,
+                              superseded_section: self.REMPLACEE_PAR}
+        for carte in self._cartes_depot:
+            carte.setAcceptDrops(True)
+            carte.installEventFilter(self)
+        for liste in (self.equiv_tag_list, self.replaces_tag_list, self.superseded_by_tag_list):
+            liste.rendre_glissable()
+
         # Clic gauche sur une référence dans les fieldsets → recherche dans le gestionnaire
         self.superseded_by_tag_list.ref_clicked.connect(self._search_in_manager)
         self.replaces_tag_list.ref_clicked.connect(self._search_in_manager)
@@ -916,6 +937,20 @@ class PiecesManagerWindow(QDialog):
             else:
                 status['labels_differ'] = False
 
+        # Jumelle à renseigner : Whirlpool / Indesit / Beko, hors fantômes, sans
+        # réponse (ni paire, ni « aucune ») — une requête, 10 ms pour 6 300 réfs
+        try:
+            renseignees = self.db_manager.refs_avec_reponse_associee()
+        except Exception as exc:
+            app_logger.warning(f"Réfs associées non lues pour le filtre : {exc}")
+            renseignees = None
+        if renseignees is not None:
+            for r in results:
+                ref = r[0]
+                if (ref and ref not in renseignees and not (len(r) > 4 and r[4] == 1)
+                        and origine_associable(ref)):
+                    self.all_statuses.setdefault(ref, {})['jumelle_a_renseigner'] = True
+
         # Phase 2 terminée : autoriser le switch vers le tableau
         self._loading_phase = 0
         QApplication.restoreOverrideCursor()
@@ -934,7 +969,12 @@ class PiecesManagerWindow(QDialog):
         self._floating_actions.raise_()
 
     def eventFilter(self, obj, event):
-        """Gérer le survol entre le tableau et le widget d'actions flottant."""
+        """Gérer le survol entre le tableau et le widget d'actions flottant, et le
+        dépôt d'une réf. glissée sur une carte de relations."""
+        if obj in getattr(self, '_cartes_depot', {}):
+            traite = self._depot_carte(obj, event)
+            if traite is not None:
+                return traite
         if obj is self.pieces_table.viewport() and event.type() == QEvent.Leave:
             # Cacher le widget flottant seulement si le curseur ne se trouve pas dessus
             cursor_pos = self.pieces_table.viewport().mapFromGlobal(QCursor.pos())
@@ -943,6 +983,56 @@ class PiecesManagerWindow(QDialog):
         elif obj is self._floating_actions and event.type() == QEvent.Leave:
             self._floating_actions.setVisible(False)
         return super().eventFilter(obj, event)
+
+    # ── Glisser une réf. vers une carte ─────────────────────────────────────
+
+    def _refs_glissees(self, carte, event) -> list:
+        """Réfs d'un glisser acceptable sur `carte` ([] sinon) : du texte, pas
+        venu de cette même carte, et une carte dont la saisie est active."""
+        md = event.mimeData()
+        if md is None or not md.hasText():
+            return []
+        source = event.source()
+        if source is not None and carte.isAncestorOf(source):
+            return []
+        saisie = self._saisies_relation.get(self._cartes_depot[carte])
+        if saisie is None or not saisie.champ.isEnabled():
+            return []
+        from ..utils.text_utils import decouper_refs
+        return decouper_refs(md.text())
+
+    def _surligner_carte(self, carte, actif: bool):
+        nom = carte.objectName()
+        carte.setStyleSheet(StyleManager.side_card_depot(nom) if actif
+                            else StyleManager.side_card(nom))
+
+    def _depot_carte(self, carte, event):
+        """Glisser-déposer sur une carte ; None = événement non traité ici."""
+        genre = event.type()
+        if genre in (QEvent.DragEnter, QEvent.DragMove):
+            if self._refs_glissees(carte, event):
+                event.setDropAction(Qt.CopyAction)
+                event.accept()
+                self._surligner_carte(carte, True)
+            else:
+                event.ignore()
+            return True
+        if genre == QEvent.DragLeave:
+            self._surligner_carte(carte, False)
+            return True
+        if genre == QEvent.Drop:
+            self._surligner_carte(carte, False)
+            refs = self._refs_glissees(carte, event)
+            if not refs:
+                event.ignore()
+                return True
+            event.setDropAction(Qt.CopyAction)     # copie : la carte d'origine garde la réf.
+            event.accept()
+            relation = self._cartes_depot[carte]
+            # Après la fin du glisser (la boucle du QDrag tient encore la puce)
+            QTimer.singleShot(0, lambda: self._sur_saisie_relation(relation, refs))
+            return True
+        return None
 
     def keyPressEvent(self, event):
         """Raccourcis clavier sur le tableau de pièces."""
@@ -1173,6 +1263,7 @@ class PiecesManagerWindow(QDialog):
                                        and not st.get(r[0] or '', {}).get('is_obsolete')
                                        and not (len(r) > 4 and r[4] == 1)),
         'inconsistent': lambda r, st: st.get(r[0] or '', {}).get('labels_differ'),
+        'twin_missing': lambda r, st: st.get(r[0] or '', {}).get('jumelle_a_renseigner'),
     }
 
     @staticmethod
@@ -1874,8 +1965,14 @@ class PiecesManagerWindow(QDialog):
 
     # ── Saisie directe dans les cartes ──────────────────────────────────────
 
+    # Raccourcis : ⌘1 / ⌘2 / ⌘3 = saisie de la carte (ordre du panneau)
+    _RACCOURCIS_SAISIE = {'equivalentes': 'Ctrl+1', 'remplace': 'Ctrl+2', 'remplacee_par': 'Ctrl+3'}
+
     def _creer_saisie(self, genre: str, aide: str) -> SaisieRelation:
-        saisie = SaisieRelation(aide)
+        touche = self._RACCOURCIS_SAISIE[genre]
+        saisie = SaisieRelation(aide, raccourci=QKeySequence(touche).toString(
+            QKeySequence.NativeText))
+        QShortcut(QKeySequence(touche), self, activated=saisie.prendre_le_curseur)
         saisie.activer(False, "Sélectionnez une pièce")
         saisie.refs_saisies.connect(lambda refs, g=genre: self._sur_saisie_relation(g, refs))
         # Une complétion par champ, toutes sur le même modèle gardé sur la fenêtre
@@ -2375,18 +2472,33 @@ class PiecesManagerWindow(QDialog):
         self._ouvrir_selecteur_relation(self.EQUIVALENTES)
 
     def _on_unlink_equiv(self):
-        """Retirer la pièce courante de son groupe d'équivalence (multi-sélection)."""
-        ref_piece = self._current_ref_piece
-        if not ref_piece:
+        """Retirer les pièces sélectionnées de leur groupe d'équivalence (le bouton
+        n'apparaît qu'en multi-sélection ; il ne retirait que la pièce affichée)."""
+        selection = self._get_selected_refs() or (
+            [self._current_ref_piece] if self._current_ref_piece else [])
+        refs = [r for r in selection if self.db_manager.get_equivalents(r)]
+        if not refs:
+            QMessageBox.information(self, 'Retirer du groupe',
+                                    "Aucune des pièces sélectionnées n'a d'équivalence.")
             return
+        hors = len(selection) - len(refs)
+        message = (f"Retirer '{refs[0]}' de son groupe d'équivalence ?" if len(refs) == 1
+                   else f"Retirer ces {len(refs)} pièces de leur groupe d'équivalence ?\n"
+                        f"{self._format_refs_recap(refs)}")
+        if hors:
+            message += (f"\n\n({pluralize(hors, 'pièce sélectionnée', 'pièces sélectionnées')} sans équivalence "
+                        f"{'ne change' if hors == 1 else 'ne changent'} pas.)")
+
         # Rappel à la validation (boîte modale non bloquante, jamais de boucle imbriquée)
         def _suite():
-            self.db_manager.remove_equivalence(ref_piece)
-            self._notify_history(f"Équivalence :\n==> '{ref_piece}' → (retiré du groupe)")
-            self._refresh_equivalence_panel(ref_piece)
+            for ref in refs:
+                self.db_manager.remove_equivalence(ref)
+            self._notify_history("Équivalence :\n" + "\n".join(
+                f"==> '{ref}' → (retiré du groupe)" for ref in refs))
+            self._refresh_equivalence_panel(self._current_ref_piece)
             self._load_pieces_data()
 
-        demander_oui_non(self, 'Retirer du groupe', f"Retirer '{ref_piece}' de son groupe d'équivalence ?", _suite, defaut=None)
+        demander_oui_non(self, 'Retirer du groupe', message, _suite, defaut=None)
 
     def _on_remove_superseded_by(self, ref_new: str):
         """Supprimer le lien 'Remplacée par ref_new' pour la pièce courante (chip ×)."""

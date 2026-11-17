@@ -510,6 +510,12 @@ class StyleManager:
         return (f"QFrame#{object_name} {{ background: #f1f3f5; border: none;"
                 f" border-radius: 6px; }}")
 
+    @staticmethod
+    def side_card_depot(object_name: str) -> str:
+        """Carte du panneau des pièces survolée par une réf. glissée."""
+        return (f"QFrame#{object_name} {{ background: #e7f1ff; border: 1px dashed #4a90d9;"
+                f" border-radius: 6px; }}")
+
     # Surlignage temporaire d'une pièce tout juste ajoutée (vert pâle, 2 s)
     PIECE_ADDED_HIGHLIGHT = "#d1e7dd"
 
