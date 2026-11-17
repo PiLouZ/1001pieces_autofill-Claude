@@ -448,6 +448,25 @@ class StyleManager:
         "QPushButton:hover { background-color: #e9ecef; }"
     )
 
+    # Ligne « Réf. associée » en tête de la carte ≡ Équivalences du gestionnaire
+    # de pièces (src/ui/ligne_reference_associee.py)
+    REF_ASSOCIEE_TITRE = ('color: #8e44ad; font-size: 11px; font-weight: bold;'
+                          ' background: transparent; border: none;')
+    REF_ASSOCIEE_ETAT = ('color: #adb5bd; font-size: 11px; font-style: italic;'
+                         ' background: transparent; border: none;')
+    REF_ASSOCIEE_LIEN = ('QPushButton { border: none; background: transparent; color: #8e44ad;'
+                         ' font-size: 11px; text-decoration: underline; padding: 0 2px; }')
+    REF_ASSOCIEE_CROIX = ('color: #dc3545; font-size: 13px; background: transparent;'
+                          ' border: none; padding: 0 2px;')
+    REF_ASSOCIEE_TRAIT = 'border: none; border-top: 1px dashed #d7c4e0; margin-top: 2px;'
+
+    @staticmethod
+    def ref_associee_puce(couleur: str, italique: bool = False) -> str:
+        """Référence de la ligne « Réf. associée » : comme une puce RefTagList."""
+        return (f"color: {couleur}; font-weight: bold; font-size: 11px; font-family: monospace;"
+                f" background: transparent; border: none;"
+                + (" font-style: italic;" if italique else ""))
+
     # Carte « nouvelle pièce » du panneau des pièces (PieceAddCard) : contour
     # pointillé bleu = élément en cours de création ; champs et boutons compacts
     # (le style global des champs, 8 px de marge, est trop haut pour ce panneau).

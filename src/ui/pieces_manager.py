@@ -112,6 +112,9 @@ from ..core.logger import app_logger
 from .pieces_list_service import PieceRelationsPopup, _format_piece_edit_history
 from .style_manager import StyleManager, inline_icon_html
 from .piece_picker_dialog import PiecePickerDialog, RefTagList
+from .ligne_reference_associee import (AUCUNE, JUMELLE, PROPOSEE, VIDE,
+                                       LigneReferenceAssociee)
+from ..utils.rapprochement_fiche.associee import autres_origines, origine_associable
 from ..utils.ouverture_modale import ouvrir_modal
 from ..utils.boites import demander_oui_non, choisir_fichier_a_enregistrer, saisir_texte, choisir_element
 
@@ -520,6 +523,20 @@ class PiecesManagerWindow(QDialog):
         equiv_hdr.addWidget(self.btn_link_equiv)
         eq_sec_layout.addLayout(equiv_hdr)
 
+        # Réf. associée (jumelle Whirlpool / Indesit / Beko) : une équivalente
+        # particulière, en tête de la carte ; masquée pour les autres pièces
+        self.ligne_associee = LigneReferenceAssociee()
+        self.ligne_associee.ajouter.connect(self._on_ajouter_associee)
+        self.ligne_associee.retirer.connect(self._on_retirer_associee)
+        self.ligne_associee.inverser.connect(self._on_inverser_associee)
+        self.ligne_associee.confirmer.connect(self._on_confirmer_associee)
+        self.ligne_associee.refuser.connect(self._on_refuser_associee)
+        self.ligne_associee.marquer_aucune.connect(self._on_marquer_aucune_associee)
+        self.ligne_associee.oublier_aucune.connect(self._on_oublier_aucune_associee)
+        self.ligne_associee.ref_clicked.connect(self._search_in_manager)
+        self.ligne_associee.ref_right_clicked.connect(self._on_chip_right_click)
+        eq_sec_layout.addWidget(self.ligne_associee)
+
         self.equiv_status_label = QLabel("")
         self.equiv_status_label.setStyleSheet(StyleManager.TEXTE_GRIS_PETIT)
         self.equiv_status_label.setWordWrap(True)
@@ -646,6 +663,15 @@ class PiecesManagerWindow(QDialog):
         self.btn_mark_equivalent_group.setVisible(False)
         self.btn_mark_equivalent_group.clicked.connect(self._on_mark_equivalent_group)
 
+        self.btn_lier_associees = QPushButton("Lier comme réf. associées")
+        self.btn_lier_associees.setIcon(qta.icon('fa5s.exchange-alt', color='#8e44ad'))
+        self.btn_lier_associees.setIconSize(QSize(11, 11))
+        self.btn_lier_associees.setToolTip(
+            "La pièce affichée devient la principale, l'autre son associée (et son équivalente)")
+        self.btn_lier_associees.setStyleSheet(f"{StyleManager.SECONDARY_COMPACT_BUTTON} QPushButton {{ color: #8e44ad; }}")
+        self.btn_lier_associees.setVisible(False)
+        self.btn_lier_associees.clicked.connect(self._on_lier_associees)
+
         self.btn_harmonize_labels = QPushButton("Harmoniser les libellés…")
         self.btn_harmonize_labels.setIcon(qta.icon('fa5s.palette', color='#d35400'))
         self.btn_harmonize_labels.setIconSize(QSize(11, 11))
@@ -679,7 +705,8 @@ class PiecesManagerWindow(QDialog):
         self._action_sections = []
         for section_title, buttons in [
             ("SUCCESSION",   [self.btn_cancel_succession]),
-            ("ÉQUIVALENCES", [self.btn_unlink_equiv, self.btn_harmonize_labels]),
+            ("ÉQUIVALENCES", [self.btn_unlink_equiv, self.btn_lier_associees,
+                              self.btn_harmonize_labels]),
         ]:
             title_lbl = QLabel(section_title)
             title_lbl.setStyleSheet("color: #adb5bd; font-size: 11px; font-weight: bold;")
@@ -2011,12 +2038,14 @@ class PiecesManagerWindow(QDialog):
             "Aucune équivalence" if has_selection and ref_piece is not None and n == 1 else "")
 
         # ── Aucune sélection ──────────────────────────────────────────────
+        self.btn_lier_associees.setVisible(n == 2 and self._paire_associable(selected))
         if not has_selection or ref_piece is None:
             self.equiv_status_label.setText("Sélectionnez une pièce pour voir ses équivalences.")
             self.equiv_status_label.setStyleSheet(StyleManager.TEXTE_GRIS_MOYEN)
             self.equiv_status_label.setVisible(True)
             self.equiv_tag_list.set_refs([])
             self.btn_unlink_equiv.setVisible(False)
+            self.ligne_associee.masquer()
             return
 
         # ── Multi-sélection ────────────────────────────────────────────────
@@ -2025,10 +2054,15 @@ class PiecesManagerWindow(QDialog):
             self.equiv_tag_list.set_refs([])
             self.btn_unlink_equiv.setVisible(True)
             self.btn_unlink_equiv.setEnabled(True)
+            self.ligne_associee.masquer()
             return
 
         # ── Sélection unique : chips ──────────────────────────────────────
-        equivs = self.db_manager.get_equivalents(ref_piece)
+        jumelle = self._afficher_reference_associee(ref_piece)
+        # La jumelle (ou la réf. proposée) est en tête : pas deux fois
+        equivs = [e for e in self.db_manager.get_equivalents(ref_piece) if e != jumelle]
+        if jumelle:
+            self.equiv_tag_list.set_empty_text("Aucune autre équivalence")
         if equivs:
             self.equiv_tag_list.set_refs(equivs, '#8e44ad')
             self.equiv_status_label.setText("")
@@ -2042,6 +2076,146 @@ class PiecesManagerWindow(QDialog):
             self.equiv_status_label.setText("")
             self.equiv_status_label.setVisible(False)
             self.btn_unlink_equiv.setVisible(False)
+
+    # ── Réf. associée (jumelle Whirlpool / Indesit / Beko) ──────────────────
+
+    @staticmethod
+    def _paire_associable(refs) -> bool:
+        """Deux réf. de groupes différents parmi Whirlpool / Indesit / Beko."""
+        origines = [origine_associable(r) for r in refs]
+        return len(origines) == 2 and all(origines) and origines[0] != origines[1]
+
+    def _etat_reference_associee(self, ref_piece: str):
+        """(état, référence, rôle de la pièce) de la ligne « Réf. associée »."""
+        db = self.db_manager
+        origine = origine_associable(ref_piece)
+        connue, associee = db.reference_associee(ref_piece)
+        if connue and associee:
+            return JUMELLE, associee, "principale"
+        principale = db.reference_principale_de(ref_piece)
+        if principale:
+            return JUMELLE, principale, "associée"
+        if connue:
+            return AUCUNE, '', ''
+        # Proposée (ligne 0 du groupe) : d'un autre groupe, et pas déjà la jumelle
+        # d'une autre pièce du groupe
+        if (associee and origine_associable(associee) not in ('', origine)
+                and not db.references_associees_de(associee)):
+            return PROPOSEE, associee, ''
+        return VIDE, '', ''
+
+    def _afficher_reference_associee(self, ref_piece: str) -> str:
+        """Met la ligne à jour ; retourne la référence affichée (ou '')."""
+        origine = origine_associable(ref_piece)
+        if not origine:
+            self.ligne_associee.masquer()
+            return ''
+        etat, reference, role = self._etat_reference_associee(ref_piece)
+        libelle = ''
+        if reference:
+            lignes = self.db_manager.lire_libelle_piece(reference)
+            libelle = (lignes[0][0] or '') if lignes else ''
+        self.ligne_associee.afficher(etat, origine, autres_origines(origine), reference,
+                                     libelle, role)
+        return reference
+
+    @staticmethod
+    def _maintenant() -> str:
+        from datetime import datetime
+        return datetime.now().isoformat(timespec='seconds')
+
+    def _apres_associee(self, message: str):
+        """Historique puis rafraîchissement, comme les autres actions du panneau."""
+        self._notify_history("Réf. associée :\n" + message)
+        self._refresh_equivalence_panel(self._current_ref_piece)
+        self._load_pieces_data()
+
+    def _lier_associee(self, principale: str, associee: str):
+        ok, motif = self.db_manager.lier_reference_associee(principale, associee,
+                                                            self._maintenant())
+        if not ok:
+            QMessageBox.warning(self, "Réf. associée", motif)
+            return
+        self._apres_associee(f"==> '{principale}' ⇄ '{associee}'")
+
+    def _on_ajouter_associee(self):
+        ref_piece = self._current_ref_piece
+        origine = origine_associable(ref_piece or '')
+        if not origine:
+            return
+        dlg = PiecePickerDialog(
+            self.db_manager, self, exclude_ref=ref_piece,
+            title=f"Réf. associée de {ref_piece} ({autres_origines(origine)})")
+
+        def _sur_accepte():
+            choisie = (dlg.selected_ref() or '').strip()
+            if choisie:
+                self._lier_associee(ref_piece, choisie)
+
+        ouvrir_modal(dlg, sur_accepte=_sur_accepte)  # jamais exec_ (gel macOS)
+
+    def _on_retirer_associee(self):
+        ref_piece = self._current_ref_piece
+        jumelle = self.ligne_associee.reference
+        if not ref_piece or not jumelle:
+            return
+
+        def _suite():
+            if self.db_manager.retirer_reference_associee(ref_piece):
+                self._apres_associee(f"==> '{ref_piece}' ⇄ '{jumelle}' → (retirée)")
+
+        demander_oui_non(self, "Retirer la réf. associée",
+                         f"{jumelle} ne sera plus la réf. associée de {ref_piece}.\n"
+                         f"Les deux pièces restent équivalentes.", _suite, defaut=None)
+
+    def _on_inverser_associee(self):
+        ref_piece = self._current_ref_piece
+        if ref_piece and self.db_manager.inverser_reference_associee(ref_piece,
+                                                                     self._maintenant()):
+            principale = self.db_manager.reference_principale_de(ref_piece)
+            nouvelle = principale if principale else ref_piece
+            self._apres_associee(f"==> '{nouvelle}' devient la référence principale")
+
+    def _on_confirmer_associee(self):
+        ref_piece, proposee = self._current_ref_piece, self.ligne_associee.reference
+        if ref_piece and proposee:
+            self._lier_associee(ref_piece, proposee)
+
+    def _on_refuser_associee(self):
+        ref_piece, proposee = self._current_ref_piece, self.ligne_associee.reference
+        if not ref_piece or not proposee:
+            return
+
+        def _suite():
+            self.db_manager.refuser_reference_proposee(proposee)
+            self._apres_associee(f"==> '{proposee}' n'est pas la réf. associée de "
+                                 f"'{ref_piece}' (reste équivalente)")
+
+        demander_oui_non(self, "Réf. associée proposée",
+                         f"{proposee} n'est pas la réf. associée de {ref_piece} ?\n"
+                         f"Elle reste équivalente, mais ne sera plus proposée.",
+                         _suite, defaut=None)
+
+    def _on_marquer_aucune_associee(self):
+        ref_piece = self._current_ref_piece
+        if ref_piece:
+            self.db_manager.definir_references_associees([(ref_piece, None)], self._maintenant())
+            self._apres_associee(f"==> '{ref_piece}' → aucune")
+
+    def _on_oublier_aucune_associee(self):
+        ref_piece = self._current_ref_piece
+        if ref_piece:
+            self.db_manager.oublier_reponse_aucune(ref_piece)
+            self._apres_associee(f"==> '{ref_piece}' → (réponse « aucune » oubliée)")
+
+    def _on_lier_associees(self):
+        """Deux pièces sélectionnées : la pièce affichée devient la principale."""
+        refs = self._get_selected_refs()
+        if len(refs) != 2:
+            return
+        principale = self._current_ref_piece if self._current_ref_piece in refs else refs[0]
+        associee = refs[1] if principale == refs[0] else refs[0]
+        self._lier_associee(principale, associee)
 
     def _on_link_equiv(self):
         """Lier la pièce courante à une référence équivalente (via PiecePickerDialog)."""

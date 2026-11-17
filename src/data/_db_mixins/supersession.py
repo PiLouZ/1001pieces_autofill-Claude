@@ -193,6 +193,10 @@ class DatabaseSupersessionMixin:
                 self.cursor.execute(
                     "DELETE FROM piece_equivalence_groups WHERE ref_piece = ?", [ref_piece]
                 )
+                # Ses paires de réf. associées ne tiennent plus (sinon elles
+                # imposeraient encore leur ordre dans la Fiche complète)
+                if hasattr(self, '_oublier_paires_de'):
+                    self._oublier_paires_de(ref_piece)
                 count = self.cursor.execute(
                     "SELECT COUNT(*) FROM piece_equivalence_groups WHERE group_id = ?", [gid]
                 ).fetchone()[0]
