@@ -5,9 +5,9 @@ RefTagList        : widget de liste de références supprimables (chips).
 
 import qtawesome as qta
 from typing import Callable, Optional, List
-from PyQt5.QtCore import QEvent, QSortFilterProxyModel, QTimer
-from PyQt5.QtGui import QKeySequence, QStandardItem, QStandardItemModel
-from PyQt5.QtWidgets import QShortcut, QTableView
+from PyQt5.QtCore import QEvent, QMimeData, QSortFilterProxyModel, QTimer
+from PyQt5.QtGui import QDrag, QKeySequence, QStandardItem, QStandardItemModel
+from PyQt5.QtWidgets import QApplication, QShortcut, QTableView
 from ..utils.qt_imports import (QDialog, QVBoxLayout, QHBoxLayout, QWidget,
                           QLabel, QPushButton, QLineEdit, QTableWidget,
                           QTableWidgetItem, QHeaderView, Qt, QFrame, QScrollArea,
@@ -67,6 +67,7 @@ class RefTagList(QWidget):
         self._outer.addWidget(self._flat)
 
         self._refs = []
+        self._glissable = False
         self._full_height_mode = False
         # Message affiché quand la liste est vide (mode pleine hauteur seulement)
         self._empty_text = ""
@@ -145,6 +146,11 @@ class RefTagList(QWidget):
         self._scroll.setStyleSheet(StyleManager.ZONE_DEFILEMENT_TRANSPARENTE)
         self._scroll.viewport().setAutoFillBackground(False)
 
+    def rendre_glissable(self):
+        """Les références se glissent (texte = la réf.) vers une autre carte. Le
+        clic (recherche) part alors au relâchement, seulement sans glisser."""
+        self._glissable = True
+
     def set_empty_text(self, text: str):
         """Message centré et estompé affiché quand la liste est vide (mode pleine
         hauteur). Pris en compte au prochain set_refs()."""
@@ -184,10 +190,37 @@ class RefTagList(QWidget):
         )
         def _ref_mouse_press(event, r=ref):
             if event.button() == Qt.LeftButton:
-                self.ref_clicked.emit(r)
+                if self._glissable:
+                    ref_lbl._depart = event.pos()      # clic ou glisser : décidé plus tard
+                else:
+                    self.ref_clicked.emit(r)
             elif event.button() == Qt.RightButton:
                 self.ref_right_clicked.emit(r)
         ref_lbl.mousePressEvent = _ref_mouse_press
+        if self._glissable:
+            ref_lbl.setToolTip(f"Cliquer pour rechercher '{ref}' — glisser vers une autre "
+                               f"carte pour l'y ajouter")
+
+            def _ref_mouse_move(event, r=ref):
+                depart = getattr(ref_lbl, '_depart', None)
+                if depart is None or not (event.buttons() & Qt.LeftButton):
+                    return
+                if (event.pos() - depart).manhattanLength() < QApplication.startDragDistance():
+                    return
+                ref_lbl._depart = None
+                mime = QMimeData()
+                mime.setText(r)
+                glisser = QDrag(ref_lbl)
+                glisser.setMimeData(mime)
+                glisser.setPixmap(ref_lbl.grab())
+                glisser.exec_(Qt.CopyAction)
+
+            def _ref_mouse_release(event, r=ref):
+                if event.button() == Qt.LeftButton and getattr(ref_lbl, '_depart', None) is not None:
+                    ref_lbl._depart = None
+                    self.ref_clicked.emit(r)
+            ref_lbl.mouseMoveEvent = _ref_mouse_move
+            ref_lbl.mouseReleaseEvent = _ref_mouse_release
         h.addWidget(ref_lbl)
 
         # Description en gris (si disponible)

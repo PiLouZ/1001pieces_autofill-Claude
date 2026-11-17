@@ -9,7 +9,7 @@ valide rien (une réf. tapée à moitié n'est jamais écrite). Sous le champ, u
 ligne d'état dit ce qui a été fait, ou l'erreur en rouge.
 """
 
-from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtCore import QEvent, Qt, pyqtSignal
 from PyQt5.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from .ref_chips_input import RefSaisieLineEdit
@@ -24,30 +24,56 @@ class SaisieRelation(QWidget):
 
     refs_saisies = pyqtSignal(list)
 
-    def __init__(self, aide: str, parent=None):
+    def __init__(self, aide: str, parent=None, raccourci: str = ''):
         super().__init__(parent)
+        self._raccourci = raccourci
         disposition = QVBoxLayout(self)
         disposition.setContentsMargins(0, 0, 0, 0)
         disposition.setSpacing(1)
         self.champ = RefSaisieLineEdit(valider_en_sortant=False)
         self.champ.setPlaceholderText(aide)
-        self.champ.setToolTip(AIDE_SAISIE)
+        self.champ.setToolTip(self._infobulle(AIDE_SAISIE))
         self.champ.setStyleSheet(StyleManager.SAISIE_RELATION)
         self.champ.refs_saisies.connect(self.refs_saisies)
+        # Un dépôt va à la carte entière (pas inséré comme texte dans le champ)
+        self.champ.setAcceptDrops(False)
+        # Échap efface la saisie en cours (sans fermer la fenêtre) ; champ vide :
+        # Échap garde son effet habituel
+        self.champ.installEventFilter(self)
         disposition.addWidget(self.champ)
         self.etat = QLabel("")
         self.etat.setWordWrap(True)
         self.etat.setVisible(False)
         disposition.addWidget(self.etat)
 
+    def eventFilter(self, obj, event):
+        if (obj is self.champ and event.type() == QEvent.KeyPress
+                and event.key() == Qt.Key_Escape and self.champ.text()):
+            self.champ.clear()
+            return True
+        return super().eventFilter(obj, event)
+
     # --- Champ ----------------------------------------------------------------------
+    def _infobulle(self, texte: str) -> str:
+        return f"{texte} Raccourci : {self._raccourci}." if self._raccourci else texte
+
     def definir_aide(self, aide: str, infobulle: str = AIDE_SAISIE):
         self.champ.setPlaceholderText(aide)
-        self.champ.setToolTip(infobulle)
+        self.champ.setToolTip(self._infobulle(infobulle) if infobulle == AIDE_SAISIE
+                              else infobulle)
 
     def activer(self, actif: bool, infobulle: str = AIDE_SAISIE):
         self.champ.setEnabled(actif)
-        self.champ.setToolTip(infobulle)
+        self.champ.setToolTip(self._infobulle(infobulle) if infobulle == AIDE_SAISIE
+                              else infobulle)
+
+    def prendre_le_curseur(self) -> bool:
+        """Raccourci : curseur dans le champ (s'il est actif)."""
+        if not self.champ.isEnabled():
+            return False
+        self.champ.setFocus()
+        self.champ.selectAll()
+        return True
 
     def setCompleter(self, completer):
         self.champ.setCompleter(completer)

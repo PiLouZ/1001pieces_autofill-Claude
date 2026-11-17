@@ -211,6 +211,16 @@ class DatabaseFichesSiteMixin:
                 f"ORDER BY decide_le, ref_piece", refs + refs).fetchall()
         return [(p, a) for p, a in rows if p != a]
 
+    def refs_avec_reponse_associee(self) -> Set[str]:
+        """Réfs dont la réf. associée est renseignée : l'une ou l'autre d'une paire,
+        ou une réponse « aucune » (filtre « Jumelle à renseigner »)."""
+        with self._query_lock:
+            rows = self.cursor.execute(
+                "SELECT ref_piece FROM references_associees "
+                "UNION SELECT associee FROM references_associees WHERE associee IS NOT NULL"
+            ).fetchall()
+        return {r[0] for r in rows if r[0]}
+
     def reference_principale_de(self, ref: str) -> Optional[str]:
         """Référence principale d'une référence associée (« ⇄ » ou réponse de
         l'import) : elle vient en premier dans le code produit. None : `ref` n'est
