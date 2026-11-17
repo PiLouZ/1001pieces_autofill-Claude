@@ -4,7 +4,9 @@ Ligne « Réf. associée » du gestionnaire de pièces, en tête de la carte
 (la même notion que le champ « Réf. associée » de l'import).
 
 Quatre états, la fenêtre choisit lequel afficher (`afficher`) :
-- JUMELLE  : la jumelle retenue — clic = recherche, ⇄ inverse les rôles, ✕ retire ;
+- JUMELLE  : la paire, principale d'abord (ordre du code produit), chaque réf.
+             avec son rôle ; la pièce affichée est grisée « (cette pièce) » ;
+             clic sur la jumelle = recherche, ⇄ inverse les rôles, ✕ retire ;
 - PROPOSEE : l'équivalente de code produit d'une fiche reprise, pas encore
              confirmée — ✓ confirme, ✕ refuse ;
 - AUCUNE   : « aucune » mémorisée — ✕ oublie la réponse ;
@@ -15,7 +17,8 @@ Le widget n'écrit rien : il émet un signal, la fenêtre agit.
 from typing import Optional
 
 from PyQt5.QtCore import QSize, Qt, pyqtSignal
-from PyQt5.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import (QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy,
+                             QVBoxLayout, QWidget)
 import qtawesome as qta
 
 from .style_manager import StyleManager
@@ -50,11 +53,13 @@ class LigneReferenceAssociee(QWidget):
         self.titre.setStyleSheet(StyleManager.REF_ASSOCIEE_TITRE)
         disposition.addWidget(self.titre)
 
+        # Une ou deux lignes (la paire) ; `_ligne` = disposition de la ligne en cours
         self._contenu = QWidget()
         self._contenu.setStyleSheet(StyleManager.FOND_TRANSPARENT)
-        self._ligne = QHBoxLayout(self._contenu)
-        self._ligne.setContentsMargins(8, 0, 6, 0)
-        self._ligne.setSpacing(6)
+        self._lignes = QVBoxLayout(self._contenu)
+        self._lignes.setContentsMargins(0, 0, 0, 0)
+        self._lignes.setSpacing(0)
+        self._ligne: Optional[QHBoxLayout] = None
         disposition.addWidget(self._contenu)
 
         trait = QFrame()
@@ -69,20 +74,27 @@ class LigneReferenceAssociee(QWidget):
         self.setVisible(False)
 
     def afficher(self, etat: str, origine: str, autres: str, reference: str = '',
-                 libelle: str = '', role: str = ''):
+                 libelle: str = '', role: str = '', piece: str = ''):
         """`origine` : groupe de la pièce affichée (« Whirlpool ») ; `autres` :
-        « Indesit ou Beko ». `role` : « principale » / « associée » (JUMELLE)."""
+        « Indesit ou Beko ». JUMELLE : `piece` = la pièce affichée, `role` = son
+        rôle (« principale » / « associée »), `reference` = sa jumelle."""
         self.etat, self.reference = etat, reference or ''
         self._vider()
-        self.titre.setText(f"Réf. associée : <span style='color:#6c757d; font-weight:normal'>"
-                           f"{role}</span>" if role else "Réf. associée :")
+        self.titre.setText("Réf. associées" if etat == JUMELLE else "Réf. associée :")
         self.titre.setToolTip(f"Référence jumelle {autres} de cette pièce {origine}. "
-                              f"Elle suit la pièce dans le code produit de la Fiche complète.")
+                              f"La principale vient en premier dans le code produit de la "
+                              f"Fiche complète, l'associée à sa suite.")
+        self._nouvelle_ligne()
         if etat == JUMELLE:
-            self._puce(reference, libelle, italique=False)
-            self._bouton('fa5s.exchange-alt', "Inverser : la réf. associée devient la référence "
-                         "principale (elle vient en premier dans le code produit)", self.inverser)
-            self._croix("Retirer la réf. associée (l'équivalence est conservée)", self.retirer)
+            # Principale d'abord : l'ordre du code produit
+            if role == "principale":
+                self._ligne_piece("Principale", piece)
+                self._nouvelle_ligne()
+                self._ligne_jumelle("Associée", reference, libelle)
+            else:
+                self._ligne_jumelle("Principale", reference, libelle)
+                self._nouvelle_ligne()
+                self._ligne_piece("Associée", piece)
         elif etat == PROPOSEE:
             self._puce(reference, libelle, italique=True,
                        aide="Proposée par la fiche du site (2ᵉ réf. du code produit)")
@@ -108,16 +120,53 @@ class LigneReferenceAssociee(QWidget):
 
     # --- Briques --------------------------------------------------------------------
     def _vider(self):
-        while self._ligne.count():
-            item = self._ligne.takeAt(0)
+        while self._lignes.count():
+            item = self._lignes.takeAt(0)
             if item.widget():
                 item.widget().hide()            # pas de reste visible avant la suppression
                 item.widget().deleteLater()
+        self._ligne = None
+
+    def _nouvelle_ligne(self):
+        ligne = QWidget()
+        ligne.setStyleSheet(StyleManager.FOND_TRANSPARENT)
+        self._ligne = QHBoxLayout(ligne)
+        self._ligne.setContentsMargins(8, 0, 6, 0)
+        self._ligne.setSpacing(6)
+        self._lignes.addWidget(ligne)
+
+    def _role(self, role: str):
+        lbl = QLabel(role)
+        lbl.setStyleSheet(StyleManager.REF_ASSOCIEE_ROLE)
+        lbl.setFixedWidth(62)
+        self._ligne.addWidget(lbl)
+
+    def _ligne_piece(self, role: str, piece: str):
+        """La pièce affichée : grisée, non cliquable (on est déjà dessus)."""
+        self._role(role)
+        lbl = QLabel(f"{piece} <span style='font-family: sans-serif; font-weight: normal;"
+                     f" font-style: italic'>(cette pièce)</span>")
+        lbl.setStyleSheet(StyleManager.REF_ASSOCIEE_PIECE)
+        self._ligne.addWidget(lbl)
+        self._ligne.addStretch(1)
+
+    def _ligne_jumelle(self, role: str, reference: str, libelle: str):
+        self._role(role)
+        self._puce(reference, libelle, italique=False)
+        self._bouton('fa5s.exchange-alt', "Inverser : la principale devient l'associée et "
+                     "inversement (la principale vient en premier dans le code produit)",
+                     self.inverser)
+        self._croix("Retirer la réf. associée (l'équivalence est conservée)", self.retirer)
 
     def _puce(self, reference: str, libelle: str, italique: bool, aide: str = ''):
         style = StyleManager.ref_associee_puce(_VIOLET, italique)
         ref_lbl = QLabel(reference)
         ref_lbl.setStyleSheet(style)
+        # Jamais rognée par le libellé : largeur mesurée une fois le style (gras,
+        # monospace) appliqué, sinon elle l'est avec la police par défaut
+        ref_lbl.ensurePolished()
+        ref_lbl.setMinimumWidth(ref_lbl.sizeHint().width() + 2)
+        ref_lbl.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
         ref_lbl.setCursor(Qt.PointingHandCursor)
         ref_lbl.setToolTip(aide or f"Cliquer pour rechercher '{reference}'")
 

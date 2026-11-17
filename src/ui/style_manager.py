@@ -458,6 +458,9 @@ class StyleManager:
                          ' font-size: 11px; text-decoration: underline; padding: 0 2px; }')
     REF_ASSOCIEE_CROIX = ('color: #dc3545; font-size: 13px; background: transparent;'
                           ' border: none; padding: 0 2px;')
+    REF_ASSOCIEE_ROLE = 'color: #6c757d; font-size: 11px; background: transparent; border: none;'
+    REF_ASSOCIEE_PIECE = ('color: #868e96; font-weight: bold; font-size: 11px; font-family: monospace;'
+                          ' background: transparent; border: none;')
     REF_ASSOCIEE_TRAIT = 'border: none; border-top: 1px dashed #d7c4e0; margin-top: 2px;'
 
     @staticmethod

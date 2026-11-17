@@ -179,6 +179,18 @@ def fenetre(qapp, db, monkeypatch):
     _vider_boucle(qapp)
 
 
+def _lignes(ligne):
+    """Textes de chaque ligne de la paire : [[rôle, réf., …], …]."""
+    from PyQt5.QtWidgets import QLabel
+    import re
+    lignes = []
+    for i in range(ligne._lignes.count()):
+        w = ligne._lignes.itemAt(i).widget()
+        lignes.append([re.sub('<[^>]+>', '', l.text()) for l in w.findChildren(QLabel)
+                       if l.text() and '✕' not in l.text()])
+    return lignes
+
+
 class TestFenetre:
 
     def test_quatre_etats_et_piece_hors_groupes(self, fenetre, db):
@@ -204,7 +216,12 @@ class TestFenetre:
         assert IND not in fen.equiv_tag_list._refs
         fen.choisir(IND)
         assert (ligne.etat, ligne.reference) == (JUMELLE, WP)
-        assert 'associée' in ligne.titre.text()
+        # Principale d'abord, chaque réf. avec son rôle ; la pièce affichée grisée
+        assert _lignes(ligne) == [['Principale', WP, 'Courroie'],
+                                  ['Associée', f'{IND} (cette pièce)']]
+        fen.choisir(WP)
+        assert _lignes(ligne) == [['Principale', f'{WP} (cette pièce)'],
+                                  ['Associée', IND, 'Courroie']]
 
     def test_pas_de_proposee_deja_jumelle_d_une_autre(self, fenetre, db):
         """La ligne 0 vaut pour le groupe : la jumelle de WP n'est pas proposée à
@@ -235,7 +252,7 @@ class TestFenetre:
         fen.choisir(WP)
         fen._on_inverser_associee()
         assert db.reference_associee(IND) == (True, WP)
-        assert 'associée' in fen.ligne_associee.titre.text()
+        assert _lignes(fen.ligne_associee)[0] == ['Principale', IND, 'Courroie']
         fen._on_retirer_associee()
         assert fen.ligne_associee.etat == VIDE
         assert IND in fen.equiv_tag_list._refs                # reste équivalente

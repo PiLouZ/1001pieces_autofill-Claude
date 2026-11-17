@@ -2116,7 +2116,7 @@ class PiecesManagerWindow(QDialog):
             lignes = self.db_manager.lire_libelle_piece(reference)
             libelle = (lignes[0][0] or '') if lignes else ''
         self.ligne_associee.afficher(etat, origine, autres_origines(origine), reference,
-                                     libelle, role)
+                                     libelle, role, piece=ref_piece)
         return reference
 
     @staticmethod
