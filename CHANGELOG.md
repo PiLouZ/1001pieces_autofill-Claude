@@ -4,6 +4,30 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.104.1] - 2026-11-19 (PR #159, #160)
+
+Correctifs de l'import (cartes, réfs Beko de 9 chiffres) et de la Fiche complète
+(jumelles d'une ancienne référence et d'une équivalente).
+
+### Import : cartes sans débordement, Beko 9 chiffres, groupes scindés (PR #159)
+- Cartes « Références individuelles par fichier » : le nom de fichier ne fixe plus la
+  largeur de la carte et n'est plus répété quand il est identique à la référence ;
+  « Obsolète » et « Remplacée par » ne sont plus coupés à droite. Le champ « Réf.
+  associée » accepte le dépôt d'une réf. glissée.
+- Formats : 9 chiffres en 16 / 26 = Beko (le champ « Réf. associée » apparaît).
+- Fiche complète : une réf. ne peut plus être dans deux groupes d'équivalence
+  (`_rattacher_au_groupe` fusionne, `_fusionner_groupes`) ; la jumelle d'une ancienne
+  référence ne manque plus à « Remplace ». Réparation à l'ouverture
+  (`_reparer_groupes_scindes`).
+
+### Fiche complète : jumelle d'une équivalente (PR #160)
+- La jumelle prend la ligne de sa principale (`_ligne_de_la_jumelle`) : code produit
+  pour la pièce du produit du site, ligne N pour une équivalente, « Remplace » pour une
+  ancienne réf. Avant : 488000537573 (jumelle de C00537573) montait dans le code produit
+  de C00140702.
+- Réparation à l'ouverture (`_reparer_jumelles_d_equivalentes`) ; garde-fou de l'export
+  (`jumelles_hors_du_code`).
+
 ## [3.104.0] - 2026-11-17 (PR #156, #157)
 
 Gestionnaire de pièces : réf. associée gérable sans import, relations saisies avec les
