@@ -195,6 +195,7 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
       <li>La <b>croix</b> retire la référence associée ; les deux pièces <b>restent équivalentes</b>.</li>
       <li>Une référence en <i>italique</i> est <b>proposée</b> par la fiche du site (2ᵉ référence du code produit) : la coche verte la confirme, la croix la refuse (elle reste équivalente).</li>
       <li>Avec <b>deux pièces sélectionnées</b> de groupes différents, <b>Lier comme réf. associées</b> les lie : la pièce affichée devient la principale.</li>
+      <li>Dans la Fiche complète, la jumelle se range <b>sur la même ligne que sa principale</b> : dans le code produit si la principale est la pièce vendue sur le site, sur la ligne de « Références équivalentes » de la principale si celle-ci est une équivalente, dans « Remplace les références » si c'est une ancienne référence.</li>
       <li>Refusés, avec un message : deux références du même groupe, une référence absente des pièces, ou une référence qui a déjà une autre jumelle (retirez d'abord ce lien).</li>
     </ul>
   </li>
@@ -282,6 +283,7 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
   <li><b>Import de plusieurs fichiers, cartes par fichier</b> : les cartes ne débordent plus de leur colonne (la case « Obsolète » et le champ « Remplacée par » étaient coupés à droite) ; le nom du fichier n'est plus répété quand il est identique à la référence (il reste dans l'infobulle). Une référence glissée (tuile « Non groupées ») se dépose sur le champ <b>Réf. associée</b>.</li>
   <li><b>Références Beko de 9 chiffres</b> : celles qui commencent par 16 ou 26 (comme 264440194) sont reconnues Beko ; le champ <b>Réf. associée</b> apparaît pour elles à l'import.</li>
   <li><b>Fiche complète : jumelle d'une ancienne référence</b> : quand une ancienne référence avait déjà sa réf. associée (C00962305 ↔ 264440194) au moment d'être reliée à sa remplaçante, la jumelle manquait dans « Remplace les références ». C'est corrigé, et les fiches déjà concernées sont réparées automatiquement à l'ouverture de l'application.</li>
+  <li><b>Fiche complète : jumelle d'une équivalente</b> : lier une réf. associée à une équivalente (C00537573 ↔ 488000537573, équivalentes de C00140702) faisait monter la jumelle dans le « Code produit » au lieu de la laisser à côté de sa principale dans « Références équivalentes ». C'est corrigé, et les pièces déjà concernées sont réparées automatiquement à l'ouverture de l'application.</li>
 </ul>
 <h3>Versions livrées</h3>
 <ul>
