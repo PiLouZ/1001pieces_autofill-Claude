@@ -64,6 +64,17 @@ def _selecteur(parent, titre: str, dossier: str, filtre: str, mode, accepter,
         dialogue.setOption(QFileDialog.DontUseNativeDialog, True)
     dialogue.setFileMode(mode)
     dialogue.setAcceptMode(accepter)
+    if not natif:
+        # Libellés en français (aucune traduction Qt n'est chargée) ; posés après
+        # setFileMode/setAcceptMode, qui remettent le bouton de validation à défaut
+        dialogue.setLabelText(QFileDialog.LookIn, "Dossier :")
+        dialogue.setLabelText(QFileDialog.FileName,
+                              "Dossier :" if mode == QFileDialog.Directory else "Nom :")
+        dialogue.setLabelText(QFileDialog.FileType, "Type :")
+        dialogue.setLabelText(QFileDialog.Accept,
+                              "Enregistrer" if accepter == QFileDialog.AcceptSave
+                              else "Choisir" if mode == QFileDialog.Directory else "Ouvrir")
+        dialogue.setLabelText(QFileDialog.Reject, "Annuler")
     if mode == QFileDialog.Directory:
         dialogue.setOption(QFileDialog.ShowDirsOnly, True)
 
@@ -77,10 +88,11 @@ def _selecteur(parent, titre: str, dossier: str, filtre: str, mode, accepter,
 
 
 def choisir_dossier(parent, titre: str, dossier: str,
-                    sur_chemin: Callable[[str], None]) -> QFileDialog:
-    """Équivalent de `QFileDialog.getExistingDirectory(parent, titre, dossier)`."""
+                    sur_chemin: Callable[[str], None], natif: bool = True) -> QFileDialog:
+    """Équivalent de `QFileDialog.getExistingDirectory(parent, titre, dossier)`.
+    natif=False : sélecteur dessiné par Qt (cf. _selecteur)."""
     return _selecteur(parent, titre, dossier, "", QFileDialog.Directory,
-                      QFileDialog.AcceptOpen, sur_chemin)
+                      QFileDialog.AcceptOpen, sur_chemin, natif)
 
 
 def choisir_fichier_a_ouvrir(parent, titre: str, dossier: str, filtre: str,

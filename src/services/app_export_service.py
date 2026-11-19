@@ -17,7 +17,7 @@ import sys
 
 from .base_service import BaseService
 from .export_config_service import ExportConfigService
-from ..utils.qt_imports import QThread, pyqtSignal, QMessageBox, Qt
+from ..utils.qt_imports import QThread, QTimer, pyqtSignal, QMessageBox, Qt
 from ..ui.progress_dialog import ProgressDialog
 from ..ui.message_helper import MessageHelper
 from ..ui.style_manager import StyleManager
@@ -112,10 +112,13 @@ class AppExportService(BaseService):
         boite.setDefaultButton(windows)
 
         def _on_choix(bouton):
-            if bouton is windows:
-                self._choisir_dossier_et_exporter(CIBLE_WINDOWS)
-            elif bouton is macos:
-                self._choisir_dossier_et_exporter(CIBLE_MACOS)
+            cible = {windows: CIBLE_WINDOWS, macos: CIBLE_MACOS}.get(bouton)
+            if cible is None:
+                return
+            # Différé : le sélecteur s'ouvre une fois la question refermée. Ouvert
+            # pendant sa fermeture (feuille macOS), il pouvait rester invisible et
+            # bloquer tous les clics de la fenêtre principale.
+            QTimer.singleShot(0, lambda: self._choisir_dossier_et_exporter(cible))
 
         boite.buttonClicked.connect(_on_choix)
         boite.setWindowModality(Qt.WindowModal)
@@ -176,4 +179,7 @@ class AppExportService(BaseService):
             worker.finished.connect(_on_finished)
             worker.start()
 
-        choisir_dossier(parent, "Choisir le dossier de destination de l'export", ExportConfigService.get_default_output_dir(), _suite)
+        # Sélecteur dessiné par Qt (natif=False) : toujours visible ; le natif
+        # macOS, enchaîné après la question Windows/macOS, restait invisible
+        choisir_dossier(parent, "Choisir le dossier de destination de l'export",
+                        ExportConfigService.get_default_output_dir(), _suite, natif=False)

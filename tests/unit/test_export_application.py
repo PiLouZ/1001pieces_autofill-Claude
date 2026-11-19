@@ -459,8 +459,33 @@ class TestAppExportService:
         assert boite.defaultButton() is boutons['Windows']
         with patch.object(svc, '_choisir_dossier_et_exporter') as lancer:
             boutons['macOS'].click()
+            # Différé : rien pendant la fermeture de la question…
+            lancer.assert_not_called()
+            # … le sélecteur part au tour de boucle suivant
+            qapp.processEvents()
         lancer.assert_called_once_with('macos')
         boite.close()
+
+    def test_annuler_n_ouvre_pas_le_selecteur(self, qapp):
+        from src.services import app_export_service as mod
+        svc = mod.AppExportService(None)
+        svc.open_dialog()
+        boite = svc._boite_cible
+        annuler = next(b for b in boite.buttons() if b.text() == 'Annuler')
+        with patch.object(svc, '_choisir_dossier_et_exporter') as lancer:
+            annuler.click()
+            qapp.processEvents()
+        lancer.assert_not_called()
+        boite.close()
+
+    def test_selecteur_de_dossier_dessine_par_qt(self, qapp):
+        """Le sélecteur natif macOS, enchaîné après la question, restait invisible
+        et bloquait tous les clics : celui de l'export est dessiné par Qt."""
+        from src.services import app_export_service as mod
+        svc = mod.AppExportService(None)
+        with patch.object(mod, 'choisir_dossier') as choisir:
+            svc._choisir_dossier_et_exporter('macos')
+        assert choisir.call_args.kwargs.get('natif') is False
 
     def test_worker_transmet_la_cible(self, qapp, tmp_path):
         from src.services import app_export_service as mod
