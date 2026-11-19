@@ -21,7 +21,7 @@ des exports, et le copie dans le presse-papiers.
   colonnes), comme les boutons HTML Marques / Détails.
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ..utils.qt_imports import QApplication
 
@@ -198,13 +198,17 @@ class FicheProduitService:
             app_logger.debug(f"Fiche: références associées de {reference} non lues : {e}")
             associees, principale = set(), None
 
+        ligne_0 = {l[0] for l in lignees
+                   if reference in principales and l[0] not in principales
+                   and (memoire.get(l[0]) or (None, None))[1] == 0}
+        ligne_0 -= self.jumelles_hors_du_code(
+            ligne_0, {reference, principale, *associees, *ligne_0})
+
         code, autres = [reference], []
         remplace = list(remplace)
         for lignee in lignees:
             tete = lignee[0]
-            if tete in associees or (
-                    reference in principales and tete not in principales
-                    and (memoire.get(tete) or (None, None))[1] == 0):
+            if tete in associees or tete in ligne_0:
                 code.append(tete)
                 remplace += [r for r in lignee[1:] if r not in remplace]
             else:
@@ -233,6 +237,24 @@ class FicheProduitService:
         # si elle est dans la chaîne de remplacements, elle garde sa place ici
         return {'code_produit': [code[0]] + garder(code[1:]), 'remplace': remplace,
                 'equivalentes': autres, 'lignes_equivalentes': lignes}
+
+    def jumelles_hors_du_code(self, candidates: Set[str], du_code: Set[str]) -> Set[str]:
+        """Parmi les équivalentes `candidates` marquées « ligne 0 », celles dont la
+        réf. associée n'est pas du code produit (`du_code`) : elles restent avec
+        leur jumelle dans les équivalentes, au lieu de monter seules dans le code
+        produit (garde-fou contre une marque « ligne 0 » erronée)."""
+        if not candidates:
+            return set()
+        db = self.main_window.db_manager
+        hors = set()
+        try:
+            for ref in candidates:
+                jumelles = db.references_associees_de(ref)
+                if jumelles and not jumelles & du_code:
+                    hors.add(ref)
+        except Exception as e:
+            app_logger.debug(f"Fiche: jumelles des équivalentes de ligne 0 non lues : {e}")
+        return hors
 
     @staticmethod
     def ordre_de_la_fiche(refs: List[str], rangs: Dict[str, int]) -> List[str]:

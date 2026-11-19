@@ -139,6 +139,37 @@ class DatabaseFichesSiteMixin:
             self._ajouter_colonne_si_absente('produits_site', 'exporte_le', 'TEXT')
         except Exception as e:
             app_logger.error(f"Erreur création des tables des fiches du site : {e}")
+        self._reparer_jumelles_d_equivalentes()
+
+    def _reparer_jumelles_d_equivalentes(self) -> int:
+        """Réparation à l'ouverture : la jumelle d'une équivalente de ligne N ≥ 1 a pu
+        être marquée « ligne 0 » (lien posé avant que `_ligne_de_la_jumelle` ne suive
+        la ligne de la pièce) et monter à tort dans le code produit de la fiche
+        (488000537573, jumelle de C00537573, dans celui de C00140702). Elle reprend
+        la ligne de sa pièce. Retourne le nombre de jumelles réparées."""
+        try:
+            with self._query_lock:
+                fausses = self.cursor.execute("""
+                    SELECT a.ref_piece, p.ligne_fiche
+                    FROM references_associees ra
+                    JOIN piece_equivalence_groups p ON p.ref_piece = ra.ref_piece
+                    JOIN piece_equivalence_groups a ON a.ref_piece = ra.associee
+                    WHERE a.ligne_fiche = 0 AND p.ligne_fiche >= 1
+                      AND NOT EXISTS (SELECT 1 FROM produits_site s WHERE s.ref_piece = ra.ref_piece)
+                      AND NOT EXISTS (SELECT 1 FROM piece_supersessions s WHERE s.ref_old = ra.ref_piece)
+                """).fetchall()
+                if not fausses:
+                    return 0
+                self.cursor.executemany(
+                    "UPDATE piece_equivalence_groups SET ligne_fiche = ? WHERE ref_piece = ?",
+                    [(ligne, ref) for ref, ligne in fausses])
+                self.conn.commit()
+            app_logger.info(f"Réparation : {len(fausses)} réf. associée(s) d'équivalente remise(s) "
+                            f"sur la ligne de leur pièce ({', '.join(r for r, _ in fausses[:10])})")
+            return len(fausses)
+        except Exception as e:
+            app_logger.error(f"Réparation des réf. associées d'équivalentes impossible : {e}")
+            return 0
 
     # --- Export EveryParts des fiches reprises (§ 10.19) ---------------------------
     def produits_site_reprises(self, non_exportes: bool = False) -> List[Dict]:
@@ -236,10 +267,11 @@ class DatabaseFichesSiteMixin:
     def definir_references_associees(self, reponses: Iterable[Tuple[str, Optional[str]]],
                                      le: str, origines: Optional[Dict[str, str]] = None) -> int:
         """Mémorise chaque réponse (référence associée, ou None = « aucune »). Une
-        référence associée devient une équivalente de la pièce, marquée ligne 0
-        (code produit, § 8.1) avec sa marque d'origine — sauf si la pièce est une
-        ancienne référence (remplacée) : sa jumelle n'est pas du code produit, elle
-        suit la pièce dans « Remplace ». Retourne le nombre de réponses."""
+        référence associée devient une équivalente de la pièce, avec sa marque
+        d'origine, sur la même ligne de la fiche que la pièce (`_ligne_de_la_jumelle`) :
+        ligne 0 (code produit, § 8.1) en général, la ligne de la pièce si celle-ci
+        est une équivalente d'une autre ligne, aucune si la pièce est une ancienne
+        référence (sa jumelle la suit dans « Remplace »). Retourne le nombre de réponses."""
         n = 0
         for ref, associee in reponses:
             ref = (ref or '').strip()
@@ -255,17 +287,34 @@ class DatabaseFichesSiteMixin:
                     "INSERT OR REPLACE INTO references_associees (ref_piece, associee, decide_le) "
                     "VALUES (?, ?, ?)", [ref, associee, le])
                 if associee:
-                    ancienne = self.cursor.execute(
-                        "SELECT 1 FROM piece_supersessions WHERE ref_old = ? LIMIT 1",
-                        [ref]).fetchone() is not None
+                    ligne = self._ligne_de_la_jumelle(ref)
                     self.cursor.execute(
                         "UPDATE piece_equivalence_groups SET "
-                        + ("" if ancienne else "ligne_fiche = 0, ")
+                        + ("" if ligne is None else "ligne_fiche = ?, ")
                         + "origine = COALESCE(origine, ?) WHERE ref_piece = ?",
-                        [(origines or {}).get(associee), associee])
+                        ([] if ligne is None else [ligne])
+                        + [(origines or {}).get(associee), associee])
                 self.conn.commit()
             n += 1
         return n
+
+    def _ligne_de_la_jumelle(self, ref: str) -> Optional[int]:
+        """Ligne de la fiche que prend la jumelle de `ref` (sous verrou) : la même
+        que `ref`. None = ne pas y toucher (`ref` est une ancienne référence) ;
+        0 = code produit (`ref` est la pièce d'un produit du site, ou n'a pas de
+        ligne) ; N = `ref` est une équivalente de la ligne N (C00537573, ligne 1 de
+        la fiche de C00140702 : sa jumelle 488000537573 reste avec elle, pas dans
+        le code produit)."""
+        if self.cursor.execute("SELECT 1 FROM piece_supersessions WHERE ref_old = ? LIMIT 1",
+                               [ref]).fetchone():
+            return None
+        if self.cursor.execute("SELECT 1 FROM produits_site WHERE ref_piece = ? LIMIT 1",
+                               [ref]).fetchone():
+            return 0
+        row = self.cursor.execute(
+            "SELECT ligne_fiche FROM piece_equivalence_groups WHERE ref_piece = ?",
+            [ref]).fetchone()
+        return row[0] if row and row[0] else 0
 
     def lier_paires_fiche(self, paires: Iterable[Tuple[str, str]], le: str) -> int:
         """Paires Whirlpool / Indesit / Beko des lignes « Remplace » et « Équivalentes » (CDC
