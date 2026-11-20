@@ -3,18 +3,16 @@ Service de dialogues unifié - Refactorisation Phase 2
 Consolidation de DialogService (simple) et DialogService (complexe)
 
 RESPONSABILITÉS UNIFIÉES :
-- Dialogues simples : Catégories, Notes (méthodes statiques)
 - Dialogues complexes : Import, Autocomplétion, Références (méthodes d'instance)
 - Factory pattern pour création optimisée
 - Interface cohérente pour toute l'application
 
 ARCHITECTURE :
 - UnifiedDialogService : Service principal avec factory et instances
-- Dialogues simples : Méthodes statiques sans dépendances
 - Dialogues complexes : Méthodes d'instance avec accès à main_window
 """
 
-from typing import Callable, Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List
 from ..utils.qt_imports import (
     QDialog,
     QVBoxLayout,
@@ -29,7 +27,6 @@ from ..utils.qt_imports import (
 )
 from ..utils.qt_imports import Qt
 from ..utils.qt_imports import QFont
-from ..utils.boites import saisir_texte
 
 from ..core.logger import app_logger
 from functools import wraps
@@ -51,36 +48,6 @@ def _handle_dialog_errors(default_return=None, context="Dialogue"):
         return wrapper
     return decorator
 
-class SimpleDialogs:
-    """
-    Dialogues simples - Méthodes statiques sans dépendances UI complexes
-    
-    Ces dialogues peuvent être utilisés partout sans instanciation
-    """
-    
-    @staticmethod
-    @_handle_dialog_errors(default_return=None, context="dialogue catégories")
-    def get_categories(parent, current_categories: List[str],
-                       sur_categories: Callable[[List[str]], None]) -> None:
-        """
-        Dialogue de gestion des catégories (modal non bloquant, jamais de boucle
-        imbriquée).
-
-        Args:
-            parent: Widget parent
-            current_categories: Liste des catégories actuelles
-            sur_categories: appelé avec la nouvelle liste si l'utilisateur valide
-        """
-        def _valider(text):
-            categories = [line.strip() for line in text.split('\n') if line.strip()]
-            app_logger.debug(f"Catégories sélectionnées: {categories}")
-            sur_categories(categories)
-
-        saisir_texte(parent, "Gestion des Catégories",
-                     "Entrez les catégories (une par ligne) :",
-                     '\n'.join(current_categories) if current_categories else "",
-                     _valider, multiligne=True)
-    
 class ComplexDialogs:
     """
     Dialogues complexes - Méthodes d'instance avec accès à l'application
@@ -294,13 +261,6 @@ class UnifiedDialogService:
                 raise ValueError("main_window requis pour les dialogues complexes")
             self._complex_dialogs = ComplexDialogs(self.main_window)
         return self._complex_dialogs
-    
-    # Délégation aux dialogues simples (méthodes statiques)
-    @staticmethod
-    def get_categories(parent, current_categories: List[str],
-                       sur_categories: Callable[[List[str]], None]) -> None:
-        """Dialogue de gestion des catégories (non bloquant)"""
-        return SimpleDialogs.get_categories(parent, current_categories, sur_categories)
     
     # Délégation aux dialogues complexes (méthodes d'instance)
     def show_reference_selection_dialog(self, title: str, message: str, 

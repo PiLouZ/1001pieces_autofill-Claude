@@ -72,28 +72,8 @@ class DatabaseSetupMixin:
             )
         """)
 
-        # Garder l'ancienne table pour migration
-        self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS pieces_old (
-                id INTEGER PRIMARY KEY,
-                ref_piece TEXT NOT NULL,
-                appareil_id INTEGER,
-                description TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(appareil_id) REFERENCES appareils(id) ON DELETE CASCADE,
-                UNIQUE(appareil_id, ref_piece)
-            )
-        """)
-
-        # Table catégories
-        self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS categories (
-                id INTEGER PRIMARY KEY,
-                name TEXT UNIQUE NOT NULL,
-                description TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+        # Tables vides jamais utilisées (pieces_old, categories) : retirées
+        self._supprimer_tables_vides_obsoletes()
 
         # Table des décisions sur les doublons de références
         self.cursor.execute("""
@@ -291,6 +271,27 @@ class DatabaseSetupMixin:
             except sqlite3.Error as e:
                 raise DatabaseError(f"Erreur lors de la création des index: {e}")
 
+    # Tables créées à chaque démarrage jusqu'en 3.105.1, jamais remplies :
+    # `categories` n'a jamais servi, `pieces_old` ne servait que d'étape à la
+    # migration ci-dessous (désormais une table temporaire). Une table non
+    # vide est gardée, par prudence.
+    _TABLES_VIDES_OBSOLETES = ('categories', 'pieces_old')
+
+    def _supprimer_tables_vides_obsoletes(self):
+        """Supprimer les tables obsolètes qui existent et sont vides."""
+        for table in self._TABLES_VIDES_OBSOLETES:
+            self.cursor.execute(
+                "SELECT 1 FROM main.sqlite_master WHERE type='table' AND name=?", (table,))
+            if not self.cursor.fetchone():
+                continue
+            self.cursor.execute(f'SELECT COUNT(*) FROM main."{table}"')
+            lignes = self.cursor.fetchone()[0]
+            if lignes:
+                app_logger.warning(f"Table {table} conservée : {lignes} ligne(s), elle devait être vide")
+                continue
+            self.cursor.execute(f'DROP TABLE main."{table}"')
+            app_logger.info(f"Migration : table vide {table} supprimée")
+
     def _migrate_pieces_to_new_structure(self):
         """Migrer les données de l'ancienne structure vers la nouvelle structure normalisée"""
         try:
@@ -331,18 +332,30 @@ class DatabaseSetupMixin:
 
             # Étape 1: Sauvegarder les anciennes données
             app_logger.info(" Sauvegarde des anciennes données...")
+            # Copie de travail en table TEMPORAIRE (jusqu'en 3.105.1 : table
+            # pieces_old créée à chaque démarrage et laissée vide dans la base)
+            self.cursor.execute("""
+                CREATE TEMP TABLE IF NOT EXISTS pieces_old (
+                    id INTEGER PRIMARY KEY,
+                    ref_piece TEXT NOT NULL,
+                    appareil_id INTEGER,
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(appareil_id, ref_piece)
+                )
+            """)
 
             # Adapter la requête selon les colonnes disponibles
             if 'description' in pieces_columns:
                 if 'created_at' in pieces_columns:
                     # Table complète avec description et created_at
-                    self.cursor.execute("INSERT INTO pieces_old (id, ref_piece, appareil_id, description, created_at) SELECT id, ref_piece, appareil_id, description, created_at FROM pieces")
+                    self.cursor.execute("INSERT INTO temp.pieces_old (id, ref_piece, appareil_id, description, created_at) SELECT id, ref_piece, appareil_id, description, created_at FROM pieces")
                 else:
                     # Table avec description mais sans created_at
-                    self.cursor.execute("INSERT INTO pieces_old (id, ref_piece, appareil_id, description) SELECT id, ref_piece, appareil_id, description FROM pieces")
+                    self.cursor.execute("INSERT INTO temp.pieces_old (id, ref_piece, appareil_id, description) SELECT id, ref_piece, appareil_id, description FROM pieces")
             else:
                 # Table simple sans description
-                self.cursor.execute("INSERT INTO pieces_old (id, ref_piece, appareil_id) SELECT id, ref_piece, appareil_id FROM pieces")
+                self.cursor.execute("INSERT INTO temp.pieces_old (id, ref_piece, appareil_id) SELECT id, ref_piece, appareil_id FROM pieces")
 
             # Étape 2: Créer les nouvelles pièces uniques
             app_logger.info(" Création des pièces uniques...")
@@ -399,13 +412,14 @@ class DatabaseSetupMixin:
                     p_new.id as piece_id,
                     p_old.appareil_id,
                     COALESCE(p_old.created_at, CURRENT_TIMESTAMP) as created_at
-                FROM pieces_old p_old
+                FROM temp.pieces_old p_old
                 JOIN pieces p_new ON p_old.ref_piece = p_new.ref_piece
                 WHERE p_old.appareil_id IS NOT NULL
             """)
 
             associations_migrated = self.cursor.rowcount
             app_logger.info(f" {associations_migrated} associations migrées")
+            self.cursor.execute("DROP TABLE IF EXISTS temp.pieces_old")
 
             app_logger.info("[OK] Migration terminée avec succès")
 
