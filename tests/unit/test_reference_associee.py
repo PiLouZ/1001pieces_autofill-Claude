@@ -104,7 +104,9 @@ def test_fichier_seul_reponse_memorisee_puis_reproposee(qapp, tmp_path, rendus):
     ImportManager(b.db)._run_import_files(dialogue.get_configuration())
     assert b.db.reference_associee('C00123456') == (False, None)
     dialogue = _collage('11051894', qapp, b.db, [['WAE24/01', 'Maxx']])
-    assert dialogue.champ_associee.isHidden()
+    # Forme non reconnue : seulement « Associer… » (groupe à déclarer, § 10.17 bis)
+    champ = dialogue.champ_associee
+    assert champ.champ.isHidden() and not champ.lien_associer.isHidden()
     dialogue._validate_and_accept()
     assert dialogue.get_configuration().references_associees is None
 
@@ -120,7 +122,9 @@ def test_cartes_de_plusieurs_fichiers(qapp, tmp_path):
     dialogue._load_data_deferred()
     dialogue.auto_file_references_checkbox.setChecked(True)   # réf. = nom du fichier
     champs = {f.suggested_reference: c for f, c in dialogue._champs_associes}
-    assert not champs['481010595117'].isHidden() and champs['11051894'].isHidden()
+    assert not champs['481010595117'].isHidden() and champs['11051894'].champ.isHidden()
+    assert champs['481010595117'].lien_associer.isHidden()
+    assert not champs['11051894'].lien_associer.isHidden()
     champs['481010595117'].champ.set_refs(['C00555666'])
     dialogue._validate_and_accept()
     assert dialogue.get_configuration().references_associees == {'481010595117': 'C00555666'}

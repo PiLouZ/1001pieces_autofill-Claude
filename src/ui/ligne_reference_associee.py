@@ -10,7 +10,11 @@ Quatre états, la fenêtre choisit lequel afficher (`afficher`) :
 - PROPOSEE : l'équivalente de code produit d'une fiche reprise, pas encore
              confirmée — ✓ confirme, ✕ refuse ;
 - AUCUNE   : « aucune » mémorisée — ✕ oublie la réponse ;
-- VIDE     : rien de connu — + choisit, « Aucune » mémorise l'absence.
+- VIDE     : rien de connu — + choisit, « Aucune » mémorise l'absence ;
+- INCONNUE : la forme de la réf. n'est d'aucun des trois groupes (Beko
+             `210480241`) — « Déclarer son groupe… » (§ 10.17 bis).
+Un groupe déclaré (et non lu dans la forme) se signale dans les états VIDE et
+AUCUNE, avec ✕ pour l'oublier.
 Le widget n'écrit rien : il émet un signal, la fenêtre agit.
 """
 
@@ -23,7 +27,7 @@ import qtawesome as qta
 
 from .style_manager import StyleManager
 
-JUMELLE, PROPOSEE, AUCUNE, VIDE = 'jumelle', 'proposee', 'aucune', 'vide'
+JUMELLE, PROPOSEE, AUCUNE, VIDE, INCONNUE = 'jumelle', 'proposee', 'aucune', 'vide', 'inconnue'
 
 _VIOLET = '#8e44ad'
 
@@ -38,6 +42,8 @@ class LigneReferenceAssociee(QWidget):
     refuser = pyqtSignal()
     marquer_aucune = pyqtSignal()
     oublier_aucune = pyqtSignal()
+    declarer_groupe = pyqtSignal()
+    oublier_groupe = pyqtSignal()
     ref_clicked = pyqtSignal(str)
     ref_right_clicked = pyqtSignal(str)
 
@@ -74,18 +80,30 @@ class LigneReferenceAssociee(QWidget):
         self.setVisible(False)
 
     def afficher(self, etat: str, origine: str, autres: str, reference: str = '',
-                 libelle: str = '', role: str = '', piece: str = ''):
+                 libelle: str = '', role: str = '', piece: str = '',
+                 declare: bool = False):
         """`origine` : groupe de la pièce affichée (« Whirlpool ») ; `autres` :
         « Indesit ou Beko ». JUMELLE : `piece` = la pièce affichée, `role` = son
-        rôle (« principale » / « associée »), `reference` = sa jumelle."""
+        rôle (« principale » / « associée »), `reference` = sa jumelle.
+        `declare` : le groupe vient d'une déclaration, pas de la forme."""
         self.etat, self.reference = etat, reference or ''
         self._vider()
         self.titre.setText("Réf. associées" if etat == JUMELLE else "Réf. associée :")
-        self.titre.setToolTip(f"Référence jumelle {autres} de cette pièce {origine}. "
-                              f"La principale vient en premier dans le code produit de la "
-                              f"Fiche complète, l'associée à sa suite.")
+        if etat == INCONNUE:
+            self.titre.setToolTip("La forme de cette référence n'est ni celle d'une réf. "
+                                  "Whirlpool, ni Indesit, ni Beko. Déclarez son groupe pour "
+                                  "lui donner une réf. associée (jumelle).")
+        else:
+            self.titre.setToolTip(f"Référence jumelle {autres} de cette pièce {origine}. "
+                                  f"La principale vient en premier dans le code produit de la "
+                                  f"Fiche complète, l'associée à sa suite.")
         self._nouvelle_ligne()
-        if etat == JUMELLE:
+        if etat == INCONNUE:
+            self._texte("forme non reconnue")
+            self._ligne.addStretch(1)
+            self._lien("Déclarer son groupe…", "Indiquer si cette référence est Whirlpool, "
+                       "Indesit ou Beko", self.declarer_groupe)
+        elif etat == JUMELLE:
             # Principale d'abord : l'ordre du code produit
             if role == "principale":
                 self._ligne_piece("Principale", piece)
@@ -104,19 +122,35 @@ class LigneReferenceAssociee(QWidget):
         elif etat == AUCUNE:
             self._texte("aucune (l'import ne la demandera plus)")
             self._ligne.addStretch(1)
+            self._groupe_declare(origine, declare)
             self._croix("Oublier la réponse : l'import redemandera la réf. associée",
                         self.oublier_aucune)
         else:
             self._texte("non renseignée")
             self._ligne.addStretch(1)
+            self._groupe_declare(origine, declare)
             self._bouton('fa5s.plus', "Choisir la réf. associée", self.ajouter)
-            lien = QPushButton("Aucune")
-            lien.setStyleSheet(StyleManager.REF_ASSOCIEE_LIEN)
-            lien.setCursor(Qt.PointingHandCursor)
-            lien.setToolTip("Cette pièce n'a pas de jumelle : l'import ne la demandera plus")
-            lien.clicked.connect(lambda *_: self.marquer_aucune.emit())
-            self._ligne.addWidget(lien)
+            self._lien("Aucune", "Cette pièce n'a pas de jumelle : l'import ne la demandera plus",
+                       self.marquer_aucune)
         self.setVisible(True)
+
+    def _lien(self, texte: str, aide: str, signal):
+        lien = QPushButton(texte)
+        lien.setStyleSheet(StyleManager.REF_ASSOCIEE_LIEN)
+        lien.setCursor(Qt.PointingHandCursor)
+        lien.setToolTip(aide)
+        lien.clicked.connect(lambda *_: signal.emit())
+        self._ligne.addWidget(lien)
+
+    def _groupe_declare(self, origine: str, declare: bool):
+        """« Beko (déclaré) ✕ » : groupe venu d'une déclaration, à oublier au besoin."""
+        if not declare:
+            return
+        lbl = QLabel(f"{origine} (déclaré)")
+        lbl.setStyleSheet(StyleManager.GROUPE_DECLARE)
+        lbl.setToolTip("Groupe déclaré à la main : la forme de la référence n'est pas reconnue")
+        self._ligne.addWidget(lbl)
+        self._croix("Oublier le groupe déclaré", self.oublier_groupe)
 
     # --- Briques --------------------------------------------------------------------
     def _vider(self):

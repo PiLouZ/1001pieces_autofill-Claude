@@ -1714,7 +1714,7 @@ class ImportDialog(QDialog):
 
     def _collecter_associees(self, config: ImportConfiguration):
         """Réf. associées répondues, pour la référence que la pièce aura vraiment."""
-        reponses = {}
+        reponses, origines = {}, {}
         for file, champ in self._champs_associes:
             saisie = (config.saisies_fiches or {}).get(file.path)
             if saisie is not None:
@@ -1726,7 +1726,11 @@ class ImportDialog(QDialog):
             repondu, associee = champ.reponse()
             if repondu and ref and ref == champ.reference:
                 reponses[ref] = associee
+                # Groupe choisi pour une réf. de forme inconnue (§ 10.17 bis) :
+                # retenu seulement avec la paire qu'il permet
+                origines.update(champ.origines_declarees())
         config.references_associees = reponses or None
+        config.origines_declarees = origines or None
 
     @staticmethod
     def _lien_fiche(fiche) -> QLabel:

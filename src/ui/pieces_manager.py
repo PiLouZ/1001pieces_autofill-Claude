@@ -117,9 +117,11 @@ from .piece_picker_dialog import PiecePickerDialog, RefTagList
 from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import QShortcut
 from .saisie_relation import SaisieRelation
-from .ligne_reference_associee import (AUCUNE, JUMELLE, PROPOSEE, VIDE,
+from .ligne_reference_associee import (AUCUNE, INCONNUE, JUMELLE, PROPOSEE, VIDE,
                                        LigneReferenceAssociee)
-from ..utils.rapprochement_fiche.associee import autres_origines, origine_associable
+from ..utils.rapprochement_fiche.associee import (ORIGINES_ASSOCIEES, autres_origines,
+                                                  origine_associable, origine_declaree,
+                                                  origine_du_format)
 from ..utils.ouverture_modale import ouvrir_modal
 from ..utils.boites import demander_oui_non, choisir_fichier_a_enregistrer, saisir_texte, choisir_element
 
@@ -546,6 +548,8 @@ class PiecesManagerWindow(QDialog):
         self.ligne_associee.refuser.connect(self._on_refuser_associee)
         self.ligne_associee.marquer_aucune.connect(self._on_marquer_aucune_associee)
         self.ligne_associee.oublier_aucune.connect(self._on_oublier_aucune_associee)
+        self.ligne_associee.declarer_groupe.connect(self._on_declarer_groupe)
+        self.ligne_associee.oublier_groupe.connect(self._on_oublier_groupe)
         self.ligne_associee.ref_clicked.connect(self._search_in_manager)
         self.ligne_associee.ref_right_clicked.connect(self._on_chip_right_click)
         eq_sec_layout.addWidget(self.ligne_associee)
@@ -2363,17 +2367,40 @@ class PiecesManagerWindow(QDialog):
     def _afficher_reference_associee(self, ref_piece: str) -> str:
         """Met la ligne à jour ; retourne la référence affichée (ou '')."""
         origine = origine_associable(ref_piece)
-        if not origine:
-            self.ligne_associee.masquer()
-            return ''
         etat, reference, role = self._etat_reference_associee(ref_piece)
+        if not origine and etat != JUMELLE:
+            # Forme non reconnue (§ 10.17 bis) : son groupe peut être déclaré (une
+            # jumelle déjà posée, elle, reste affichée)
+            self.ligne_associee.afficher(INCONNUE, '', '')
+            return ''
         libelle = ''
         if reference:
             lignes = self.db_manager.lire_libelle_piece(reference)
             libelle = (lignes[0][0] or '') if lignes else ''
+        declare = bool(origine_declaree(ref_piece)) and not origine_du_format(ref_piece)
         self.ligne_associee.afficher(etat, origine, autres_origines(origine), reference,
-                                     libelle, role, piece=ref_piece)
+                                     libelle, role, piece=ref_piece, declare=declare)
         return reference
+
+    def _on_declarer_groupe(self):
+        """Forme non reconnue : la pièce est déclarée Whirlpool, Indesit ou Beko."""
+        ref_piece = self._current_ref_piece
+        if not ref_piece:
+            return
+
+        def _sur_groupe(groupe: str):
+            if groupe in ORIGINES_ASSOCIEES and self.db_manager.declarer_origines(
+                    {ref_piece: groupe}, self._maintenant()):
+                self._apres_associee(f"==> '{ref_piece}' déclarée {groupe}")
+
+        choisir_element(self, "Groupe de la référence",
+                        f"{ref_piece} n'a pas une forme connue. Elle est :",
+                        list(ORIGINES_ASSOCIEES), _sur_groupe, modifiable=False)
+
+    def _on_oublier_groupe(self):
+        ref_piece = self._current_ref_piece
+        if ref_piece and self.db_manager.oublier_origine_declaree(ref_piece):
+            self._apres_associee(f"==> '{ref_piece}' → (groupe déclaré oublié)")
 
     @staticmethod
     def _maintenant() -> str:
@@ -2399,18 +2426,38 @@ class PiecesManagerWindow(QDialog):
         origine = origine_associable(ref_piece or '')
         if not origine:
             return
-        # Seuls les deux autres groupes sont proposés ; un refus (déjà liée…)
-        # s'affiche sous le choix, la fenêtre reste ouverte
+        autres = [g for g in ORIGINES_ASSOCIEES if g != origine]
+        # Les deux autres groupes ; les réf. de forme non reconnue, seulement
+        # quand on les cherche (leur groupe est demandé ensuite, § 10.17 bis).
+        # Un refus (déjà liée…) s'affiche sous le choix, la fenêtre reste ouverte
         dlg = PiecePickerDialog(
             self.db_manager, self, exclude_ref=ref_piece, max_refs=1,
             title=f"Réf. associée de {ref_piece} ({autres_origines(origine)})",
             filtre=lambda ref: origine_associable(ref) not in ('', origine),
-            valider=lambda refs: self.db_manager.motif_refus_associee(ref_piece, refs[0]))
+            a_chercher=lambda ref: not origine_associable(ref),
+            valider=lambda refs: self.db_manager.motif_refus_associee(
+                ref_piece, refs[0], origine_associee=(
+                    '' if origine_associable(refs[0]) else autres[0])))
 
         def _sur_accepte():
             choisie = (dlg.selected_ref() or '').strip()
-            if choisie:
+            if not choisie:
+                return
+            if origine_associable(choisie):
                 self._lier_associee(ref_piece, choisie)
+                return
+
+            def _sur_groupe(groupe: str):
+                if groupe in autres and self.db_manager.declarer_origines(
+                        {choisie: groupe}, self._maintenant()):
+                    self._lier_associee(ref_piece, choisie)
+
+            # Après la fermeture du choix de pièce (jamais deux fenêtres enchaînées
+            # dans le même tour de boucle : gel macOS)
+            QTimer.singleShot(0, lambda: choisir_element(
+                self, "Groupe de la réf. associée",
+                f"{choisie} n'a pas une forme connue. Elle est :", autres, _sur_groupe,
+                modifiable=False))
 
         ouvrir_modal(dlg, sur_accepte=_sur_accepte)  # jamais exec_ (gel macOS)
 
