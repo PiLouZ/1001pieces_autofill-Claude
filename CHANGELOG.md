@@ -4,6 +4,27 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.105.1] - 2026-11-20 (PR #166)
+
+Gestionnaire de pièces plus rapide et fenêtre « Modifier la pièce » agrandie.
+
+### Gestionnaire de pièces : comptages en arrière-plan (PR #166)
+- Le nombre d'appareils et les types de chaque pièce (`REQUETE_COMPTAGES_PIECES`, par
+  id de pièce, 5,2 M d'associations, 2 à 3 s) se calculent dans un `QThread`
+  (`src/ui/chargement_pieces.py`) sur sa propre connexion en lecture seule : la fenêtre
+  ne se fige plus, plus de curseur d'attente. Repli synchrone en cas d'erreur, calcul
+  interrompu à la fermeture.
+- Réouverture et rechargement après modification : liste affichée tout de suite avec
+  les derniers comptages, actualisée à la fin du calcul. Plus long blocage de
+  l'interface : 3,3 s → 0,1 s à l'ouverture, 2,2 s → 0,2 s à la réouverture.
+- Icônes de la colonne Statut mises en cache.
+
+### « Modifier la pièce » agrandie (PR #166)
+- 560 px de large, champs sur toute la largeur, hauteur ajustée au texte : la liste des
+  références liées et l'avertissement des libellés remplacés ne se chevauchent plus.
+
+---
+
 ## [3.105.0] - 2026-11-20 (PR #162, #163, #164)
 
 Réf. associée pour une référence de forme inconnue, pièce seule depuis le panneau
