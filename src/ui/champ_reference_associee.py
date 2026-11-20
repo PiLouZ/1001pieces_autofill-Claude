@@ -102,6 +102,7 @@ class ChampReferenceAssociee(QWidget):
         choix.setStyleSheet(StyleManager.CHOIX_GROUPE)
         choix.setToolTip(aide)
         choix.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+        choix.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         choix.setVisible(False)
         return choix
 
@@ -116,6 +117,13 @@ class ChampReferenceAssociee(QWidget):
         index = choix.findData(actuel) if actuel else 0
         choix.setCurrentIndex(max(index, 0))
         choix.blockSignals(False)
+        # Largeur du texte le plus long réservée : sinon la ligne de la carte
+        # écrase la liste jusqu'à sa flèche, et le menu déroulant coupe les noms
+        metriques = choix.fontMetrics()
+        largeur = max(metriques.horizontalAdvance(choix.itemText(i))
+                      for i in range(choix.count())) + 34
+        choix.setMinimumWidth(largeur)
+        choix.view().setMinimumWidth(largeur)
 
     # --- Origines -------------------------------------------------------------------
     def _origine(self, reference: str) -> str:

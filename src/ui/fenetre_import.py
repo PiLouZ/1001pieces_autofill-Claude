@@ -953,7 +953,11 @@ class ImportDialog(QDialog):
             file_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             # Le nom de fichier cède la place (il ne fixe pas la largeur de la carte :
             # sinon toutes les cartes débordent de la colonne et sont coupées à droite)
-            file_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+            politique = QSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+            # Masqué (il répète la référence), il garde sa place : la référence ne
+            # s'étire pas et la réf. associée reste juste à sa droite
+            politique.setRetainSizeWhenHidden(True)
+            file_label.setSizePolicy(politique)
             row1.addWidget(file_label, 1)
 
             card_layout.addLayout(row1)
