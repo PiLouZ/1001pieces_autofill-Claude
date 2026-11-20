@@ -124,6 +124,8 @@ class ImportConfiguration:
     # Référence associée Whirlpool / Indesit / Beko répondue dans la fenêtre :
     # réf. de pièce → référence associée, ou None (« aucune ») ; CDC fiches § 10.17
     references_associees: Optional[Dict[str, Optional[str]]] = None
+    # Groupe déclaré (Whirlpool / Indesit / Beko) des réf. hors des formats connus
+    origines_declarees: Optional[Dict[str, str]] = None
 
     def __post_init__(self):
         if self.label_config is None:
@@ -960,6 +962,17 @@ class ImportManager:
                                         results: Dict[str, Any]) -> None:
         """Référence associée Whirlpool / Indesit / Beko répondue à l'import : mémorisée,
         et équivalente de la pièce si elle est donnée (CDC fiches du site § 10.17)."""
+        # Groupes déclarés d'abord : l'origine de l'associée en dépend
+        declarees = getattr(config, 'origines_declarees', None)
+        declarer = getattr(self.db_manager, 'declarer_origines', None)
+        if declarees and declarer is not None:
+            try:
+                if declarer(declarees, datetime.now().isoformat(timespec='seconds')):
+                    results['origines_declarees'] = dict(declarees)
+                    app_logger.info("[Import] Groupes déclarés : " + ", ".join(
+                        f"{r} = {o}" for r, o in declarees.items()))
+            except Exception as e:
+                app_logger.warning(f"Groupes déclarés non enregistrés : {e}")
         reponses = getattr(config, 'references_associees', None)
         definir = getattr(self.db_manager, 'definir_references_associees', None)
         if not reponses or definir is None:

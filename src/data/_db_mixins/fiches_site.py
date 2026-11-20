@@ -130,6 +130,16 @@ class DatabaseFichesSiteMixin:
                     decide_le TEXT
                 )
             """)
+            # Origine déclarée (§ 10.17 bis) : réf. hors des formats connus déclarée
+            # Whirlpool / Indesit / Beko. Clé = texte de la référence, sans lien vers
+            # `pieces` : on la déclare à l'import, avant que la pièce n'existe.
+            self.cursor.execute("""
+                CREATE TABLE IF NOT EXISTS origines_declarees (
+                    reference TEXT PRIMARY KEY,
+                    origine   TEXT NOT NULL,
+                    decide_le TEXT
+                )
+            """)
             self._setup_reprise_site_tables()
             self._ajouter_colonne_si_absente('piece_associations', 'provenance', 'TEXT')
             self._ajouter_colonne_si_absente('piece_equivalence_groups', 'origine', 'TEXT')
@@ -140,6 +150,7 @@ class DatabaseFichesSiteMixin:
         except Exception as e:
             app_logger.error(f"Erreur création des tables des fiches du site : {e}")
         self._reparer_jumelles_d_equivalentes()
+        self.charger_origines_declarees()
 
     def _reparer_jumelles_d_equivalentes(self) -> int:
         """Réparation à l'ouverture : la jumelle d'une équivalente de ligne N ≥ 1 a pu
@@ -346,11 +357,61 @@ class DatabaseFichesSiteMixin:
             n += 1
         return n
 
+    # --- Origine déclarée Whirlpool / Indesit / Beko (§ 10.17 bis) -----------------
+    def charger_origines_declarees(self) -> Dict[str, str]:
+        """Lit les origines déclarées et en remplit le registre de `associee.py`."""
+        from src.utils.rapprochement_fiche.associee import definir_origines_declarees
+        try:
+            with self._query_lock:
+                rows = self.cursor.execute(
+                    "SELECT reference, origine FROM origines_declarees").fetchall()
+        except Exception as e:
+            app_logger.error(f"Origines déclarées non lues : {e}")
+            rows = []
+        origines = {r: o for r, o in rows if r and o}
+        definir_origines_declarees(origines)
+        return origines
+
+    def declarer_origines(self, origines: Dict[str, str], le: str) -> int:
+        """Mémorise l'origine (Whirlpool, Indesit ou Beko) de références hors des
+        formats connus. Une origine hors de ces trois groupes est ignorée.
+        Retourne le nombre de déclarations écrites."""
+        from src.utils.rapprochement_fiche.associee import (ORIGINES_ASSOCIEES,
+                                                            noter_origine_declaree)
+        lignes = [((ref or '').strip(), origine) for ref, origine in (origines or {}).items()
+                  if (ref or '').strip() and origine in ORIGINES_ASSOCIEES]
+        if not lignes:
+            return 0
+        with self._query_lock:
+            self.cursor.executemany(
+                "INSERT OR REPLACE INTO origines_declarees (reference, origine, decide_le) "
+                "VALUES (?, ?, ?)", [(r, o, le) for r, o in lignes])
+            self.conn.commit()
+        for ref, origine in lignes:
+            noter_origine_declaree(ref, origine)
+        return len(lignes)
+
+    def oublier_origine_declaree(self, reference: str) -> bool:
+        """Retire la déclaration : la référence redevient lue par sa seule forme."""
+        from src.utils.rapprochement_fiche.associee import noter_origine_declaree
+        ref = (reference or '').strip()
+        if not ref:
+            return False
+        with self._query_lock:
+            n = self.cursor.execute("DELETE FROM origines_declarees WHERE reference = ?",
+                                    [ref]).rowcount
+            self.conn.commit()
+        noter_origine_declaree(ref, None)
+        return bool(n)
+
     # --- Réf. associée depuis le gestionnaire de pièces ------------------------------
-    def motif_refus_associee(self, principale: str, associee: str) -> str:
+    def motif_refus_associee(self, principale: str, associee: str,
+                             origine_associee: str = '') -> str:
         """Motif du refus de lier `associee` comme réf. associée de `principale`
         ('' = possible) : l'une n'existe pas, n'est pas Whirlpool / Indesit / Beko,
-        les deux sont du même groupe ou l'une a déjà une autre jumelle. Sans écrire."""
+        les deux sont du même groupe ou l'une a déjà une autre jumelle. Sans écrire.
+        `origine_associee` : groupe que l'associée de forme inconnue va recevoir
+        (déclaré juste après, § 10.17 bis)."""
         from src.utils.rapprochement_fiche.associee import autres_origines, origine_associable
         principale, associee = (principale or '').strip(), (associee or '').strip()
         if not principale or not associee or principale == associee:
@@ -358,11 +419,12 @@ class DatabaseFichesSiteMixin:
         for ref in (principale, associee):
             if not self.lire_piece_exacte(ref):
                 return f"{ref} n'existe pas dans les pièces. Créez-la d'abord (Nouvelle pièce)."
-        origine_p, origine_a = origine_associable(principale), origine_associable(associee)
+        origine_p = origine_associable(principale)
+        origine_a = origine_associable(associee) or origine_associee
         for ref, origine in ((principale, origine_p), (associee, origine_a)):
             if not origine:
-                return (f"{ref} n'est ni Whirlpool, ni Indesit, ni Beko : "
-                        f"elle ne peut pas avoir de réf. associée.")
+                return (f"{ref} n'a la forme ni d'une réf. Whirlpool, ni Indesit, ni Beko : "
+                        f"déclarez d'abord son groupe.")
         if origine_p == origine_a:
             return (f"Deux réf. {origine_p} ne peuvent pas être jumelles : la réf. "
                     f"associée doit être {autres_origines(origine_p)}.")

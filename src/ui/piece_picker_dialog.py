@@ -250,8 +250,13 @@ class RefTagList(QWidget):
 
 # ── PiecePickerDialog ────────────────────────────────────────────────────────
 
+# Ligne montrée seulement quand on la cherche (rôle de la cellule Référence)
+ROLE_A_CHERCHER = Qt.UserRole + 1
+
+
 class _FiltreRefLibelle(QSortFilterProxyModel):
-    """Filtre sur la référence ou le libellé (pas sur le statut)."""
+    """Filtre sur la référence ou le libellé (pas sur le statut). Les lignes
+    marquées `ROLE_A_CHERCHER` n'apparaissent qu'avec un texte de recherche."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -262,9 +267,9 @@ class _FiltreRefLibelle(QSortFilterProxyModel):
         self.invalidateFilter()
 
     def filterAcceptsRow(self, ligne, parent):
-        if not self._texte:
-            return True
         modele = self.sourceModel()
+        if not self._texte:
+            return not modele.index(ligne, 0, parent).data(ROLE_A_CHERCHER)
         return any(self._texte in (modele.index(ligne, c, parent).data() or '').lower()
                    for c in (0, 1))
 
@@ -293,8 +298,12 @@ class PiecePickerDialog(QDialog):
                  multi_select: bool = False, max_refs: Optional[int] = -1,
                  filtre: Optional[Callable[[str], bool]] = None,
                  valider: Optional[Callable[[List[str]], str]] = None,
-                 recherche_initiale: str = ''):
+                 recherche_initiale: str = '',
+                 a_chercher: Optional[Callable[[str], bool]] = None):
+        # a_chercher : réfs écartées par `filtre` mais montrées quand la recherche
+        # les trouve (réf. associée de forme non reconnue, § 10.17 bis)
         super().__init__(parent)
+        self._a_chercher = a_chercher
         self.db_manager = db_manager
         self.exclude_ref = exclude_ref
         # max_refs : None = illimité ; par défaut, déduit de multi_select
@@ -422,9 +431,14 @@ class PiecePickerDialog(QDialog):
         for ref, desc, is_obsolete, is_phantom in rows:
             if not ref or ref == self.exclude_ref:
                 continue
+            cachee = False
             if self._filtre is not None and not self._filtre(ref):
-                continue
+                if self._a_chercher is None or not self._a_chercher(ref):
+                    continue
+                cachee = True
             ref_item, desc_item = QStandardItem(ref), QStandardItem(desc or "")
+            if cachee:
+                ref_item.setData(True, ROLE_A_CHERCHER)
             # Mêmes icônes et libellés que la colonne Statut du gestionnaire
             if is_phantom:
                 texte, icone, couleur = "Fantôme", 'fa5s.ghost', '#999999'

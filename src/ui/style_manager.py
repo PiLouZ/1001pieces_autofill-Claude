@@ -468,6 +468,12 @@ class StyleManager:
                        ' QLineEdit:disabled { background: #f1f3f5; color: #adb5bd; }')
     SAISIE_RELATION_BILAN = 'color: #2e7d32; font-size: 11px; padding: 1px 0;'
     REF_ASSOCIEE_TRAIT = 'border: none; border-top: 1px dashed #d7c4e0; margin-top: 2px;'
+    # Groupe déclaré d'une réf. hors des formats Whirlpool / Indesit / Beko
+    # (src/ui/champ_reference_associee.py, src/ui/ligne_reference_associee.py)
+    CHOIX_GROUPE = ('QComboBox { font-size: 11px; padding: 1px 4px; min-height: 0;'
+                    ' border: 1px solid #d7c4e0; border-radius: 4px; background: white; }')
+    GROUPE_DECLARE = ('color: #8e44ad; font-size: 10px; font-style: italic;'
+                      ' background: transparent; border: none;')
 
     @staticmethod
     def ref_associee_puce(couleur: str, italique: bool = False) -> str:

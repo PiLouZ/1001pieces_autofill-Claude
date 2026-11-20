@@ -953,7 +953,11 @@ class ImportDialog(QDialog):
             file_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             # Le nom de fichier cède la place (il ne fixe pas la largeur de la carte :
             # sinon toutes les cartes débordent de la colonne et sont coupées à droite)
-            file_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+            politique = QSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+            # Masqué (il répète la référence), il garde sa place : la référence ne
+            # s'étire pas et la réf. associée reste juste à sa droite
+            politique.setRetainSizeWhenHidden(True)
+            file_label.setSizePolicy(politique)
             row1.addWidget(file_label, 1)
 
             card_layout.addLayout(row1)
@@ -1714,7 +1718,7 @@ class ImportDialog(QDialog):
 
     def _collecter_associees(self, config: ImportConfiguration):
         """Réf. associées répondues, pour la référence que la pièce aura vraiment."""
-        reponses = {}
+        reponses, origines = {}, {}
         for file, champ in self._champs_associes:
             saisie = (config.saisies_fiches or {}).get(file.path)
             if saisie is not None:
@@ -1726,7 +1730,11 @@ class ImportDialog(QDialog):
             repondu, associee = champ.reponse()
             if repondu and ref and ref == champ.reference:
                 reponses[ref] = associee
+                # Groupe choisi pour une réf. de forme inconnue (§ 10.17 bis) :
+                # retenu seulement avec la paire qu'il permet
+                origines.update(champ.origines_declarees())
         config.references_associees = reponses or None
+        config.origines_declarees = origines or None
 
     @staticmethod
     def _lien_fiche(fiche) -> QLabel:

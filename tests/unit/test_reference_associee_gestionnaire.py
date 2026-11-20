@@ -66,7 +66,7 @@ class TestBase:
     @pytest.mark.parametrize("principale, associee, motif", [
         (WP, WP2, "Deux réf. Whirlpool ne peuvent pas être jumelles"),
         (WP, 'C00999999', "n'existe pas dans les pièces"),
-        (WP, BSH, "ni Whirlpool, ni Indesit, ni Beko"),
+        (WP, BSH, "ni Indesit, ni Beko : déclarez d'abord son groupe"),
         (WP, WP, "deux références différentes"),
     ])
     def test_refus_motives(self, db, principale, associee, motif):
@@ -199,7 +199,8 @@ class TestFenetre:
         fen.choisir(WP)
         assert (ligne.etat, ligne.isHidden()) == (VIDE, False)
         fen.choisir(BSH)
-        assert ligne.isHidden()
+        # Forme non reconnue : son groupe peut être déclaré (§ 10.17 bis)
+        assert (ligne.etat, ligne.isHidden()) == ('inconnue', False)
         db.definir_references_associees([(WP, None)], LE)
         fen.choisir(WP)
         assert ligne.etat == AUCUNE

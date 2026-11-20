@@ -1160,7 +1160,10 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         Retourne False si new_ref_piece existe déjà (et diffère de old_ref_piece) :
         l'appelant doit alors avertir l'utilisateur sans rien modifier.
         """
-        return self._safe_rename_piece_catalog(old_ref_piece, new_ref_piece, description)
+        ok = self._safe_rename_piece_catalog(old_ref_piece, new_ref_piece, description)
+        if ok and new_ref_piece != old_ref_piece and hasattr(self, 'charger_origines_declarees'):
+            self.charger_origines_declarees()     # l'origine déclarée a suivi la pièce
+        return ok
 
     @_with_query_lock
     @handle_database_operation_errors(return_value=False, log_prefix="Erreur renommage pièce catalogue")
@@ -1228,6 +1231,13 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                 self.cursor.execute(
                     "UPDATE references_associees SET associee = ? WHERE associee = ?",
                     (new_ref_piece, old_ref_piece))
+                # Origine déclarée (§ 10.17 bis) : suit la pièce, sans écraser
+                # celle déjà déclarée pour la nouvelle référence
+                self.cursor.execute(
+                    "UPDATE OR IGNORE origines_declarees SET reference = ? WHERE reference = ?",
+                    (new_ref_piece, old_ref_piece))
+                self.cursor.execute("DELETE FROM origines_declarees WHERE reference = ?",
+                                    (old_ref_piece,))
                 # Une succession devenue réflexive (X → X) n'a aucun sens : elle
                 # apparaît si l'on renomme une pièce vers sa propre remplaçante.
                 self.cursor.execute(
@@ -1344,6 +1354,9 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         self.cursor.execute("DELETE FROM fiches_a_refaire WHERE ref_piece = ?", [ref_piece])
         self.cursor.execute("DELETE FROM references_associees WHERE ref_piece = ? OR associee = ?",
                             [ref_piece, ref_piece])
+        self.cursor.execute("DELETE FROM origines_declarees WHERE reference = ?", [ref_piece])
+        from ..utils.rapprochement_fiche.associee import noter_origine_declaree
+        noter_origine_declaree(ref_piece, None)
         self.cursor.execute("DELETE FROM pieces WHERE ref_piece = ?", [ref_piece])
         if commit:
             self.conn.commit()

@@ -969,6 +969,16 @@ Fermer la fenêtre d'import sans importer n'écrit rien et ne fait pas avancer l
   - rendu hors écran.
 - Suite complète (2 048 tests), `compileall`, lancement de `run.py`.
 
+### 10.17 bis Origine déclarée d'une référence de forme inconnue (2026-11-20)
+
+**Cas réel** : import de C00869049 (Indesit), 210480241 et S210480241 (Beko : 9 chiffres en 21, `S` + 9 chiffres, formes absentes du § 5.5). La réf. Beko ne pouvait recevoir de réf. associée ni à l'import (champ masqué) ni dans le gestionnaire (« n'est ni Whirlpool, ni Indesit, ni Beko »). Mesure en base : 557 pièces à majorité d'appareils Beko / Blomberg / Grundig, dont 19 de forme non reconnue Beko (9 chiffres en 11, 10 chiffres en 14, `S` + 9 chiffres, `C9`…). Une règle de plus dans la table ne couvre pas une référence isolée : l'utilisateur tranche.
+
+- **Mémoire** : table `origines_declarees(reference PK, origine, decide_le)`, clé = texte de la référence, **sans lien vers `pieces`** (on la déclare à l'import, avant que la pièce n'existe). Suit le renommage, part avec la suppression. Seuls Whirlpool, Indesit et Beko sont acceptés.
+- **Règle** : `origine_associable(ref)` = groupe déclaré, sinon forme (`origine_du_format`). La déclaration **l'emporte sur la forme** (1400810100, lue Electrolux, déclarée Beko). La base remplit à l'ouverture un registre en mémoire dans `associee.py` et le tient à jour à chaque écriture (`declarer_origines`, `oublier_origine_declaree`) : tous les appels existants, sans base, en profitent.
+- **Import** (`ChampReferenceAssociee`) : réf. de forme inconnue → lien « Associer… », puis liste du groupe (Whirlpool / Indesit / Beko), puis le champ. Réf. associée de forme inconnue → liste « Groupe ? » (les deux autres groupes) à sa droite. `ImportConfiguration.origines_declarees`, écrites **avant** les paires (`_appliquer_references_associees`), seulement avec la paire qu'elles permettent.
+- **Gestionnaire** : état `INCONNUE` de la ligne « Réf. associée » (« forme non reconnue », « Déclarer son groupe… ») ; groupe déclaré rappelé « Beko (déclaré) » avec ✕ pour l'oublier ; une jumelle déjà posée reste affichée même si la pièce redevient de forme inconnue. Choix de la réf. associée : les réf. de forme inconnue n'apparaissent **qu'à la recherche** (`PiecePickerDialog(a_chercher=…)`, sinon la liste montrerait presque toute la base), puis leur groupe est demandé avant le lien (`motif_refus_associee(origine_associee=…)`).
+- Tests : `tests/unit/test_origine_declaree.py`.
+
 ### 10.18 Export EveryParts des fiches reprises — pistes (2026-11-13)
 
 **Demande de l'utilisateur** : les fiches récupérées du site, seules ou par lot, doivent pouvoir donner un export EveryParts. La 1ʳᵉ colonne (`product`) porte la référence produit du site (`.product-reference`). C'est l'objectif secondaire de la reprise, en plus de consolider le catalogue. Il faut une petite fenêtre d'export des fiches récupérées.
