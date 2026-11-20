@@ -1268,6 +1268,44 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         self.conn.commit()
         return True
 
+    def creer_piece_seule(self, ref_piece: str, libelle: str = None) -> Optional[str]:
+        """Créer une pièce au catalogue sans l'associer à un appareil.
+
+        Contrairement à create_piece_standalone, une réf. fantôme (connue
+        seulement par une succession) est promue en pièce réelle, comme le fait
+        add_piece lors d'une association.
+
+        Returns:
+            'creee' (nouvelle pièce), 'promue' (fantôme devenue réelle),
+            'existante' (pièce réelle déjà au catalogue, rien de modifié),
+            None en cas d'erreur.
+        """
+        return self._safe_creer_piece_seule(ref_piece, libelle)
+
+    @_with_query_lock
+    @handle_database_operation_errors(return_value=None, log_prefix="Erreur création pièce seule")
+    def _safe_creer_piece_seule(self, ref_piece: str, libelle: str = None) -> Optional[str]:
+        """Helper sécurisé de creer_piece_seule."""
+        libelle_propre = libelle.strip() if libelle and libelle.strip() else None
+        self.cursor.execute(
+            "SELECT id, is_phantom, description FROM pieces WHERE ref_piece = ?", (ref_piece,))
+        ligne = self.cursor.fetchone()
+        if ligne is None:
+            self.cursor.execute(
+                "INSERT INTO pieces (ref_piece, description) VALUES (?, ?)",
+                (ref_piece, libelle_propre))
+            self.conn.commit()
+            return 'creee'
+        piece_id, is_phantom, description = ligne
+        if not is_phantom:
+            return 'existante'
+        # Fantôme : promue ; le libellé saisi ne remplace pas un libellé existant
+        self.cursor.execute(
+            "UPDATE pieces SET is_phantom = 0, description = COALESCE(description, ?) WHERE id = ?",
+            (libelle_propre, piece_id))
+        self.conn.commit()
+        return 'promue'
+
     def delete_piece_catalog(self, ref_piece: str, commit: bool = True) -> None:
         """Supprimer une pièce du catalogue (toutes ses associations puis la pièce elle-même)."""
         return self._safe_delete_piece_catalog(ref_piece, commit)

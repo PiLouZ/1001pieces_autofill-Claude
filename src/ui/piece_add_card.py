@@ -69,10 +69,10 @@ class PieceAddCard(QFrame):
         cancel_btn.clicked.connect(self.close_card)
         actions.addWidget(cancel_btn)
 
-        add_btn = QPushButton("Ajouter")
-        add_btn.setObjectName("pieceAddSubmit")
-        add_btn.clicked.connect(self._submit)
-        actions.addWidget(add_btn)
+        self.add_btn = QPushButton("Ajouter")
+        self.add_btn.setObjectName("pieceAddSubmit")
+        self.add_btn.clicked.connect(self._submit)
+        actions.addWidget(self.add_btn)
         layout.addLayout(actions)
 
         # Échap : seulement quand le focus est dans la carte
@@ -104,8 +104,16 @@ class PieceAddCard(QFrame):
             self.open_card(target_count)
 
     def set_target_count(self, count: int):
-        """Mettre à jour la pastille « → N appareils »."""
-        self.target_label.setText(f"→ {pluralize(count, 'appareil')}" if count else "Aucun appareil")
+        """Mettre à jour la pastille « → N appareils » (ou « Pièce seule » :
+        sans appareil, la pièce est créée au catalogue sans association)."""
+        if count:
+            self.target_label.setText(f"→ {pluralize(count, 'appareil')}")
+            self.add_btn.setText("Ajouter")
+            self.add_btn.setToolTip("")
+        else:
+            self.target_label.setText("Pièce seule")
+            self.add_btn.setText("Créer")
+            self.add_btn.setToolTip("Créer la pièce au catalogue, sans l'associer à un appareil")
 
     # ── Interne ───────────────────────────────────────────────────────────
 
