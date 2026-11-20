@@ -16,21 +16,22 @@ from typing import Iterable, List, Tuple
 from ...core.config import Config
 
 
+# Comptages du gestionnaire de pièces, par identifiant de pièce (stable quand
+# la référence est renommée) : (id, nb_appareils, types_appareils). Lue hors du
+# fil de l'interface (src/ui/chargement_pieces.py) : 2 à 3 s sur 5 millions
+# d'associations.
 # Types : NULLIF(TRIM(…), '') — un type VIDE (cellule vidée par Suppr, ligne
 # Cmd+N non remplie) n'est pas NULL, donc GROUP_CONCAT l'ajoutait et la
 # colonne affichait « Lave-vaisselle, » (virgule finale).
-REQUETE_PIECES_COMPLETE = """
+REQUETE_COMPTAGES_PIECES = """
         SELECT
-            p.ref_piece,
-            p.description,
+            p.id,
             COUNT(DISTINCT pa.appareil_id) as nb_appareils,
-            GROUP_CONCAT(DISTINCT NULLIF(TRIM(a.type), '')) as types_appareils,
-            COALESCE(p.is_phantom, 0) as is_phantom
+            GROUP_CONCAT(DISTINCT NULLIF(TRIM(a.type), '')) as types_appareils
         FROM pieces p
         LEFT JOIN piece_associations pa ON p.id = pa.piece_id
         LEFT JOIN appareils a ON pa.appareil_id = a.id
-        GROUP BY p.id, p.ref_piece, p.description, p.is_phantom
-        ORDER BY nb_appareils DESC, p.ref_piece ASC
+        GROUP BY p.id
         """
 
 
@@ -51,17 +52,17 @@ class DatabasePiecesMixin:
 
     def lister_pieces_apercu(self) -> List[Tuple]:
         """Premier affichage rapide du gestionnaire de pièces, sans comptages :
-        (ref_piece, description, 0, NULL, is_phantom)."""
+        (ref_piece, description, 0, NULL, is_phantom, id)."""
         return self.execute_query("""
-        SELECT p.ref_piece, p.description, 0, NULL, COALESCE(p.is_phantom, 0)
+        SELECT p.ref_piece, p.description, 0, NULL, COALESCE(p.is_phantom, 0), p.id
         FROM pieces p
         ORDER BY p.ref_piece ASC
         """)
 
-    def lister_pieces_completes(self) -> List[Tuple]:
-        """Gestionnaire de pièces, données complètes : (ref_piece, description,
-        nb_appareils, types_appareils, is_phantom)."""
-        return self.execute_query(REQUETE_PIECES_COMPLETE)
+    def lister_comptages_pieces(self) -> List[Tuple]:
+        """Gestionnaire de pièces : (id, nb_appareils, types_appareils) de chaque
+        pièce, sur la connexion partagée (repli du calcul en arrière-plan)."""
+        return self.execute_query(REQUETE_COMPTAGES_PIECES)
 
     def lister_pieces_selecteur(self) -> List[Tuple]:
         """Sélecteur de pièce : (ref_piece, description, is_obsolete, is_phantom)."""

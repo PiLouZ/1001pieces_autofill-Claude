@@ -7,7 +7,7 @@ GROUP_CONCAT écarte NULL mais pas la chaîne vide.
 
 import sqlite3
 
-from src.data._db_mixins.pieces import REQUETE_PIECES_COMPLETE
+from src.data._db_mixins.pieces import REQUETE_COMPTAGES_PIECES
 
 
 def _base():
@@ -24,9 +24,9 @@ def _base():
 
 
 def test_types_vides_ignores():
-    ligne = _base().execute(REQUETE_PIECES_COMPLETE).fetchone()
-    ref, _desc, nb, types, _fantome = ligne
-    assert ref == "P1"
+    ligne = _base().execute(REQUETE_COMPTAGES_PIECES).fetchone()
+    piece_id, nb, types = ligne
+    assert piece_id == 1
     assert nb == 5                      # le comptage d'appareils n'est pas touché
     assert sorted(types.split(",")) == ["Four", "Lave-vaisselle"]
     assert not types.startswith(",") and not types.endswith(",") and ",," not in types
@@ -35,5 +35,5 @@ def test_types_vides_ignores():
 def test_seulement_des_types_vides_donne_none():
     conn = _base()
     conn.execute("DELETE FROM piece_associations WHERE appareil_id IN (1, 5)")
-    types = conn.execute(REQUETE_PIECES_COMPLETE).fetchone()[3]
+    types = conn.execute(REQUETE_COMPTAGES_PIECES).fetchone()[2]
     assert types is None                # → affiché « — » par le gestionnaire
