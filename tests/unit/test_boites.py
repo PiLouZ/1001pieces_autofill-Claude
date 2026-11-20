@@ -105,3 +105,22 @@ def test_dossier(parent):
     d.selectFile(dossier)
     d.accept()
     assert recus and os.path.realpath(recus[0]) == os.path.realpath(dossier)
+
+
+@pytest.mark.parametrize('natif', [True, False])
+def test_dossier_natif_ou_dessine_par_qt(parent, natif):
+    d = boites.choisir_dossier(parent, "T", tempfile.mkdtemp(), lambda _c: None, natif=natif)
+    assert d.testOption(d.DontUseNativeDialog) is (not natif)
+    assert d.testOption(d.ShowDirsOnly) and d.isModal()
+    d.reject()
+
+
+def test_selecteur_dessine_par_qt_en_francais(parent):
+    from PyQt5.QtWidgets import QFileDialog
+    d = boites.choisir_dossier(parent, "T", tempfile.mkdtemp(), lambda _c: None, natif=False)
+    assert d.labelText(QFileDialog.Accept) == "Choisir"
+    assert d.labelText(QFileDialog.Reject) == "Annuler"
+    d.reject()
+    d = boites.choisir_fichier_a_ouvrir(parent, "T", "", "Tous (*)", lambda _c: None, natif=False)
+    assert d.labelText(QFileDialog.Accept) == "Ouvrir"
+    d.reject()
