@@ -2020,25 +2020,6 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'table_controller') and hasattr(self.table_controller, 'set_row_height'):
             self.table_controller.set_row_height(height)
 
-    def _manage_categories(self):
-        """Gérer les catégories"""
-        return self._safe_manage_categories()
-
-    @handle_database_operation_errors(return_value=None, log_prefix="Erreur gestion catégories")
-    def _safe_manage_categories(self):
-        """Helper sécurisé pour gérer les catégories"""
-        current_categories = self.db_manager.get_categories()
-
-        # Appelé si l'utilisateur valide (saisie modale non bloquante)
-        @handle_database_operation_errors(return_value=None, log_prefix="Erreur gestion catégories")
-        def _enregistrer(_fenetre, new_categories):
-            self.db_manager.update_categories(new_categories)
-            self.statusbar.showMessage(
-                Config.get_message('categories_updated'),
-                Config.STATUS_MESSAGE_TIMEOUT
-            )
-
-        self.dialog_service.get_categories(self, current_categories, (lambda *a: _enregistrer(self, *a)))
     
     def _import_file(self):
         """Importer un fichier CSV ou PDF - Nouvelle version avec ImportManager"""

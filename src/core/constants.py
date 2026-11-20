@@ -51,7 +51,6 @@ class DatabaseConfig:
     TABLE_APPAREILS = "appareils"
     TABLE_PIECES = "pieces"
     TABLE_COMPATIBILITY = "compatibility"
-    TABLE_CATEGORIES = "categories"
     
     # Colonnes communes
     COLUMN_ID = "id"

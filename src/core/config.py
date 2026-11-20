@@ -222,7 +222,6 @@ class Config:
         'auto_save_done': "Sauvegarde effectuée",
         'new_row_added': "Nouvelle ligne ajoutée",
         'data_copied': "Données copiées dans le presse-papiers",
-        'categories_updated': "Catégories mises à jour",
         'notes_updated': "Notes mises à jour",
         'piece_added': "Pièce ajoutée",
         'piece_updated': "Pièce mise à jour",
