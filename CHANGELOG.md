@@ -4,6 +4,34 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.105.0] - 2026-11-20 (PR #162, #163, #164)
+
+Réf. associée pour une référence de forme inconnue, pièce seule depuis le panneau
+Pièces, et correctif du sélecteur de dossier de l'export de l'application.
+
+### Export de l'application : sélecteur de dossier invisible sur Mac (PR #162)
+- Après le choix Windows / macOS, le sélecteur natif enchaîné sur la feuille
+  `QMessageBox` restait invisible et modal : l'application semblait figée. Il s'ouvre
+  maintenant au tour suivant de la boucle (`QTimer.singleShot(0)`) avec le sélecteur Qt
+  (`choisir_dossier(natif=False)`), libellés en français.
+
+### Panneau Pièces : pièce seule sans appareil (PR #163)
+- Sans appareil sélectionné, le bouton + crée la pièce seule au catalogue (carte
+  « Pièce seule », bouton « Créer ») : `creer_piece_seule` (créée / promue / existante) ;
+  une référence connue seulement par une succession (fantôme) devient une vraie pièce.
+
+### Réf. associée : groupe déclaré d'une référence de forme inconnue (PR #164)
+- Table `origines_declarees` : une référence qui n'a la forme ni d'une réf. Whirlpool,
+  ni Indesit, ni Beko (210480241) peut être déclarée de l'un de ces groupes ; la
+  déclaration l'emporte sur la forme (`origine_associable`) et suit les renommages.
+- Import : lien « Associer… » et liste « Groupe ? » (pièce et réf. associée), écrits
+  par l'import (`ImportConfiguration.origines_declarees`).
+- Gestionnaire de pièces : état « forme non reconnue » + « Déclarer son groupe… »,
+  groupe déclaré affiché et retirable ; une réf. de forme inconnue choisie comme
+  associée demande son groupe. Message de refus explicite.
+
+---
+
 ## [3.104.1] - 2026-11-19 (PR #159, #160)
 
 Correctifs de l'import (cartes, réfs Beko de 9 chiffres) et de la Fiche complète
