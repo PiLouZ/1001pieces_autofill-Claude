@@ -35,10 +35,11 @@ class PieceManagementService:
         self._piece_description_decisions = {}
     
     def add_piece(self) -> bool:
-        """Ajouter une pièce aux appareils sélectionnés.
+        """Ajouter une pièce aux appareils sélectionnés, ou la créer seule au
+        catalogue si aucun appareil n'est sélectionné.
 
         Returns:
-            True si la pièce a été ajoutée à au moins un appareil.
+            True si la pièce a été ajoutée à au moins un appareil (ou créée seule).
         """
         # Récupérer la référence et le libellé
         ref_piece = self.main_window.piece_input.text().strip()
@@ -59,21 +60,22 @@ class PieceManagementService:
             if current_row >= 0:
                 selected_rows.add(current_row)
         
-        if not selected_rows:
-            self.main_window.user_interaction_service.show_info(Config.get_message('no_selection'))
-            return False
-        
         if not ref_piece:
             self.main_window.user_interaction_service.show_info(Config.get_message('no_piece_ref'))
             return False
-        
+
         # Validation des caractères spéciaux
         if any(char in ref_piece for char in ['||', '&&']):
             self.main_window.user_interaction_service.show_error(
                 "La référence de pièce ne peut pas contenir les caractères '||' ou '&&'"
             )
             return False
-        
+
+        # Aucun appareil (la carte affiche « Pièce seule ») : pièce créée au
+        # catalogue sans association, comme « Nouvelle pièce » du gestionnaire.
+        if not selected_rows:
+            return self._creer_piece_seule(ref_piece, libelle_piece)
+
         success_count = 0
         error_count = 0
         errors_detail = []
@@ -133,6 +135,27 @@ class PieceManagementService:
             self.main_window.user_interaction_service.show_error(f"{error_count} erreurs détectées (trop nombreuses pour être affichées)")
 
         return success_count > 0
+
+    def _creer_piece_seule(self, ref_piece: str, libelle_piece: str) -> bool:
+        """Créer la pièce au catalogue sans l'associer à un appareil.
+
+        Returns:
+            True si la pièce a été créée (ou une réf. fantôme promue) ;
+            False si elle existait déjà ou en cas d'erreur (la carte reste ouverte).
+        """
+        uis = self.main_window.user_interaction_service
+        resultat = self.main_window.db_manager.creer_piece_seule(ref_piece, libelle_piece)
+        if resultat == 'existante':
+            uis.show_info(f"La référence « {ref_piece} » existe déjà dans le catalogue.")
+            return False
+        if resultat not in ('creee', 'promue'):
+            uis.show_error(f"La pièce « {ref_piece} » n'a pas pu être créée.")
+            return False
+        message = (f"Pièce '{ref_piece}' créée (sans appareil)" if resultat == 'creee'
+                   else f"Pièce '{ref_piece}' créée (sans appareil, réf. connue par une succession)")
+        uis.add_to_history(message)
+        uis.show_status_message(message, Config.STATUS_MESSAGE_TIMEOUT)
+        return True
 
     @handle_ui_errors(log_prefix="Erreur ouverture pièce", show_message=True)
     def edit_piece(self, item: QListWidgetItem) -> None:

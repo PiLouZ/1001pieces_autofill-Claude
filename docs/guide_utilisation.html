@@ -91,7 +91,7 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
 <h3>Panneau de droite</h3>
 <ul>
   <li><b>Pièces</b> de l'appareil sélectionné. Avec plusieurs appareils sélectionnés : les pièces <b>communes</b>, y compris celles portées sous des références différentes d'une même lignée (mention « ⇄ Commune par lignée »).</li>
-  <li><b>Ajouter une pièce</b> : bouton <b>+</b>, puis saisie de la référence et du libellé. <b>Entrée</b> ajoute, <b>Échap</b> annule ; la pastille indique à combien d'appareils la pièce sera ajoutée. La pièce ajoutée est surlignée en vert un instant.</li>
+  <li><b>Ajouter une pièce</b> : bouton <b>+</b>, puis saisie de la référence et du libellé. <b>Entrée</b> ajoute, <b>Échap</b> annule ; la pastille indique à combien d'appareils la pièce sera ajoutée. La pièce ajoutée est surlignée en vert un instant. Sans appareil sélectionné, la pastille affiche « Pièce seule » et le bouton devient <b>Créer</b> : la pièce est créée au catalogue sans être associée à un appareil, comme avec « + Nouvelle pièce » du gestionnaire de pièces. Si la référence existe déjà, rien n'est modifié.</li>
   <li><b>Historique des opérations</b> : chaque action, avec un badge par type (Modif., Import, Export, Suppr., Erreur, Annul., Pièce, Système). Les 100 dernières entrées sont rechargées à l'ouverture. Les alertes d'import (pages vides d'un PDF, colonnes mal reconnues) sont <b>surlignées en jaune</b>. L'icône ↗ à côté du titre ouvre l'historique complet.</li>
   <li><b>Exports</b> : sur la 1ʳᵉ ligne Méta Title, Méta Desc (Maj+clic pour une autre formulation) et Exporter CSV ; sur la 2ᵉ <b>Titre</b> (un tiers) et <b>Fiche complète</b> (deux tiers). HTML Marques et HTML Détails sont repliés sous « ▸ Exports HTML » : un clic déplie ou replie la ligne (mémorisé sur le poste). Les boutons s'activent après une recherche par pièce. Sur Titre, Fiche complète et HTML Détails, la <b>flèche</b> : la survoler ouvre la liste des autres gabarits (par ordre alphabétique ; à partir de 6 gabarits, champ « Filtrer… » et vos 3 gabarits récents en tête) ; cliquer dessus ouvre l'<b>aperçu d'export</b>. Le reste du bouton exporte avec le gabarit par défaut.</li>
   <li><b>Aperçu d'export</b> : fenêtre qui montre l'export de chaque gabarit sur la recherche en cours. À gauche l'onglet <b>Rendu</b> (tel qu'affiché sur le site) et l'onglet <b>Code</b> (coloré, indenté) ; à droite, près des boutons, les gabarits (★ = celui du clic sur le bouton, champ de filtre ; les noms longs passent à la ligne, jamais coupés) ; en dessous, caractères, appareils, marques et réduction éventuelle. <b>Copier</b> (ou double-clic sur un gabarit) copie exactement ce qui est affiché, puis ferme la fenêtre pour revenir sur la fenêtre principale ; <b>Par défaut</b> en fait le gabarit du clic sur le bouton ; <b>Modifier le modèle…</b> l'ouvre dans la configuration des exports. Tant que vous ne copiez pas, la fenêtre reste ouverte pendant que vous travaillez et suit les nouvelles recherches ; avec plusieurs références, <b>Actualiser</b> propose de choisir.</li>
@@ -279,7 +279,9 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
 
 <h2>Nouveautés depuis la version 3.78</h2>
 <h3>En préparation</h3>
-<p>Rien pour l'instant.</p>
+<ul>
+  <li><b>Créer une pièce sans appareil depuis le panneau de droite</b> : sans appareil sélectionné, le bouton <b>+</b> du panneau des pièces crée la pièce seule au catalogue (pastille « Pièce seule », bouton <b>Créer</b>), sans ouvrir le gestionnaire de pièces. Une référence déjà connue par une succession devient une vraie pièce.</li>
+</ul>
 <h3>Versions livrées</h3>
 <ul>
   <li><b>3.104.1</b>
