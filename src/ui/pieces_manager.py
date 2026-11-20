@@ -40,6 +40,14 @@ from ..utils.qt_imports import (
 from typing import List, Tuple
 import html as _html
 import qtawesome as qta
+from functools import lru_cache
+
+
+@lru_cache(maxsize=None)
+def _icone_statut(nom: str, couleur: str):
+    """Icône de la colonne Statut, créée une fois puis partagée : le tableau en
+    demandait une par ligne (12 800 appels qtawesome par ouverture, ~0,15 s)."""
+    return qta.icon(nom, color=couleur)
 
 
 def _format_refs_recap(refs: list, max_shown: int = 8) -> str:
@@ -123,6 +131,8 @@ from ..utils.rapprochement_fiche.associee import (ORIGINES_ASSOCIEES, autres_ori
                                                   origine_associable, origine_declaree,
                                                   origine_du_format)
 from ..utils.ouverture_modale import ouvrir_modal
+from .chargement_pieces import (ChargementComptages, comptages_par_id,
+                                fichier_base_lisible, fusionner_comptages)
 from ..utils.boites import demander_oui_non, choisir_fichier_a_enregistrer, saisir_texte, choisir_element
 
 class ActionButtonWidget(QWidget):
@@ -230,6 +240,13 @@ class PiecesManagerWindow(QDialog):
         self.resize(min(1300, screen.width() - 80), min(800, screen.height() - 80))
         
         self._data_loaded = False
+        self._comptages = None          # {id de pièce: (nb appareils, types)} du dernier calcul
+        self._lignes_apercu = None      # dernière liste rapide (lister_pieces_apercu)
+        self._tache_comptages = None    # ChargementComptages en cours
+        self._comptages_a_relancer = False
+        app = QApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self._arreter_comptages)
         self._init_ui()
         # Afficher la fenêtre d'abord, charger les données après le premier rendu
         # (sauf si open_on_piece a déjà déclenché un chargement synchrone entre-temps)
@@ -876,38 +893,106 @@ class PiecesManagerWindow(QDialog):
         
     @handle_ui_errors(log_prefix="Erreur chargement pièces", show_message=True)
     def _load_pieces_data(self, checked=False):
-        """Phase 1 : chargement rapide (ref + libellé uniquement, sans jointures).
-        Affiche le spinner, remplit la liste, puis déclenche le chargement complet."""
-        # Spinner visible pour tout chargement/rechargement (pas seulement le premier)
-        is_reload = bool(getattr(self, 'all_pieces_data', None))
-        if hasattr(self, '_loading_label'):
-            self._loading_label.setText("Actualisation…" if is_reload else "Chargement des pièces…")
-        if hasattr(self, '_table_stack'):
-            self._table_stack.setCurrentIndex(0)
-        self._loading_phase = 1  # empêche _update_table_display de switcher vers le tableau
-        QApplication.setOverrideCursor(Qt.WaitCursor)
+        """Phase 1 : liste rapide (réf., libellé, fantôme — sans jointures), puis
+        comptages (nb d'appareils, types) en arrière-plan.
 
-        results = self.db_manager.lister_pieces_apercu() or []
-        self.all_pieces_data = results
-        self.all_statuses = {}
+        Premier chargement : spinner jusqu'aux comptages. Rechargements (après
+        une modification, à la réouverture) : tableau affiché tout de suite avec
+        les derniers comptages connus, actualisés quand le calcul se termine.
+        Ni curseur d'attente ni fenêtre figée : la requête lente (2 à 3 s)
+        tourne hors du fil de l'interface (ChargementComptages)."""
+        apercu = self.db_manager.lister_pieces_apercu() or []
+        self._lignes_apercu = apercu
         self._data_loaded = True
-        self.stats_label.setText(f"{pluralize(len(results), 'référence')} — chargement des données…")
-        self._update_table_display()
-        # Phase 2 : données complètes après le premier rendu
-        QTimer.singleShot(0, self._load_pieces_data_full)
+        comptages = getattr(self, '_comptages', None)
+        if comptages is not None:
+            self._afficher_donnees_completes(fusionner_comptages(apercu, comptages))
+        else:
+            if hasattr(self, '_loading_label'):
+                self._loading_label.setText("Chargement des pièces…")
+            if hasattr(self, '_table_stack'):
+                self._table_stack.setCurrentIndex(0)
+            self._loading_phase = 1  # empêche _update_table_display de switcher vers le tableau
+            self.all_pieces_data = apercu
+            self.all_statuses = {}
+            self.stats_label.setText(f"{pluralize(len(apercu), 'référence')} — chargement des données…")
+            self._update_table_display()
+        # Après le premier rendu
+        QTimer.singleShot(0, self._lancer_comptages)
+
+    def _lancer_comptages(self):
+        """Calculer les comptages hors du fil de l'interface (une seule tâche
+        à la fois : une demande pendant le calcul le relance à sa fin)."""
+        tache = getattr(self, '_tache_comptages', None)
+        if tache is not None and tache.isRunning():
+            self._comptages_a_relancer = True
+            return
+        self._comptages_a_relancer = False
+        chemin = fichier_base_lisible(self.db_manager)
+        if chemin is None:
+            self._load_pieces_data_full()
+            return
+        tache = ChargementComptages(chemin)
+        # La tâche voyage avec son résultat : un signal en file d'attente peut
+        # arriver après le lancement de la suivante
+        tache.termine.connect(
+            lambda lignes, erreur, t=tache: self._sur_comptages_charges(t, lignes, erreur))
+        self._tache_comptages = tache
+        tache.start()
+
+    def _arreter_comptages(self):
+        """Couper le calcul en cours (fenêtre cachée, appli quittée)."""
+        tache = getattr(self, '_tache_comptages', None)
+        if tache is not None and tache.isRunning():
+            tache.interrompre()
+            tache.wait(3000)
+        self._comptages_a_relancer = False
+
+    def hideEvent(self, event):
+        # La fenêtre est mise en cache : ne pas laisser tourner un calcul que
+        # personne ne verra (showEvent recharge à la réouverture)
+        self._arreter_comptages()
+        super().hideEvent(event)
+
+    @handle_ui_errors(log_prefix="Erreur chargement complet pièces", show_message=True)
+    def _sur_comptages_charges(self, tache, lignes, erreur):
+        """Fin de ChargementComptages (reçu sur le fil de l'interface)."""
+        if tache.interrompue:
+            return
+        if erreur is not None:
+            # Repli : l'ancien chargement, sur la connexion partagée
+            app_logger.warning(f"Comptages des pièces en arrière-plan impossibles : {erreur}")
+            self._load_pieces_data_full()
+        else:
+            comptages = comptages_par_id(lignes)
+            deja_affiches = (getattr(self, '_comptages', None) == comptages
+                             and not getattr(self, '_loading_phase', 0))
+            self._comptages = comptages
+            if not deja_affiches:
+                self._afficher_donnees_completes(
+                    fusionner_comptages(getattr(self, '_lignes_apercu', None) or [], comptages))
+        if getattr(self, '_comptages_a_relancer', False):
+            QTimer.singleShot(0, self._lancer_comptages)
 
     @handle_ui_errors(log_prefix="Erreur chargement complet pièces", show_message=True)
     def _load_pieces_data_full(self, checked=False):
-        """Phase 2 : chargement complet avec comptages, types et statuts de succession."""
-        results = self.db_manager.lister_pieces_completes() or []
+        """Chargement complet SYNCHRONE, sur la connexion partagée : repli quand
+        le calcul en arrière-plan est impossible (base sans fichier, erreur)."""
+        if getattr(self, '_lignes_apercu', None) is None:
+            self._lignes_apercu = self.db_manager.lister_pieces_apercu() or []
+        self._comptages = comptages_par_id(self.db_manager.lister_comptages_pieces() or [])
+        self._afficher_donnees_completes(fusionner_comptages(self._lignes_apercu, self._comptages))
 
+    def _afficher_donnees_completes(self, results):
+        """Statistiques, statuts de succession / équivalence, puis le tableau,
+        à partir des lignes complètes (ref_piece, description, nb_appareils,
+        types_appareils, is_phantom)."""
         total_pieces = len(results)
         orphan_pieces = len([r for r in results if r[2] == 0])
         phantom_pieces = len([r for r in results if r[4] == 1])
         unlabeled_pieces = len([r for r in results if not (r[1] or '').strip()])
         total_associations = sum(r[2] for r in results)
 
-        from src.core.config import pluralize
         phantom_str = f"  •  {pluralize(phantom_pieces, 'fantôme')}" if phantom_pieces else ""
         # Compté à part du fantôme : les deux ensembles se recoupent sans se
         # confondre (relevé du 2026-09-22 : 98 fantômes nommées, 76 pièces
@@ -955,9 +1040,8 @@ class PiecesManagerWindow(QDialog):
                         and origine_associable(ref)):
                     self.all_statuses.setdefault(ref, {})['jumelle_a_renseigner'] = True
 
-        # Phase 2 terminée : autoriser le switch vers le tableau
+        # Données complètes : autoriser le switch vers le tableau
         self._loading_phase = 0
-        QApplication.restoreOverrideCursor()
         self._update_table_display()
 
     # ── Widget d'actions flottant ─────────────────────────────────────────────
@@ -1171,17 +1255,17 @@ class PiecesManagerWindow(QDialog):
         """(icône, texte court, infobulle) de la colonne Statut, par ordre de
         priorité : fantôme, obsolète, remplacée, remplace, équivalente, courante."""
         if is_phantom:
-            _icon = qta.icon('fa5s.ghost', color='#999999')
+            _icon = _icone_statut('fa5s.ghost', '#999999')
             _status_text = "Fantôme"
             _status_tip = "Référence fantôme — créée pour la succession"
         elif is_obsolete:
             ref_new = status_info.get('ref_new', '')
-            _icon = qta.icon('fa5s.ban', color='#c62828')
+            _icon = _icone_statut('fa5s.ban', '#c62828')
             _status_text = "Obsolète"
             _status_tip = f"Obsolète → {ref_new}" if ref_new else "Marquée obsolète"
         elif status == 'superseded':
             ref_new = status_info.get('ref_new', '')
-            _icon = qta.icon('fa5s.long-arrow-alt-right', color='#e67e22')
+            _icon = _icone_statut('fa5s.long-arrow-alt-right', '#e67e22')
             # L'icône est déjà une flèche : pas de « → » en plus dans le texte
             _status_text = ref_new if ref_new else "Remplacée"
             _status_tip = f"Remplacée par {ref_new}" if ref_new else "Remplacée"
@@ -1192,16 +1276,16 @@ class PiecesManagerWindow(QDialog):
                 refs_old = [r.strip() for r in _raw.split(',') if r.strip()]
             else:
                 refs_old = list(_raw)
-            _icon = qta.icon('fa5s.level-up-alt', color='#1565C0')
+            _icon = _icone_statut('fa5s.level-up-alt', '#1565C0')
             _n = len(refs_old)
             _status_text = f"Remplace ({_n})" if _n > 1 else "Remplace"
             _status_tip = "Remplace : " + ", ".join(refs_old) if refs_old else "Remplace d'anciennes réfs"
         elif status_info.get('equivalents'):
-            _icon = qta.icon('fa5s.exchange-alt', color='#8e44ad')
+            _icon = _icone_statut('fa5s.exchange-alt', '#8e44ad')
             _status_text = "Équivalent"
             _status_tip = "Fait partie d'un groupe d'équivalents"
         else:
-            _icon = qta.icon('fa5s.check-circle', color='#2e7d32')
+            _icon = _icone_statut('fa5s.check-circle', '#2e7d32')
             _status_text = "OK"
             _status_tip = "Référence courante, active"
         return _icon, _status_text, _status_tip
@@ -2877,8 +2961,8 @@ class PiecesManagerWindow(QDialog):
 
         demander_oui_non(self, 'Confirmer la suppression', f"Êtes-vous sûr de vouloir supprimer la pièce '{ref_piece}' ?\n\nCette action supprimera également toutes ses associations avec les appareils.", (lambda *a: _suite(self, *a)), defaut=QMessageBox.No)
 
-# Chargement complet du gestionnaire de pièces (comptages, types, fantômes).
-# REQUETE_PIECES_COMPLETE : déplacée dans src/data/_db_mixins/pieces.py
+# Comptages du gestionnaire de pièces (nb d'appareils, types) :
+# REQUETE_COMPTAGES_PIECES dans src/data/_db_mixins/pieces.py
 
 
 def _formulaire_piece(ref: str = "", libelle: str = ""):
@@ -2905,13 +2989,18 @@ def _formulaire_piece(ref: str = "", libelle: str = ""):
 
 class PieceEditDialog(QDialog):
     """Dialogue d'édition d'une pièce"""
+
+    LARGEUR = 560
     
     def __init__(self, parent, current_ref, current_desc, liees=None, libelles=None,
                  focus_field='ref'):
         super().__init__(parent)
         self.setWindowTitle("Modifier la pièce")
         self.setModal(True)
-        self.resize(420, 140)
+        # Plus large que « Nouvelle pièce » : libellés longs et liste des
+        # références liées. La hauteur suit le texte (_ajuster_hauteur) — figée
+        # à 140 px, les lignes à la ligne se chevauchaient.
+        self.resize(self.LARGEUR, 140)
 
         layout = QVBoxLayout()
         layout.setSpacing(12)
@@ -2919,6 +3008,10 @@ class PieceEditDialog(QDialog):
 
         # Champs communs avec « Nouvelle pièce » (_formulaire_piece)
         champs, self.ref_input, self.desc_input = _formulaire_piece(current_ref, current_desc)
+        # Champs sur toute la largeur : sous macOS, QFormLayout les laisse
+        # par défaut à leur taille naturelle (libellé long illisible)
+        from PyQt5.QtWidgets import QFormLayout
+        champs.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
         layout.addLayout(champs)
 
         # Propagation du libellé à toutes les références liées : lignée de
@@ -2978,12 +3071,35 @@ class PieceEditDialog(QDialog):
         target = self.desc_input if focus_field == 'desc' else self.ref_input
         target.selectAll()
         target.setFocus()
-        
+        self._ajuster_hauteur()
+
+    def _ajuster_hauteur(self):
+        """Hauteur à la mesure du texte pour la largeur actuelle : une fenêtre
+        de premier niveau ne tient pas compte d'elle-même des QLabel à retour
+        à la ligne (heightForWidth)."""
+        layout = self.layout()
+        if layout is None:          # appelé pendant la construction
+            return
+        layout.activate()
+        hauteur = (layout.heightForWidth(self.width()) if layout.hasHeightForWidth()
+                   else layout.sizeHint().height())
+        hauteur = max(hauteur, layout.minimumSize().height())
+        self.setMinimumHeight(hauteur)
+        self.resize(self.width(), hauteur)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # Élargie ou rétrécie à la main : le texte se réagence, la hauteur suit
+        if event.size().width() != event.oldSize().width():
+            QTimer.singleShot(0, self._ajuster_hauteur)
+
     def _maj_libelles_remplaces(self, *_):
         """Lister, à la frappe, les libellés différents que la propagation écraserait."""
         remplaces = libelles_remplaces(self.libelles, self.refs_liees, self.desc_input.text())
         if not remplaces:
-            self.remplaces_label.setVisible(False)
+            if not self.remplaces_label.isHidden():
+                self.remplaces_label.setVisible(False)
+                self._ajuster_hauteur()
             return
         apercu = ", ".join(f"{ref} « {lib} »" for ref, lib in remplaces[:3])
         if len(remplaces) > 3:
@@ -2992,6 +3108,7 @@ class PieceEditDialog(QDialog):
             f"dont {pluralize(len(remplaces), 'libellé différent remplacé', 'libellés différents remplacés')} : "
             f"{apercu}")
         self.remplaces_label.setVisible(True)
+        self._ajuster_hauteur()
 
     def get_values(self):
         """Retourner les valeurs saisies"""
