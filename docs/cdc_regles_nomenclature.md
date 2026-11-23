@@ -1,7 +1,7 @@
 # Cahier des charges — Règles de nomenclature des appareils (types justes)
 
-**Statut :** lots 1 et 2 appliqués ; lot 3 (moteur sans écran) mergé, tables remplies en production ; lot 4 (écran Règles + revue) codé
-**Version :** 0.5 (2026-11-23) — lot 4 : écran Règles, revue des propositions, acceptations annulables
+**Statut :** lots 1 et 2 appliqués ; lot 3 (moteur sans écran) mergé, tables remplies en production ; lot 4 (écran Règles + revue) mergé, 983 propositions acceptées en production ; lot 5 (typage à l'import) codé
+**Version :** 0.6 (2026-11-23) — lot 5 : typage à l'import
 **Contexte :** Le client veut que ses clients retrouvent leur appareil par une recherche, sous la bonne marque et le bon type. Les fabricants codent le type dans leurs références (BSH : `S…` = lave-vaisselle ; Electrolux : PNC `911…` = lave-vaisselle ; Neff : `C17M…` = four combiné micro-ondes). Ce document définit comment l'outil apprend, fait valider et applique ces **règles de nomenclature** pour corriger et compléter le type des appareils.
 
 ---
@@ -25,6 +25,9 @@
 | D14 | Lot 4 : l'écran est dans le menu **Données** (« Règles de nomenclature… ») : il n'existe pas de menu Gestion. |
 | D15 | Lot 4 : « Chercher de nouvelles règles » **enregistre toutes les candidates** en statut `proposee` (≈ 7 400 sur la base réelle) ; l'écran filtre alors par défaut sur « changeraient des appareils » (≈ 610). Les autres serviront au typage à l'import (lot 5). |
 | D16 | Lot 4 : **D7 ne s'applique pas tout seul** : l'écran signale les règles de pureté ≥ 98 % (filtre et mention « D7 » sur la fiche, le 2e signal se lit dans les exemples) ; on les valide par sélection multiple, après un récapitulatif (D4). |
+| D17 | Lot 5 : à l'import, une règle **validée** l'emporte sur l'**auto-complétion par référence** (qui recopie un appareil sans garantie), jamais sur un type **lu dans le fichier**. |
+| D18 | Lot 5 : type du fichier **contredit** par une règle validée → le type du fichier est **gardé** et l'appareil reçoit une **proposition de type** (fenêtre « Types proposés »), pas un « à vérifier ». |
+| D19 | Lot 5 : type du fichier **hors liste** (`types_autorises`) → **gardé et signalé** (prévisualisation, historique), non bloquant ; si une règle s'applique, c'est une contradiction (D18). |
 | D12 | Lot 3, catalogue § 9.2 tranché famille par famille : Gaggenau **`BS*` → Four vapeur** (BSP série 200 et BS4 série 400 = combi-vapeur) ; Bauknecht `EM*` = **zone grise** ; Liebherr `G*` Congélateur, `GK*` Réfrigérateur + exceptions `GKN[12]*` Congélateur, `GDC*` Réfrigérateur ; **pas de règle** `HMG8601/8621/8701/8721` (décision ponctuelle du lot 2) ; Whirlpool `AKR[4-9]*` Hotte, `AKR3*` Plaque, `AGB*` Lave-vaisselle ; Beko `FSE[56]*`/`CSE[56]*` Cuisinière, `CSE3*` Réfrigérateur, `FSE2*` Congélateur ; AEG `KMF*` → Four combiné micro-ondes ; Electrolux `EW?D*` Sèche-linge ; validées une par une : Candy, Bosch `HBC??D*`, Siemens `CI??W*`, De Dietrich `DOV*`, Hotpoint `AQD*`/`AQM*`. |
 
 ---
@@ -256,6 +259,36 @@ Le libellé d'origine (`other_ref`) n'est **jamais** un signal seul (cas « Four
 - Appareil importé sans type, ou avec un type hors liste : la règle validée propose le type, l'appareil reste « à vérifier » (comme une auto-complétion tracée).
 - Le libellé du fichier ne l'emporte pas sur une règle validée contraire : conflit → « à vérifier ».
 
+**Tranché et codé au lot 5** (D17-D19) :
+
+| Cas (ligne importée, marque connue) | Effet |
+|---|---|
+| Type vide, ou auto-complété par référence, + règle validée | type de la règle, écrit par les chemins de l'import (insertion, ou complétion d'un existant au type vide), **tracé** dans `appareils_autocompletes` (source « règle de nomenclature Gaggenau BS* → Four vapeur », 1/1) → « Auto-complétés à vérifier » |
+| Type lu dans le fichier ≠ règle validée | type du fichier **gardé** ; en fin d'import, **proposition de type** calculée comme au recalcul (force, signaux), pour ces seuls appareils (D18) |
+| Type du fichier hors liste | gardé, signalé (D19) |
+| Accessoire (D9), règle seulement proposée, pas de marque, conflit entre les deux clés | rien |
+| Type déjà en base, ou refusé (`refus_completions`, champ `type`) | jamais réécrit (garde SQL de l'import, filtre des refus) ; une contradiction refusée n'est pas proposée |
+
+- **Un seul point d'entrée** : `ImportManager._parse_row_data`, après la casse et l'auto-complétion par référence (il faut la marque), commun aux chemins standard et batch (`_preparer_ligne`), donc PDF, CSV, collage **et fiches du site** ; le chemin batch le rejoue après son cache d'auto-complétion (idempotent). Équivalence des deux chemins verrouillée par test.
+- `TypageImportService` (`src/services/typage_import_service.py`) : index des règles **validées** construit **une fois par import** (`IndexRegles`, 61 règles : 0,005 s ; résolution ≈ 6 µs par ligne) ; règles illisibles → typage désactivé, import non bloqué.
+- `RegleNomenclatureService.calculer_propositions(appareil_ids=…)` : calcul restreint, écrit par `remplacer_propositions_des_appareils` — les autres propositions et les **mesures** des règles ne bougent pas.
+- Prévisualisation : encadré « Règles de nomenclature » (à typer, contredits, hors liste) ; historique : « Typés par une règle (à vérifier) », « Types du fichier contredits par une règle : N (voir « Types proposés ») », « [!] Types hors liste (gardés) ».
+
+**Mesures (copie de la base du 2026-11-23, type « à l'import » reconstitué par l'historique)** :
+
+| Appareils créés | depuis le 2026-07-01 | depuis toujours |
+|---|---|---|
+| appareils | 62 945 | 720 475 |
+| sans type à l'import | 12 200 | 31 577 |
+| … et sans marque | 10 594 (87 %) | 27 990 |
+| typés par une règle validée | 0 | 0 |
+| type du fichier contredit | **408** (Liebherr G* 130, Whirlpool AKR3* 115, Candy 69, combinés AEG / Electrolux 71…) | 9 989 |
+| types hors liste | Cocotte 516 | Cocotte 529, Cocotte-minute 14, Filte charbon 3, ACCESSOIRS HOTTES 2 |
+
+- Les 61 règles visent une marque : sans marque (87 % des appareils sans type), aucune ne s'applique. Le gain immédiat est la **détection des contradictions** (≈ 80 par mois), exactement les cas revus au lot 4.
+- **Pourquoi seulement les validées** : appris sur les appareils d'avant juillet et testé sur ceux d'après, les règles découvertes de pureté ≥ 98 % (D7) auraient typé 929 appareils, dont **526 contre le choix final** de l'utilisateur (483 Bosch `HMG*` → combiné, gardés en Micro-ondes). D4 et D16 tiennent.
+- Rejeu réel sur copie : 9 PDF de test (3 981 appareils déjà en base) sans effet ; CSV de cas pièges conforme (BS* typé et tracé ; Liebherr `GN…` et Whirlpool `AKR399IX` gardés + 2 propositions ; Cocotte signalée).
+
 ---
 
 ## 9. Catalogue initial (règles à faire valider)
@@ -341,7 +374,7 @@ Retiré du catalogue initial : Bauknecht `EMV`/`EMZ`/`EMC` (zone grise, § 9.3) 
 | 2 | Type « Four combiné micro-ondes » : appellations (+ migration de la config), segment SEO, normalisation, reclassement § 4.1 (6 104) — `types_autorises` reporté au lot 3 (D10) | oui (+ Guide) |
 | 3 | Liste fermée `types_autorises` (§ 3), tables § 5, moteur § 6 sans écran, catalogue § 9.2, tests — **codé** (`RegleNomenclatureService`, `src/utils/nomenclature/`, `scripts/regles_nomenclature.py`) | non |
 | 4 | Écran Règles § 8.1 + revue § 8.2 — **codé** (`ReglesNomenclatureDialog`, `PropositionsTypeDialog`, `RevuePropositionsService`, `CalculNomenclature`, tables § 5.3) | oui (+ Guide) |
-| 5 | Typage à l'import § 8.3 | oui (+ Guide) |
+| 5 | Typage à l'import § 8.3 — **codé** (`TypageImportService`, D17-D19) | oui (+ Guide) |
 | à part | Ménage marques : retirer « SMEG » collé dans 1 331 réf. ; vérifier Concord/Concorde | données |
 
 Le lot 2 dépend de la création du type sur le site (action client).
@@ -356,6 +389,7 @@ Le lot 2 dépend de la création du type sur le site (action client).
 - Test de charge : découverte complète < 30 s sur 720 000 appareils (mesuré 15 s en script ; **lot 3 : 3,3 s** sur la base réelle, ~3 s en test synthétique).
 - Lot 3 : appliqué aux listes figées des lots 1 et 2, le catalogue ne propose **aucun** autre type que celui déjà posé (test automatique) ; aucune sortie d'export ne change (banc d'exports du lot 2, ancien code contre nouveau, même base).
 - Rejouer les tests avec le style global (piège eventFilter) et `compileall`.
+- Lot 5 : import PDF / CSV, deux chemins, avec et sans règle ; conflit fichier / règle → proposition ; refus respecté ; règle contre auto-complétion par référence ; type hors liste signalé ; fenêtre de prévisualisation avec le style global ; banc d'exports A/B identique.
 - Lot 4 : fenêtres ouvertes avec le style global (écran, revue, vraie fenêtre principale), revue ligne à ligne et groupée, récapitulatif, annulation (appareil modifié depuis laissé tel quel), refus jamais reproposé après recalcul, règle proposée sans effet sur une règle validée ; banc d'exports A/B (code de `main` contre code du lot 4, même copie de la base) identique.
 
 ---

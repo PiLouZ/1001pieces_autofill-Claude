@@ -359,6 +359,36 @@ class DatabaseNomenclatureMixin:
             return -1
 
     @with_query_lock
+    def remplacer_propositions_des_appareils(self, appareil_ids: Iterable[int],
+                                             propositions: Iterable[tuple]) -> int:
+        """Remplacer les propositions de CES appareils seulement (typage à l'import,
+        lot 5), en une transaction : les autres propositions restent.
+
+        Args:
+            appareil_ids: appareils recalculés (leur ancienne proposition est retirée
+                même s'ils n'en ont plus).
+            propositions: tuples dans l'ordre de COLONNES_PROPOSITION.
+        Returns:
+            Nombre écrit, ou -1 en cas d'échec (journalisé).
+        """
+        ids = list(dict.fromkeys(appareil_ids))
+        lignes = list(propositions)
+        try:
+            for debut in range(0, len(ids), _PAQUET):
+                lot = ids[debut:debut + _PAQUET]
+                self.cursor.execute("DELETE FROM propositions_type WHERE appareil_id IN "
+                                    f"({','.join('?' * len(lot))})", lot)
+            self.cursor.executemany(
+                f"INSERT OR REPLACE INTO propositions_type ({', '.join(COLONNES_PROPOSITION)}) "
+                f"VALUES ({', '.join('?' * len(COLONNES_PROPOSITION))})", lignes)
+            self.conn.commit()
+            return len(lignes)
+        except Exception as e:
+            self.conn.rollback()
+            app_logger.error(f"Propositions de type (import) non enregistrées : {e}")
+            return -1
+
+    @with_query_lock
     def lire_propositions_type(self) -> List[dict]:
         try:
             self.cursor.execute(f"SELECT {', '.join(COLONNES_PROPOSITION)} FROM propositions_type "
@@ -371,11 +401,20 @@ class DatabaseNomenclatureMixin:
     # ── Lectures pour le moteur ─────────────────────────────────────────────
 
     @with_query_lock
-    def lire_appareils_nomenclature(self) -> List[tuple]:
-        """(id, type, marque, ref_modele, commercial_ref, other_ref) de tous les appareils."""
-        self.cursor.execute("SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref "
-                            "FROM appareils")
-        return self.cursor.fetchall()
+    def lire_appareils_nomenclature(self, appareil_ids: Optional[Iterable[int]] = None) -> List[tuple]:
+        """(id, type, marque, ref_modele, commercial_ref, other_ref) de tous les
+        appareils, ou des seuls appareils donnés (typage à l'import, lot 5)."""
+        sql = "SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref FROM appareils"
+        if appareil_ids is None:
+            self.cursor.execute(sql)
+            return self.cursor.fetchall()
+        ids = list(dict.fromkeys(appareil_ids))
+        lignes = []
+        for debut in range(0, len(ids), _PAQUET):
+            lot = ids[debut:debut + _PAQUET]
+            self.cursor.execute(f"{sql} WHERE id IN ({','.join('?' * len(lot))})", lot)
+            lignes.extend(self.cursor.fetchall())
+        return lignes
 
     @with_query_lock
     def lire_refus_du_champ(self, champ: str) -> Optional[Set[Tuple[int, str]]]:

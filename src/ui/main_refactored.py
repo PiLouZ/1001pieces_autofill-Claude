@@ -2142,6 +2142,29 @@ class MainWindow(QMainWindow):
                       f"retirée(s) de la liste à refaire\n")
         return texte
 
+    @staticmethod
+    def _lignes_typage_regles(results, retrait):
+        """Bloc d'historique du typage par les règles de nomenclature (lot 5) :
+
+            ==> Typés par une règle (à vérifier) : 3
+            ==> Types du fichier contredits par une règle : 2 (voir « Types proposés »)
+            [!] Types hors liste (gardés) : Cocotte (12)
+
+        La ligne « [!] » vient en dernier : les lignes qui la suivent seraient
+        surlignées avec elle. Chaîne vide si rien à dire.
+        """
+        texte = ''
+        if results.get('types_par_regle'):
+            texte += f"{retrait}==> Typés par une règle (à vérifier) : {results['types_par_regle']}\n"
+        if results.get('types_contredits'):
+            texte += (f"{retrait}==> Types du fichier contredits par une règle : "
+                      f"{results['types_contredits']} (voir « Types proposés »)\n")
+        if results.get('types_hors_liste'):
+            from ..services.typage_import_service import TypageImportService
+            texte += (f"{retrait}[!] Types hors liste (gardés) : "
+                      f"{TypageImportService.lignes_hors_liste(results['types_hors_liste'])}\n")
+        return texte
+
     @classmethod
     def _lignes_completions(cls, results, retrait):
         """Bloc d'historique des appareils existants complétés par l'import :
@@ -2193,6 +2216,7 @@ class MainWindow(QMainWindow):
         summary += MainWindow._lignes_completions(results, retrait="")
         if results.get('autocompletes_a_verifier'):
             summary += f"==> Auto-complétés à vérifier : {results['autocompletes_a_verifier']}\n"
+        summary += MainWindow._lignes_typage_regles(results, retrait="")
         alerte = results.get('alerte_mapping')
         if alerte:
             summary += f"[!] {alerte}\n"
@@ -2295,6 +2319,12 @@ class MainWindow(QMainWindow):
                 self.table_controller._extend_search_active = False
 
             self.table_controller.load_data()  # Rafraîchir l'affichage sans filtres
+            # Types proposés : l'import a pu en ajouter (fichier contredit par une
+            # règle, lot 5) — compteur, flèches et teinte, après le rechargement
+            if results.get('types_contredits'):
+                revue = getattr(self, 'revue_nomenclature', None)
+                if revue is not None:
+                    revue.rafraichir()
 
             # Installer les suggestions Type/Marque par similarité calculées pendant
             # l'import (indicateur + bannière conditionnelle). Stockées par db_id :
@@ -2376,6 +2406,7 @@ class MainWindow(QMainWindow):
         summary += MainWindow._lignes_completions(results, retrait="     ")
         if results.get('autocompletes_a_verifier'):
             summary += f"     ==> Auto-complétés à vérifier : {results['autocompletes_a_verifier']}\n"
+        summary += MainWindow._lignes_typage_regles(results, retrait="     ")
         alerte = results.get('alerte_mapping')
         if alerte:
             summary += f"     [!] {alerte}\n"

@@ -246,6 +246,9 @@ class ImportManager:
         from ..services.casse_normalisation_service import CasseNormalisationService
         self._marques = CasseNormalisationService(db_manager, 'manufacturer')
         self._types = CasseNormalisationService(db_manager, 'type')
+        # Typage par les règles de nomenclature validées (CDC § 8.3, lot 5)
+        from ..services.typage_import_service import TypageImportService
+        self._typage = TypageImportService(db_manager)
 
     @staticmethod
     def _nouveaux_compteurs_log() -> Dict[str, int]:
@@ -773,6 +776,7 @@ class ImportManager:
             shared_autocomplete_cache = self._build_autocomplete_cache(shared_devices_cache)
             self._marques.charger()
             self._types.charger()
+            self._typage.charger()   # index des règles : une fois par import
             app_logger.info(f" Cache prêt : {len(shared_devices_cache)} appareils")
 
             for i, file in enumerate(config.files):
@@ -799,6 +803,7 @@ class ImportManager:
                 progress_cb(n, n, "Finalisation…")
 
             self._tracer_completions_et_alignements(results)
+            self._constats_typage_regles(results, dry_run)
             ImportManager._journaliser_fin_import(results, n)
             self._finaliser_import_en_base(config, results, progress_cb, dry_run)
             results['imported_refs'] = ImportManager._refs_importees(config)
@@ -860,6 +865,8 @@ class ImportManager:
         self._ids_session = {}
         self._resultats_par_fichier = {}
         self._index_par_id = None
+        # Typage par règle : constats de la session (typés, contredits, hors liste)
+        self._typage.reinitialiser()
 
     @staticmethod
     def _progression_pdf(progress_cb, file, i: int, n: int):
@@ -911,6 +918,24 @@ class ImportManager:
                 results[cle] = alignements
                 app_logger.info(f"[Import] {libelle} : {service.resume(alignements)}")
 
+    def _constats_typage_regles(self, results: Dict[str, Any], dry_run: bool) -> None:
+        """Typage par règle (lot 5) reporté au récap. À l'aperçu (rien d'écrit),
+        les appareils à typer et à contredire sont comptés par identité ; à
+        l'import réel, typés = ceux réellement écrits (un type déjà présent en base
+        ou refusé n'a rien reçu), et les contredits sont recomptés en propositions
+        par _finaliser_import_en_base."""
+        typage = self._typage
+        typees = len(typage.typees) if dry_run else len(typage.ids_typees)
+        if typees:
+            results['types_par_regle'] = typees
+        if typage.contredites:
+            results['types_contredits'] = len(typage.contredites)
+        if typage.hors_liste:
+            from collections import Counter
+            results['types_hors_liste'] = Counter(typage.hors_liste.values()).most_common()
+            app_logger.info(f"[Import] Types hors liste : "
+                            f"{typage.lignes_hors_liste(results['types_hors_liste'])}")
+
     @staticmethod
     def _journaliser_fin_import(results: Dict[str, Any], n: int) -> None:
         """Ligne de fin d'import. Les fichiers en échec sont sautés, pas fatals :
@@ -947,6 +972,11 @@ class ImportManager:
             self._apply_succession_from_config(config, results)
 
         self._solder_fiches_a_refaire(config, results)
+
+        # Type du fichier contredit par une règle validée : proposition de type (D18),
+        # une fois les appareils écrits (il faut leur id)
+        if self._typage.contredites:
+            results['types_contredits'] = self._typage.proposer_pour_contredits()
 
         apres = getattr(config, 'apres_ecriture', None)
         if apres is not None:
@@ -1675,6 +1705,9 @@ class ImportManager:
         (le comptage de la ligne traitée est fait par _preparer_ligne)."""
         # Utiliser cache auto-complétion pour améliorer les données (pas de SQL!)
         self._apply_autocomplete_from_cache(device_data, autocomplete_cache)
+        # La marque a pu venir du cache : la règle peut maintenant s'appliquer
+        # (sans effet si _parse_row_data a déjà typé la ligne)
+        self._typer_par_regle(device_data)
 
         # Vérifier si existe en cache (pas de requête SQL !)
         existing_id = self._find_in_cache(device_data, existing_devices_cache)
@@ -2189,6 +2222,11 @@ class ImportManager:
             traces = getattr(self, '_appareils_autocompletes', None)
             if traces is not None:
                 traces.update(ligne[0] for ligne in lignes)
+            typage = getattr(self, '_typage', None)
+            if typage is not None:
+                from ..services.typage_import_service import est_source_de_regle
+                typage.ids_typees.update(ligne[0] for ligne in lignes
+                                         if ligne[1] == 'type' and est_source_de_regle(ligne[3]))
 
     def _sans_autocompletions_refusees(self, completions):
         """Retire des complétions les champs AUTO-COMPLÉTÉS que l'utilisateur a
@@ -2457,7 +2495,43 @@ class ImportManager:
         if not data.get('type') or not data.get('manufacturer'):
             self._try_auto_complete(data)
 
+        # Puis les règles de nomenclature (il leur faut la marque, éventuellement
+        # auto-complétée) — commun aux deux chemins et aux fiches du site
+        self._typer_par_regle(data)
+
         return data
+
+    def _typer_par_regle(self, device_data: Dict[str, Any]) -> None:
+        """Règles de nomenclature validées appliquées à une ligne (CDC § 8.3, lot 5).
+
+        - type vide ou auto-complété par référence : la règle le donne, noté comme
+          une auto-complétion (« à vérifier ») ;
+        - type lu dans le fichier et contredit : gardé, l'appareil recevra une
+          proposition de type en fin d'import ;
+        - type du fichier hors liste : gardé, signalé au récapitulatif.
+        Idempotente : le chemin batch l'appelle une 2ᵉ fois après son cache.
+        """
+        typage = getattr(self, '_typage', None)
+        if typage is None:
+            return
+        cle = self._build_device_key(device_data)[2]
+        type_ligne = (device_data.get('type') or '').strip()
+        auto = (device_data.get(self.CLE_AUTOCOMPLETION) or {}).get('type')
+        type_auto_complete = bool(auto) and (auto.get('valeur') or '').strip() == type_ligne
+        if type_ligne and not type_auto_complete and typage.est_hors_liste(type_ligne):
+            typage.hors_liste[cle] = type_ligne
+        verdict, resolution = typage.examiner(device_data, type_auto_complete)
+        if verdict == typage.CONTREDIT:
+            # 1ʳᵉ occurrence : c'est elle qui reçoit l'id (un doublon n'en a pas)
+            typage.contredites.setdefault(cle, device_data)
+        elif verdict == typage.TYPER:
+            from ..services.typage_import_service import source_de_regle
+            device_data['type'] = resolution.type
+            # « 1/1 » : une seule source, la règle (et non « confiance inconnue »)
+            self._noter_autocompletion(device_data, 'type', resolution.type,
+                                       source_de_regle(resolution.regle), 1, 1)
+            typage.typees[cle] = resolution.type
+            typage.contredites.pop(cle, None)
 
     # Lignes déjà lues et identifiées par leur source (fiche du site, FileType.FICHE_SITE) :
     # - CLE_APPAREIL : id d'un appareil de la base (la source l'a reconnu) ;

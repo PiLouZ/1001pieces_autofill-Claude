@@ -2304,6 +2304,11 @@ class ImportPreviewDialog(QDialog):
         if encadre is not None:
             layout.addWidget(encadre)
 
+        # ── Règles de nomenclature (lot 5) : annoncées avant d'écrire ─────
+        encadre = self._encadre_typage(results)
+        if encadre is not None:
+            layout.addWidget(encadre)
+
         # ── Boutons ───────────────────────────────────────────────────────
         btn_bar = QHBoxLayout()
         btn_bar.addStretch()
@@ -2342,9 +2347,33 @@ class ImportPreviewDialog(QDialog):
             lignes.extend(f"    {v}" for v in visibles)
         return lignes
 
+    @staticmethod
+    def _lignes_typage(results: dict) -> List[str]:
+        """Typage par les règles de nomenclature annoncé par l'aperçu ; vide si rien."""
+        lignes = []
+        if results.get('types_par_regle'):
+            lignes.append(f"À typer par une règle : {results['types_par_regle']} "
+                          f"(à vérifier après l'import)")
+        if results.get('types_contredits'):
+            lignes.append(f"Type du fichier contredit par une règle : {results['types_contredits']} "
+                          f"(gardé, proposition de type)")
+        if results.get('types_hors_liste'):
+            from ..services.typage_import_service import TypageImportService
+            lignes.append("Types hors liste (gardés) : "
+                          + TypageImportService.lignes_hors_liste(results['types_hors_liste']))
+        return lignes
+
+    def _encadre_typage(self, results: dict) -> Optional[QWidget]:
+        """Encadré « Règles de nomenclature », ou None si aucune ne joue."""
+        return self._encadre_lignes("Règles de nomenclature", self._lignes_typage(results))
+
     def _encadre_alignements(self, results: dict) -> Optional[QWidget]:
         """Encadré « Orthographe alignée sur la base », ou None si rien n'est réécrit."""
-        lignes = self._lignes_alignements(results)
+        return self._encadre_lignes("Orthographe alignée sur la base",
+                                    self._lignes_alignements(results))
+
+    def _encadre_lignes(self, titre_encadre: str, lignes: List[str]) -> Optional[QWidget]:
+        """Encadré gris clair : un titre en gras puis une ligne par élément."""
         if not lignes:
             return None
         encadre = QWidget()
@@ -2354,7 +2383,7 @@ class ImportPreviewDialog(QDialog):
         couche = QVBoxLayout(encadre)
         couche.setContentsMargins(12, 8, 12, 8)
         couche.setSpacing(2)
-        titre = QLabel("<b>Orthographe alignée sur la base</b>")
+        titre = QLabel(f"<b>{titre_encadre}</b>")
         titre.setStyleSheet("font-size: 11px; color: #2c3e50; background: transparent; border: none;")
         couche.addWidget(titre)
         for ligne in lignes:
