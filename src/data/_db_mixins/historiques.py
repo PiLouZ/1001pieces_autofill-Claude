@@ -110,6 +110,21 @@ class DatabaseHistoriquesMixin:
              device_ref, field_name, old_value, new_value]
         )
 
+    def ajouter_historique_modifications(self, lignes: List[Tuple]) -> bool:
+        """Écrire plusieurs entrées de l'historique en une seule transaction
+        (correction de type en lot : des milliers d'appareils). Chaque ligne :
+        (timestamp, action_type, title, details, device_ref, field_name,
+        old_value, new_value). True si tout est commité."""
+        if not lignes:
+            return True
+        requete = """
+            INSERT INTO modifications_history
+                (timestamp, action_type, title, details,
+                 device_ref, field_name, old_value, new_value)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        return self.execute_write_batch([(requete, list(l)) for l in lignes])
+
     def vider_historique(self) -> int:
         """Supprimer tout l'historique des modifications (commité) ; nombre de
         lignes supprimées, ou -1 en cas d'échec."""
