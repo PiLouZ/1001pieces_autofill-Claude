@@ -1,0 +1,2513 @@
+famille;id;marque;ref_modele;ref_commerciale;libelle_origine;type_actuel;nouveau_type
+1;521918;Whirlpool;857700329500;AKP003/IX;Four Vapeur;Four vapeur;Four
+1;521919;Whirlpool;857700329502;AKP003/IX;Four Vapeur;Four vapeur;Four
+1;521920;Whirlpool;857700329503;AKP003/IX;Four Vapeur;Four vapeur;Four
+1;521924;Whirlpool;857700329520;AKP003/NB;Four Vapeur;Four vapeur;Four
+1;521925;Whirlpool;857700329522;AKP003/NB;Four Vapeur;Four vapeur;Four
+1;521926;Whirlpool;857700329523;AKP003/NB;Four Vapeur;Four vapeur;Four
+1;521921;Whirlpool;857700329510;AKP003/WH;Four Vapeur;Four vapeur;Four
+1;521922;Whirlpool;857700329512;AKP003/WH01;Four Vapeur;Four vapeur;Four
+1;521923;Whirlpool;857700329513;AKP003/WH01;Four Vapeur;Four vapeur;Four
+1;521927;Whirlpool;857700429500;AKP004/IX;Four Vapeur;Four vapeur;Four
+1;521928;Whirlpool;857700429501;AKP004/IX;Four Vapeur;Four vapeur;Four
+1;521929;Whirlpool;857700429503;AKP004/IX;Four Vapeur;Four vapeur;Four
+1;521930;Whirlpool;857700429504;AKP004/IX;Four Vapeur;Four vapeur;Four
+1;521935;Whirlpool;857700429520;AKP004NB;Four Vapeur;Four vapeur;Four
+1;521936;Whirlpool;857700429521;AKP004NB;Four Vapeur;Four vapeur;Four
+1;521937;Whirlpool;857700429523;AKP004/NB;Four Vapeur;Four vapeur;Four
+1;521938;Whirlpool;857700429524;AKP004/NB;Four Vapeur;Four vapeur;Four
+1;521931;Whirlpool;857700429510;AKP004WH;Four Vapeur;Four vapeur;Four
+1;521932;Whirlpool;857700429511;AKP004WH;Four Vapeur;Four vapeur;Four
+1;521933;Whirlpool;857700429513;AKP004/WH;Four Vapeur;Four vapeur;Four
+1;521934;Whirlpool;857700429514;AKP004/WH;Four Vapeur;Four vapeur;Four
+1;521939;Whirlpool;857700529000;AKP005/IX;;Four vapeur;Four
+1;521941;Whirlpool;857700529020;AKP005/NB;;Four vapeur;Four
+1;521940;Whirlpool;857700529010;AKP005/WH;;Four vapeur;Four
+1;521942;Whirlpool;857700706500;AKP007/IX;Four Vapeur;Four vapeur;Four
+1;521943;Whirlpool;857700706501;AKP007/IX;Four Vapeur;Four vapeur;Four
+1;521944;Whirlpool;857700706502;AKP007/IX;Four Vapeur;Four vapeur;Four
+1;521945;Whirlpool;857700706503;AKP007/IX;Four Vapeur;Four vapeur;Four
+1;521946;Whirlpool;857700706504;AKP007/IX;Four Vapeur;Four vapeur;Four
+1;521952;Whirlpool;857700706520;AKP007/NB;Four Vapeur;Four vapeur;Four
+1;521953;Whirlpool;857700706522;AKP007/NB;Four Vapeur;Four vapeur;Four
+1;521954;Whirlpool;857700706523;AKP007/NB;Four Vapeur;Four vapeur;Four
+1;521947;Whirlpool;857700706510;AKP007/WH;Four Vapeur;Four vapeur;Four
+1;521948;Whirlpool;857700706511;AKP007/WH;Four Vapeur;Four vapeur;Four
+1;521950;Whirlpool;857700706513;AKP007/WH;Four Vapeur;Four vapeur;Four
+1;521951;Whirlpool;857700706514;AKP007/WH;Four Vapeur;Four vapeur;Four
+1;521949;Whirlpool;857700706512;AKP007/WH/01;Four Vapeur;Four vapeur;Four
+1;521989;Whirlpool;857710204560;AKP102/02IX;;Four vapeur;Four
+1;521990;Whirlpool;857710204561;AKP102/02IX;;Four vapeur;Four
+1;521991;Whirlpool;857710204562;AKP102/02IX;;Four vapeur;Four
+1;521993;Whirlpool;857710204564;AKP102/02IX;;Four vapeur;Four
+1;521994;Whirlpool;857710204565;AKP102/02IX;;Four vapeur;Four
+1;521983;Whirlpool;857710204550;AKP102/02WH;;Four vapeur;Four
+1;521984;Whirlpool;857710204551;AKP102/02WH;;Four vapeur;Four
+1;521985;Whirlpool;857710204552;AKP102/02WH;;Four vapeur;Four
+1;521987;Whirlpool;857710204554;AKP102/02WH;;Four vapeur;Four
+1;521988;Whirlpool;857710204555;AKP102/02WH;;Four vapeur;Four
+1;521992;Whirlpool;857710204563;AKP102IX02;;Four vapeur;Four
+1;522005;Whirlpool;857710204590;AKP102/IX/03;;Four vapeur;Four
+1;522006;Whirlpool;857710204591;AKP102/IX/03;;Four vapeur;Four
+1;522007;Whirlpool;857710204592;AKP102/IX/03;;Four vapeur;Four
+1;522008;Whirlpool;857710204593;AKP102/IX/03;;Four vapeur;Four
+1;522009;Whirlpool;857710204594;AKP102/IX/03;;Four vapeur;Four
+1;521980;Whirlpool;857710204510;AKP102/NB/02;;Four vapeur;Four
+1;521981;Whirlpool;857710204512;AKP102/NB/02;;Four vapeur;Four
+1;521982;Whirlpool;857710204513;AKP102/NB/02;;Four vapeur;Four
+1;521995;Whirlpool;857710204570;AKP102/NB/03;;Four vapeur;Four
+1;521996;Whirlpool;857710204571;AKP102/NB/03;;Four vapeur;Four
+1;521997;Whirlpool;857710204572;AKP102/NB/03;;Four vapeur;Four
+1;521998;Whirlpool;857710204573;AKP102/NB/03;;Four vapeur;Four
+1;521999;Whirlpool;857710204574;AKP102/NB/03;;Four vapeur;Four
+1;522000;Whirlpool;857710204580;AKP102/WH/003;;Four vapeur;Four
+1;522001;Whirlpool;857710204581;AKP102/WH/003;;Four vapeur;Four
+1;521986;Whirlpool;857710204553;AKP102WH02;;Four vapeur;Four
+1;522002;Whirlpool;857710204582;AKP102/WH/03;;Four vapeur;Four
+1;522003;Whirlpool;857710204583;AKP102/WH/03;;Four vapeur;Four
+1;522004;Whirlpool;857710204584;AKP102/WH/03;;Four vapeur;Four
+1;522020;Whirlpool;857710938010;AKP109/IX/01;Four Vapeur;Four vapeur;Four
+1;522021;Whirlpool;857710938510;AKP109/IX/02;Four Vapeur;Four vapeur;Four
+1;522022;Whirlpool;857710938511;AKP109/IX/02;Four Vapeur;Four vapeur;Four
+1;522023;Whirlpool;857710938512;AKP109/IX/02;Four Vapeur;Four vapeur;Four
+1;522053;Whirlpool;857712010520;AKP120/01IX;Four Vapeur;Four vapeur;Four
+1;522054;Whirlpool;857712010521;AKP120/01IX;Four Vapeur;Four vapeur;Four
+1;522055;Whirlpool;857712010522;AKP120/01IX;Four Vapeur;Four vapeur;Four
+1;522056;Whirlpool;857712010523;AKP120/01IX;Four Vapeur;Four vapeur;Four
+1;522058;Whirlpool;857712010525;AKP120/01IX;Four Vapeur;Four vapeur;Four
+1;522059;Whirlpool;857712010526;AKP120/01IX;Four Vapeur;Four vapeur;Four
+1;522060;Whirlpool;857712010527;AKP120/01IX;Four Vapeur;Four vapeur;Four
+1;522047;Whirlpool;857712010510;AKP120/01NB;Four Vapeur;Four vapeur;Four
+1;522048;Whirlpool;857712010512;AKP120/01NB;Four Vapeur;Four vapeur;Four
+1;522049;Whirlpool;857712010513;AKP120/01NB;Four Vapeur;Four vapeur;Four
+1;522051;Whirlpool;857712010515;AKP120/01NB;Four Vapeur;Four vapeur;Four
+1;522052;Whirlpool;857712010516;AKP120/01NB;Four Vapeur;Four vapeur;Four
+1;522041;Whirlpool;857712010500;AKP120/01WH;Four Vapeur;Four vapeur;Four
+1;522042;Whirlpool;857712010502;AKP120/01WH;Four Vapeur;Four vapeur;Four
+1;522043;Whirlpool;857712010503;AKP120/01WH;Four Vapeur;Four vapeur;Four
+1;522044;Whirlpool;857712010504;AKP120/01WH;Four Vapeur;Four vapeur;Four
+1;522045;Whirlpool;857712010505;AKP120/01WH;Four Vapeur;Four vapeur;Four
+1;522046;Whirlpool;857712010506;AKP120/01WH;Four Vapeur;Four vapeur;Four
+1;522057;Whirlpool;857712010524;AKP120IX01;Four Vapeur;Four vapeur;Four
+1;522061;Whirlpool;857712010530;AKP120/IX/02;;Four vapeur;Four
+1;522062;Whirlpool;857712010532;AKP120/IX/02;;Four vapeur;Four
+1;522063;Whirlpool;857712010533;AKP120/IX/02;;Four vapeur;Four
+1;522064;Whirlpool;857712010534;AKP120/IX/02;;Four vapeur;Four
+1;522065;Whirlpool;857712010535;AKP120/IX/02;;Four vapeur;Four
+1;522050;Whirlpool;857712010514;AKP120NB01;Four Vapeur;Four vapeur;Four
+1;522066;Whirlpool;857712110500;AKP121/IX;;Four vapeur;Four
+1;522067;Whirlpool;857712110501;AKP121/IX;;Four vapeur;Four
+1;522068;Whirlpool;857712110502;AKP121/IX;;Four vapeur;Four
+1;522069;Whirlpool;857712110510;AKP121/NB;;Four vapeur;Four
+1;522070;Whirlpool;857712110511;AKP121/NB;;Four vapeur;Four
+1;522071;Whirlpool;857712110512;AKP121/NB;;Four vapeur;Four
+1;522081;Whirlpool;857712810500;AKP128IX;;Four vapeur;Four
+1;522085;Whirlpool;857713001502;AKP130/IX;;Four vapeur;Four
+1;522086;Whirlpool;857713001504;AKP130/IX;;Four vapeur;Four
+1;522087;Whirlpool;857713401500;AKP134/IX;;Four vapeur;Four
+1;522088;Whirlpool;857713401501;AKP134/IX;;Four vapeur;Four
+1;522089;Whirlpool;857713401502;AKP134/IX;;Four vapeur;Four
+1;522090;Whirlpool;857713401503;AKP134/IX;;Four vapeur;Four
+1;522091;Whirlpool;857713401504;AKP134/IX;;Four vapeur;Four
+1;522105;Whirlpool;857713501520;AKP135/01IX;Four Vapeur;Four vapeur;Four
+1;522106;Whirlpool;857713501521;AKP135/01IX;Four Vapeur;Four vapeur;Four
+1;522107;Whirlpool;857713501530;AKP135/02IX;;Four vapeur;Four
+1;522108;Whirlpool;857713501531;AKP135/02IX;;Four vapeur;Four
+1;522109;Whirlpool;857713501532;AKP135/02IX;;Four vapeur;Four
+1;522110;Whirlpool;857713501533;AKP135/02IX;;Four vapeur;Four
+1;522103;Whirlpool;857713501500;AKP135/02WH;;Four vapeur;Four
+1;522104;Whirlpool;857713501501;AKP135/02WH;;Four vapeur;Four
+1;522123;Whirlpool;857713501560;AKP135/02WH;;Four vapeur;Four
+1;522114;Whirlpool;857713501544;AKP135/05IX;;Four vapeur;Four
+1;522115;Whirlpool;857713501545;AKP135/05IX;;Four vapeur;Four
+1;522116;Whirlpool;857713501546;AKP135/05IX;;Four vapeur;Four
+1;522117;Whirlpool;857713501547;AKP135/05IX;;Four vapeur;Four
+1;522124;Whirlpool;857713501562;AKP135/05NB;;Four vapeur;Four
+1;522125;Whirlpool;857713501563;AKP135/05NB;;Four vapeur;Four
+1;522126;Whirlpool;857713501564;AKP135/05NB;;Four vapeur;Four
+1;522127;Whirlpool;857713501565;AKP135/05NB;;Four vapeur;Four
+1;522121;Whirlpool;857713501554;AKP135/05WH;;Four vapeur;Four
+1;522122;Whirlpool;857713501555;AKP135/05WH;;Four vapeur;Four
+1;522128;Whirlpool;857713528500;AKP135/IX/03;;Four vapeur;Four
+1;522129;Whirlpool;857713528501;AKP135/IX/03;;Four vapeur;Four
+1;522111;Whirlpool;857713501540;AKP135/IX/05;;Four vapeur;Four
+1;522112;Whirlpool;857713501542;AKP135/IX/05;;Four vapeur;Four
+1;522113;Whirlpool;857713501543;AKP135/IX/05;;Four vapeur;Four
+1;522130;Whirlpool;857713541500;AKP135IX/07;;Four vapeur;Four
+1;522131;Whirlpool;857713541501;AKP135/IX/07;;Four vapeur;Four
+1;522132;Whirlpool;857713541502;AKP135IX/07;;Four vapeur;Four
+1;522133;Whirlpool;857713541503;AKP135IX/07;;Four vapeur;Four
+1;522118;Whirlpool;857713501550;AKP135/WH/05;;Four vapeur;Four
+1;522119;Whirlpool;857713501552;AKP135/WH/05;;Four vapeur;Four
+1;522120;Whirlpool;857713501553;AKP135/WH/05;;Four vapeur;Four
+1;522134;Whirlpool;857713701500;AKP137/IX;Four Vapeur;Four vapeur;Four
+1;522135;Whirlpool;857713701501;AKP137/IX;Four Vapeur;Four vapeur;Four
+1;522136;Whirlpool;857713701502;AKP137/IX;Four Vapeur;Four vapeur;Four
+1;522137;Whirlpool;857713701503;AKP137/IX;Four Vapeur;Four vapeur;Four
+1;522138;Whirlpool;857713701504;AKP137/IX;Four Vapeur;Four vapeur;Four
+1;522139;Whirlpool;857713701505;AKP137/IX;Four Vapeur;Four vapeur;Four
+1;522140;Whirlpool;857713801500;AKP138/IX;Four Vapeur;Four vapeur;Four
+1;522141;Whirlpool;857713801501;AKP138/IX;Four Vapeur;Four vapeur;Four
+1;522142;Whirlpool;857713801503;AKP138/IX;Four Vapeur;Four vapeur;Four
+1;522143;Whirlpool;857713801504;AKP138/IX;Four Vapeur;Four vapeur;Four
+1;522144;Whirlpool;857713801505;AKP138/IX;Four Vapeur;Four vapeur;Four
+1;522145;Whirlpool;857713901500;AKP139/IX;Four Vapeur;Four vapeur;Four
+1;522146;Whirlpool;857713901501;AKP139/IX;Four Vapeur;Four vapeur;Four
+1;522147;Whirlpool;857713901502;AKP139/IX;Four Vapeur;Four vapeur;Four
+1;522148;Whirlpool;857713901503;AKP139/IX;Four Vapeur;Four vapeur;Four
+1;522149;Whirlpool;857713901504;AKP139/IX;Four Vapeur;Four vapeur;Four
+1;522150;Whirlpool;857713901505;AKP139/IX;Four Vapeur;Four vapeur;Four
+1;522151;Whirlpool;857713901506;AKP139/IX;Four Vapeur;Four vapeur;Four
+1;522152;Whirlpool;857714001500;AKP140/IX;;Four vapeur;Four
+1;522153;Whirlpool;857714001501;AKP140/IX;;Four vapeur;Four
+1;522154;Whirlpool;857714001502;AKP140/IX;;Four vapeur;Four
+1;522155;Whirlpool;857714001503;AKP140/IX;;Four vapeur;Four
+1;522156;Whirlpool;857714001504;AKP140/IX;;Four vapeur;Four
+1;522157;Whirlpool;857714001505;AKP140/IX;;Four vapeur;Four
+1;522158;Whirlpool;857714101500;AKP141/IX;Four Vapeur;Four vapeur;Four
+1;522159;Whirlpool;857714101501;AKP141/IX;Four Vapeur;Four vapeur;Four
+1;522160;Whirlpool;857714101502;AKP141/IX;Four Vapeur;Four vapeur;Four
+1;522161;Whirlpool;857714101503;AKP141/IX;Four Vapeur;Four vapeur;Four
+1;522162;Whirlpool;857714101504;AKP141/IX;Four Vapeur;Four vapeur;Four
+1;522163;Ignis;857714401500;AKP144IX;;Four vapeur;Four
+1;522164;Whirlpool;857714401501;AKP144/IX;;Four vapeur;Four
+1;522165;Whirlpool;857714401502;AKP144/IX;;Four vapeur;Four
+1;522166;Whirlpool;857714401503;AKP144/IX;;Four vapeur;Four
+1;522167;Whirlpool;857714401504;AKP144/IX;;Four vapeur;Four
+1;522168;Whirlpool;857714401506;AKP144/IX;;Four vapeur;Four
+1;522169;Ignis;857714501500;AKP145IX;;Four vapeur;Four
+1;522170;Whirlpool;857714501501;AKP145/IX;;Four vapeur;Four
+1;522171;Whirlpool;857714501502;AKP145IX;;Four vapeur;Four
+1;522172;Whirlpool;857714501503;AKP145/IX;;Four vapeur;Four
+1;522173;Whirlpool;857714501504;AKP145/IX;;Four vapeur;Four
+1;522174;Whirlpool;857714501505;AKP145/IX;;Four vapeur;Four
+1;522175;Whirlpool;857714501507;AKP145/IX;;Four vapeur;Four
+1;522176;Whirlpool;857714501508;AKP145/IX;;Four vapeur;Four
+1;522177;Whirlpool;857715029000;AKP150WH;Four Vapeur;Four vapeur;Four
+1;522190;Whirlpool;857715229500;AKP152/IX;Four Vapeur;Four vapeur;Four
+1;522191;Whirlpool;857715229501;AKP152/IX;Four Vapeur;Four vapeur;Four
+1;522192;Whirlpool;857715229502;AKP152/IX;Four Vapeur;Four vapeur;Four
+1;522193;Whirlpool;857715229503;AKP152/IX;Four Vapeur;Four vapeur;Four
+1;522194;Whirlpool;857715229504;AKP152/IX;Four Vapeur;Four vapeur;Four
+1;522199;Whirlpool;857715229520;AKP152/NB;Four Vapeur;Four vapeur;Four
+1;522200;Whirlpool;857715229521;AKP152/NB;Four Vapeur;Four vapeur;Four
+1;522201;Whirlpool;857715229522;AKP152/NB;Four Vapeur;Four vapeur;Four
+1;522195;Whirlpool;857715229510;AKP152/WH;Four Vapeur;Four vapeur;Four
+1;522196;Whirlpool;857715229511;AKP152/WH;Four Vapeur;Four vapeur;Four
+1;522197;Whirlpool;857715229512;AKP152/WH;Four Vapeur;Four vapeur;Four
+1;522198;Whirlpool;857715229513;AKP152/WH;Four Vapeur;Four vapeur;Four
+1;522206;Whirlpool;857715429000;AKP154/IX;;Four vapeur;Four
+1;522207;Whirlpool;857715429001;AKP154/IX;;Four vapeur;Four
+1;522208;Whirlpool;857715429010;AKP154/NB;;Four vapeur;Four
+1;522209;Whirlpool;857715429011;AKP154/NB;;Four vapeur;Four
+1;522210;Whirlpool;857715429012;AKP154/NB;;Four vapeur;Four
+1;522211;Whirlpool;857715429020;AKP154/WH;;Four vapeur;Four
+1;522212;Whirlpool;857715429021;AKP154/WH;;Four vapeur;Four
+1;522213;Whirlpool;857715429022;AKP154/WH;;Four vapeur;Four
+1;522214;Whirlpool;857715504000;AKP155/IX;;Four vapeur;Four
+1;522215;Whirlpool;857715504001;AKP155/IX;;Four vapeur;Four
+1;522216;Whirlpool;857715504002;AKP155/IX;;Four vapeur;Four
+1;522217;Whirlpool;857715504003;AKP155/IX;;Four vapeur;Four
+1;522218;Whirlpool;857715504010;AKP155/IX;Four Vapeur;Four vapeur;Four
+1;522219;Whirlpool;857715504011;AKP155/IX;Four Vapeur;Four vapeur;Four
+1;522220;Whirlpool;857715604000;AKP156/IX;Four Vapeur;Four vapeur;Four
+1;522221;Whirlpool;857715604001;AKP156/IX;Four Vapeur;Four vapeur;Four
+1;522222;Whirlpool;857715604002;AKP156/IX;Four Vapeur;Four vapeur;Four
+1;522223;Whirlpool;857715704000;AKP157/IX;;Four vapeur;Four
+1;522224;Whirlpool;857715704001;AKP157/IX;;Four vapeur;Four
+1;522225;Whirlpool;857715704002;AKP157/IX;;Four vapeur;Four
+1;522226;Whirlpool;857715804000;AKP158/IX;;Four vapeur;Four
+1;522227;Whirlpool;857715804001;AKP158/IX;;Four vapeur;Four
+1;522228;Whirlpool;857715804010;AKP158/WH;;Four vapeur;Four
+1;522229;Whirlpool;857715804011;AKP158/WH;;Four vapeur;Four
+1;522230;Whirlpool;857715804012;AKP158/WH;;Four vapeur;Four
+1;522231;Whirlpool;857715915000;AKP159/IX;Hottes;Four vapeur;Four
+1;522232;Whirlpool;857716022000;AKP160/IX;;Four vapeur;Four
+1;522233;Whirlpool;857716115000;AKP161/IX;Hottes;Four vapeur;Four
+1;522240;Whirlpool;857716422000;AKP164/IX;;Four vapeur;Four
+1;522241;Whirlpool;857716722000;AKP167/IX;;Four vapeur;Four
+1;522242;Whirlpool;857716722010;AKP167/WH;;Four vapeur;Four
+1;522286;Whirlpool;857720615510;AKP206/01/IX;;Four vapeur;Four
+1;522287;Whirlpool;857720615511;AKP206/01/IX;;Four vapeur;Four
+1;522288;Whirlpool;857720615512;AKP206/01/IX;;Four vapeur;Four
+1;522297;Whirlpool;857720910500;AKP209/IX;;Four vapeur;Four
+1;522298;Whirlpool;857720910501;AKP209/IX;;Four vapeur;Four
+1;522299;Whirlpool;857720910502;AKP209/IX;;Four vapeur;Four
+1;522300;Whirlpool;857721010500;AKP210/IX;;Four vapeur;Four
+1;522301;Whirlpool;857721010501;AKP210/IX;;Four vapeur;Four
+1;522302;Whirlpool;857721010502;AKP210/IX;;Four vapeur;Four
+1;522303;Whirlpool;857721010503;AKP210/IX;;Four vapeur;Four
+1;522304;Whirlpool;857721010600;AKP210/IX/01;;Four vapeur;Four
+1;522305;Whirlpool;857721010601;AKP210/IX/01;;Four vapeur;Four
+1;522306;Whirlpool;857721010602;AKP210/IX/01;;Four vapeur;Four
+1;522307;Whirlpool;857721110500;AKP211/IX;;Four vapeur;Four
+1;522308;Whirlpool;857721110501;AKP211/IX;;Four vapeur;Four
+1;522309;Whirlpool;857721110502;AKP211/IX;;Four vapeur;Four
+1;522310;Whirlpool;857721110503;AKP211/IX;;Four vapeur;Four
+1;522311;Whirlpool;857721210500;AKP212/IX;Four Vapeur;Four vapeur;Four
+1;522312;Whirlpool;857721210501;AKP212/IX;Four Vapeur;Four vapeur;Four
+1;522313;Whirlpool;857721210502;AKP212/IX;Four Vapeur;Four vapeur;Four
+1;522314;Whirlpool;857721210503;AKP212/IX;Four Vapeur;Four vapeur;Four
+1;522315;Whirlpool;857721210504;AKP212/IX;Four Vapeur;Four vapeur;Four
+1;522316;Whirlpool;857721210506;AKP212/IX;Four Vapeur;Four vapeur;Four
+1;522317;Whirlpool;857721210600;AKP212/IX/01;Four Vapeur;Four vapeur;Four
+1;522318;Whirlpool;857721210601;AKP212/IX/01;Four Vapeur;Four vapeur;Four
+1;522319;Whirlpool;857721210602;AKP212/IX/01;Four Vapeur;Four vapeur;Four
+1;522320;Whirlpool;857721210603;AKP212/IX/01;Four Vapeur;Four vapeur;Four
+1;522321;Whirlpool;857721415500;AKP214/IX;Four Vapeur;Four vapeur;Four
+1;522322;Whirlpool;857721415501;AKP214/IX;Four Vapeur;Four vapeur;Four
+1;522323;Whirlpool;857721415502;AKP214/IX;Four Vapeur;Four vapeur;Four
+1;522324;Whirlpool;857721415510;AKP214/WH;Four Vapeur;Four vapeur;Four
+1;522325;Whirlpool;857721415511;AKP214/WH;Four Vapeur;Four vapeur;Four
+1;522326;Whirlpool;857721415512;AKP214/WH;Four Vapeur;Four vapeur;Four
+1;522327;Whirlpool;857721515500;AKP215/IX;;Four vapeur;Four
+1;522328;Whirlpool;857721515501;AKP215/IX;;Four vapeur;Four
+1;522329;Whirlpool;857721515502;AKP215/IX;;Four vapeur;Four
+1;522330;Whirlpool;857721515510;AKP215/NB;;Four vapeur;Four
+1;522331;Whirlpool;857721515511;AKP215/NB;;Four vapeur;Four
+1;522332;Whirlpool;857721515512;AKP215/NB;;Four vapeur;Four
+1;522333;Whirlpool;857721615500;AKP216/IX;Four Vapeur;Four vapeur;Four
+1;522334;Whirlpool;857721615501;AKP216/IX;Four Vapeur;Four vapeur;Four
+1;522335;Whirlpool;857721715500;AKP217/IX;;Four vapeur;Four
+1;522336;Whirlpool;857721715501;AKP217/IX;;Four vapeur;Four
+1;522337;Whirlpool;857721715502;AKP217/IX;;Four vapeur;Four
+1;522338;Whirlpool;857722210500;AKP222/IX;Four Vapeur;Four vapeur;Four
+1;522339;Whirlpool;857722210501;AKP222/IX;Four Vapeur;Four vapeur;Four
+1;522340;Whirlpool;857722210502;AKP222/IX;Four Vapeur;Four vapeur;Four
+1;522341;Whirlpool;857722210503;AKP222/IX;Four Vapeur;Four vapeur;Four
+1;522342;Whirlpool;857722210600;AKP222/IX/01;Four Vapeur;Four vapeur;Four
+1;522343;Whirlpool;857722210601;AKP222/IX/01;Four Vapeur;Four vapeur;Four
+1;522344;Whirlpool;857722210602;AKP222/IX/01;Four Vapeur;Four vapeur;Four
+1;522345;Whirlpool;857722210603;AKP222/IX/01;Four Vapeur;Four vapeur;Four
+1;522346;Whirlpool;857722210610;AKP222/NB;Four Vapeur;Four vapeur;Four
+1;522347;Whirlpool;857722210611;AKP222/NB;Four Vapeur;Four vapeur;Four
+1;522348;Whirlpool;857722210612;AKP222/NB;Four Vapeur;Four vapeur;Four
+1;522349;Whirlpool;857722310500;AKP223/IX;Four Vapeur;Four vapeur;Four
+1;522350;Whirlpool;857722310501;AKP223/IX;Four Vapeur;Four vapeur;Four
+1;522351;Whirlpool;857722310502;AKP223/IX;Four Vapeur;Four vapeur;Four
+1;522352;Whirlpool;857722510500;AKP225/IX;;Four vapeur;Four
+1;522353;Whirlpool;857722510501;AKP225/IX;;Four vapeur;Four
+1;522354;Whirlpool;857722510503;AKP225/IX;;Four vapeur;Four
+1;522355;Whirlpool;857722836500;AKP228/IX/03;;Four vapeur;Four
+1;522356;Whirlpool;857722836501;AKP228/IX/03;;Four vapeur;Four
+1;522357;Whirlpool;857722836502;AKP228/IX/03;;Four vapeur;Four
+1;522358;Whirlpool;857722836503;AKP228/IX/03;;Four vapeur;Four
+1;522361;Whirlpool;857722910500;AKP229/01IX;;Four vapeur;Four
+1;522362;Whirlpool;857722910501;AKP229/01IX;;Four vapeur;Four
+1;522363;Whirlpool;857722910504;AKP229/01IX;;Four vapeur;Four
+1;522364;Whirlpool;857722910505;AKP229/01IX;;Four vapeur;Four
+1;522400;Whirlpool;857723001530;AKP230/01IX;;Four vapeur;Four
+1;522401;Whirlpool;857723001531;AKP230/01IX;;Four vapeur;Four
+1;522394;Whirlpool;857723001520;AKP230/01NB;;Four vapeur;Four
+1;522395;Whirlpool;857723001521;AKP230/01NB;;Four vapeur;Four
+1;522396;Whirlpool;857723001522;AKP230/01NB;;Four vapeur;Four
+1;522390;Whirlpool;857723001510;AKP230/01WH;;Four vapeur;Four
+1;522391;Whirlpool;857723001511;AKP230/01WH;;Four vapeur;Four
+1;522392;Whirlpool;857723001512;AKP230/01WH;;Four vapeur;Four
+1;522419;Whirlpool;857723001563;AKP230/02IX;;Four vapeur;Four
+1;522420;Whirlpool;857723001564;AKP230/02IX;;Four vapeur;Four
+1;522402;Whirlpool;857723001532;AKP230/IX/01;;Four vapeur;Four
+1;522403;Whirlpool;857723001533;AKP230/IX/01;;Four vapeur;Four
+1;522428;Whirlpool;857723041500;AKP230/IX/01;;Four vapeur;Four
+1;522429;Whirlpool;857723041501;AKP230/IX/01;;Four vapeur;Four
+1;522430;Whirlpool;857723041502;AKP230/IX/01;;Four vapeur;Four
+1;522431;Whirlpool;857723041503;AKP230/IX/01;;Four vapeur;Four
+1;522416;Whirlpool;857723001560;AKP230/IX/02;;Four vapeur;Four
+1;522417;Whirlpool;857723001561;AKP230/IX/02;;Four vapeur;Four
+1;522418;Whirlpool;857723001562;AKP230/IX/02;;Four vapeur;Four
+1;522421;Whirlpool;857723001565;AKP230/IX/02;;Four vapeur;Four
+1;522422;Whirlpool;857723001566;AKP230/IX/02;;Four vapeur;Four
+1;522423;Whirlpool;857723001567;AKP230/IX/02;;Four vapeur;Four
+1;522424;Whirlpool;857723001568;AKP230/IX/02;;Four vapeur;Four
+1;522425;Whirlpool;857723028500;AKP230/IX/03;;Four vapeur;Four
+1;522426;Whirlpool;857723028501;AKP230/IX/03;;Four vapeur;Four
+1;522427;Whirlpool;857723028503;AKP230/IX/03;;Four vapeur;Four
+1;522397;Whirlpool;857723001523;AKP230/NB/01;;Four vapeur;Four
+1;522398;Whirlpool;857723001524;AKP230/NB/01;;Four vapeur;Four
+1;522399;Whirlpool;857723001525;AKP230/NB/01;;Four vapeur;Four
+1;522410;Whirlpool;857723001550;AKP230/NB/02;;Four vapeur;Four
+1;522411;Whirlpool;857723001551;AKP230/NB/02;;Four vapeur;Four
+1;522412;Whirlpool;857723001552;AKP230/NB/02;;Four vapeur;Four
+1;522413;Whirlpool;857723001553;AKP230/NB/02;;Four vapeur;Four
+1;522414;Whirlpool;857723001554;AKP230/NB/02;;Four vapeur;Four
+1;522415;Whirlpool;857723001555;AKP230/NB/02;;Four vapeur;Four
+1;522393;Whirlpool;857723001513;AKP230/WH/01;;Four vapeur;Four
+1;522404;Whirlpool;857723001540;AKP230/WH/02;;Four vapeur;Four
+1;522405;Whirlpool;857723001541;AKP230/WH/02;;Four vapeur;Four
+1;522406;Whirlpool;857723001542;AKP230/WH/02;;Four vapeur;Four
+1;522407;Whirlpool;857723001543;AKP230/WH/02;;Four vapeur;Four
+1;522408;Whirlpool;857723001544;AKP230/WH/02;;Four vapeur;Four
+1;522409;Whirlpool;857723001545;AKP230/WH/02;;Four vapeur;Four
+1;522439;Whirlpool;857723301500;AKP233/IX;Four Vapeur;Four vapeur;Four
+1;522440;Whirlpool;857723301501;AKP233/IX;Four Vapeur;Four vapeur;Four
+1;522441;Whirlpool;857723301502;AKP233/IX;Four Vapeur;Four vapeur;Four
+1;522444;Whirlpool;857723301520;AKP233/IX/01;Four Vapeur;Four vapeur;Four
+1;522445;Whirlpool;857723301521;AKP233/IX/01;Four Vapeur;Four vapeur;Four
+1;522446;Whirlpool;857723301522;AKP233/IX/01;Four Vapeur;Four vapeur;Four
+1;522447;Whirlpool;857723301523;AKP233/IX/01;Four Vapeur;Four vapeur;Four
+1;522448;Whirlpool;857723301524;AKP233/IX/01;Four Vapeur;Four vapeur;Four
+1;522453;Whirlpool;857723301540;AKP233/NB/01;Four Vapeur;Four vapeur;Four
+1;522454;Whirlpool;857723301541;AKP233/NB/01;Four Vapeur;Four vapeur;Four
+1;522455;Whirlpool;857723301542;AKP233/NB/01;Four Vapeur;Four vapeur;Four
+1;522456;Whirlpool;857723301543;AKP233/NB/01;Four Vapeur;Four vapeur;Four
+1;522442;Whirlpool;857723301510;AKP233WH;Four Vapeur;Four vapeur;Four
+1;522443;Whirlpool;857723301511;AKP233WH;Four Vapeur;Four vapeur;Four
+1;522449;Whirlpool;857723301530;AKP233/WH/01;Four Vapeur;Four vapeur;Four
+1;522450;Whirlpool;857723301531;AKP233/WH/01;Four Vapeur;Four vapeur;Four
+1;522451;Whirlpool;857723301532;AKP233/WH/01;Four Vapeur;Four vapeur;Four
+1;522452;Whirlpool;857723301533;AKP233/WH/01;Four Vapeur;Four vapeur;Four
+1;522520;Whirlpool;857723501520;AKP235/01IX;;Four vapeur;Four
+1;522521;Whirlpool;857723501521;AKP235/01IX;;Four vapeur;Four
+1;522522;Whirlpool;857723501522;AKP235/01IX;;Four vapeur;Four
+1;522523;Whirlpool;857723501523;AKP235/01IX;;Four vapeur;Four
+1;522513;Whirlpool;857723501510;AKP235/01NB;;Four vapeur;Four
+1;522514;Whirlpool;857723501511;AKP235/01NB;;Four vapeur;Four
+1;522515;Whirlpool;857723501512;AKP235/01NB;;Four vapeur;Four
+1;522516;Whirlpool;857723501513;AKP235/01NB;;Four vapeur;Four
+1;522517;Whirlpool;857723501514;AKP235/01NB;;Four vapeur;Four
+1;522518;Whirlpool;857723501515;AKP235/01NB;;Four vapeur;Four
+1;522519;Whirlpool;857723501516;AKP235/01NB;;Four vapeur;Four
+1;522506;Whirlpool;857723501500;AKP235/01WH;;Four vapeur;Four
+1;522507;Whirlpool;857723501501;AKP235/01WH;;Four vapeur;Four
+1;522508;Whirlpool;857723501502;AKP235/01WH;;Four vapeur;Four
+1;522509;Whirlpool;857723501503;AKP235/01WH;;Four vapeur;Four
+1;522510;Whirlpool;857723501504;AKP235/01WH;;Four vapeur;Four
+1;522511;Whirlpool;857723501505;AKP235/01WH;;Four vapeur;Four
+1;522512;Whirlpool;857723501506;AKP235/01WH;;Four vapeur;Four
+1;522525;Whirlpool;857723501532;AKP235/05IX;;Four vapeur;Four
+1;522526;Whirlpool;857723501533;AKP235/05IX;;Four vapeur;Four
+1;522527;Whirlpool;857723501534;AKP235/05/IX;;Four vapeur;Four
+1;522528;Whirlpool;857723501535;AKP235/05/IX;;Four vapeur;Four
+1;522529;Whirlpool;857723501536;AKP235/05/IX;;Four vapeur;Four
+1;522530;Whirlpool;857723501537;AKP235/05/IX;;Four vapeur;Four
+1;522531;Whirlpool;857723501538;AKP235/05/IX;;Four vapeur;Four
+1;522538;Whirlpool;857723501552;AKP235/05NB;;Four vapeur;Four
+1;522540;Whirlpool;857723501554;AKP235/05NB;;Four vapeur;Four
+1;522541;Whirlpool;857723501555;AKP235/05NB;;Four vapeur;Four
+1;522533;Whirlpool;857723501542;AKP235/05WH;;Four vapeur;Four
+1;522534;Whirlpool;857723501543;AKP235/05WH;;Four vapeur;Four
+1;522542;Whirlpool;857723501560;AKP235/06IX;;Four vapeur;Four
+1;522524;Whirlpool;857723501530;AKP235/IX/05;;Four vapeur;Four
+1;522537;Whirlpool;857723501550;AKP235NB/05;;Four vapeur;Four
+1;522539;Whirlpool;857723501553;AKP235NB/05;;Four vapeur;Four
+1;522532;Whirlpool;857723501540;AKP235/WH/05;;Four vapeur;Four
+1;522535;Whirlpool;857723501544;AKP235/WH/05;;Four vapeur;Four
+1;522536;Whirlpool;857723501545;AKP235/WH/05;;Four vapeur;Four
+1;522543;Whirlpool;857723618000;AKP236IX;Four Vapeur;Four vapeur;Four
+1;522544;Whirlpool;857723629000;AKP236/IX;Four Vapeur;Four vapeur;Four
+1;522545;Whirlpool;857723629001;AKP236/IX;Four Vapeur;Four vapeur;Four
+1;522547;Whirlpool;857723629002;AKP236/IX;Four Vapeur;Four vapeur;Four
+1;522548;Whirlpool;857723629003;AKP236/IX;Four Vapeur;Four vapeur;Four
+1;522549;Whirlpool;857723629004;AKP236/IX;Four Vapeur;Four vapeur;Four
+1;522555;Whirlpool;857723629020;AKP236/NB;Four Vapeur;Four vapeur;Four
+1;522556;Whirlpool;857723629021;AKP236/NB;Four Vapeur;Four vapeur;Four
+1;522557;Whirlpool;857723629022;AKP236/NB;Four Vapeur;Four vapeur;Four
+1;522558;Whirlpool;857723629023;AKP236/NB;Four Vapeur;Four vapeur;Four
+1;522559;Whirlpool;857723629024;AKP236/NB;Four Vapeur;Four vapeur;Four
+1;522550;Whirlpool;857723629010;AKP236/WH;Four Vapeur;Four vapeur;Four
+1;522551;Whirlpool;857723629011;AKP236/WH;Four Vapeur;Four vapeur;Four
+1;522552;Whirlpool;857723629012;AKP236/WH;Four Vapeur;Four vapeur;Four
+1;522553;Whirlpool;857723629013;AKP236/WH;Four Vapeur;Four vapeur;Four
+1;522554;Whirlpool;857723629014;AKP236/WH;Four Vapeur;Four vapeur;Four
+1;522564;Whirlpool;857723701510;AKP237/01IX;;Four vapeur;Four
+1;522565;Whirlpool;857723701511;AKP237/01IX;;Four vapeur;Four
+1;522566;Whirlpool;857723701512;AKP237/01IX;;Four vapeur;Four
+1;522567;Whirlpool;857723701513;AKP237/01IX;;Four vapeur;Four
+1;522570;Whirlpool;857723701522;AKP237/05IX;;Four vapeur;Four
+1;522577;Whirlpool;857723701530;AKP237/06IX;;Four vapeur;Four
+1;522568;Whirlpool;857723701520;AKP237/IX/05;;Four vapeur;Four
+1;522569;Whirlpool;857723701521;AKP237/IX/05;;Four vapeur;Four
+1;522571;Whirlpool;857723701523;AKP237/IX/05;;Four vapeur;Four
+1;522572;Whirlpool;857723701524;AKP237/IX/05;;Four vapeur;Four
+1;522573;Whirlpool;857723701525;AKP237/IX/05;;Four vapeur;Four
+1;522574;Whirlpool;857723701526;AKP237/IX/05;;Four vapeur;Four
+1;522575;Whirlpool;857723701527;AKP237/IX/05;;Four vapeur;Four
+1;522576;Whirlpool;857723701528;AKP237/IX/05;;Four vapeur;Four
+1;522578;Whirlpool;857723741500;AKP237IX/07;Four Vapeur;Four vapeur;Four
+1;522579;Whirlpool;857723741504;AKP237IX/07;Four Vapeur;Four vapeur;Four
+1;522589;Whirlpool;857723901500;AKP239/01IX;;Four vapeur;Four
+1;522590;Whirlpool;857723901501;AKP239/01IX;;Four vapeur;Four
+1;522593;Whirlpool;857723901505;AKP239/01IX;;Four vapeur;Four
+1;522600;Whirlpool;857723936000;AKP239/03IX;;Four vapeur;Four
+1;522591;Whirlpool;857723901502;AKP239IX01;;Four vapeur;Four
+1;522592;Whirlpool;857723901503;AKP239IX01;;Four vapeur;Four
+1;522594;Whirlpool;857723901510;AKP239/IX/02;;Four vapeur;Four
+1;522595;Whirlpool;857723901511;AKP239/IX/02;;Four vapeur;Four
+1;522596;Whirlpool;857723901512;AKP239/IX/02;;Four vapeur;Four
+1;522597;Whirlpool;857723901514;AKP239/IX/02;;Four vapeur;Four
+1;522598;Whirlpool;857723901515;AKP239/IX/02;;Four vapeur;Four
+1;522599;Whirlpool;857723901516;AKP239/IX/02;;Four vapeur;Four
+1;522601;Whirlpool;857723936002;AKP239/IX/03;;Four vapeur;Four
+1;512217;Whirlpool;39944920000;AKP240JA;;Four vapeur;Four
+1;522602;Whirlpool;857724001500;AKP240/JA;;Four vapeur;Four
+1;522603;Whirlpool;857724001501;AKP240/JA;;Four vapeur;Four
+1;522604;Whirlpool;857724001502;AKP240/JA;;Four vapeur;Four
+1;522605;Whirlpool;857724001503;AKP240/JA;;Four vapeur;Four
+1;522606;Whirlpool;857724001504;AKP240/JA;;Four vapeur;Four
+1;522607;Whirlpool;857724001505;AKP240/JA;;Four vapeur;Four
+1;522614;Whirlpool;857724110512;AKP241/05IX;Four Vapeur;Four vapeur;Four
+1;522616;Whirlpool;857724110514;AKP241/05IX;Four Vapeur;Four vapeur;Four
+1;522617;Whirlpool;857724110515;AKP241/05IX;Four Vapeur;Four vapeur;Four
+1;522618;Whirlpool;857724110516;AKP241/05IX;Four Vapeur;Four vapeur;Four
+1;522619;Whirlpool;857724110517;AKP241/05IX;Four Vapeur;Four vapeur;Four
+1;522608;Whirlpool;857724110000;AKP241/IX;Four Vapeur;Four vapeur;Four
+1;522609;Whirlpool;857724110500;AKP241/IX;Four Vapeur;Four vapeur;Four
+1;522610;Whirlpool;857724110501;AKP241/IX;Four Vapeur;Four vapeur;Four
+1;522611;Whirlpool;857724110502;AKP241/IX;Four Vapeur;Four vapeur;Four
+1;522612;Whirlpool;857724110510;AKP241/IX/05;Four Vapeur;Four vapeur;Four
+1;522613;Whirlpool;857724110511;AKP241/IX/05;Four Vapeur;Four vapeur;Four
+1;522615;Whirlpool;857724110513;AKP241/IX/05;Four Vapeur;Four vapeur;Four
+1;522626;Whirlpool;857724410500;AKP244/IX;Four Vapeur;Four vapeur;Four
+1;522627;Whirlpool;857724410501;AKP244/IX;Four Vapeur;Four vapeur;Four
+1;522628;Whirlpool;857724410502;AKP244/IX;Four Vapeur;Four vapeur;Four
+1;522629;Whirlpool;857724410503;AKP244/IX;Four Vapeur;Four vapeur;Four
+1;522630;Whirlpool;857724410504;AKP244/IX;Four Vapeur;Four vapeur;Four
+1;522631;Whirlpool;857724410505;AKP244/IX;Four Vapeur;Four vapeur;Four
+1;522632;Whirlpool;857724438010;AKP244NA;;Four vapeur;Four
+1;522633;Whirlpool;857724438020;AKP244/NA/01;;Four vapeur;Four
+1;522634;Whirlpool;857724510500;AKP245/IX;;Four vapeur;Four
+1;522635;Whirlpool;857724510502;AKP245/IX;;Four vapeur;Four
+1;522636;Whirlpool;857724510503;AKP245/IX;;Four vapeur;Four
+1;522637;Whirlpool;857724510504;AKP245/IX;;Four vapeur;Four
+1;522638;Whirlpool;857724510505;AKP245/IX;;Four vapeur;Four
+1;522679;Whirlpool;857725001520;AKP250/IX;Four Vapeur;Four vapeur;Four
+1;522680;Whirlpool;857725001521;AKP250/IX;Four Vapeur;Four vapeur;Four
+1;522681;Whirlpool;857725001522;AKP250/IX;Four Vapeur;Four vapeur;Four
+1;522682;Whirlpool;857725001523;AKP250/IX;Four Vapeur;Four vapeur;Four
+1;522683;Whirlpool;857725001524;AKP250/IX;Four Vapeur;Four vapeur;Four
+1;522684;Whirlpool;857725001525;AKP250/IX;Four Vapeur;Four vapeur;Four
+1;522685;Whirlpool;857725001526;AKP250/IX;Four Vapeur;Four vapeur;Four
+1;522686;Whirlpool;857725001527;AKP250/IX;Four Vapeur;Four vapeur;Four
+1;522687;Whirlpool;857725001528;AKP250/IX;Four Vapeur;Four vapeur;Four
+1;522690;Whirlpool;857725001529;AKP250/IX;Four Vapeur;Four vapeur;Four
+1;522659;Whirlpool;857725001500;AKP250/NB;Four Vapeur;Four vapeur;Four
+1;522660;Whirlpool;857725001501;AKP250/NB;Four Vapeur;Four vapeur;Four
+1;522661;Whirlpool;857725001502;AKP250/NB;Four Vapeur;Four vapeur;Four
+1;522662;Whirlpool;857725001503;AKP250/NB;Four Vapeur;Four vapeur;Four
+1;522663;Whirlpool;857725001504;AKP250/NB;Four Vapeur;Four vapeur;Four
+1;522664;Whirlpool;857725001505;AKP250/NB;Four Vapeur;Four vapeur;Four
+1;522665;Whirlpool;857725001506;AKP250/NB;Four Vapeur;Four vapeur;Four
+1;522666;Whirlpool;857725001507;AKP250/NB;Four Vapeur;Four vapeur;Four
+1;522667;Whirlpool;857725001508;AKP250/NB;Four Vapeur;Four vapeur;Four
+1;522668;Whirlpool;857725001509;AKP250/NB;Four Vapeur;Four vapeur;Four
+1;522669;Whirlpool;857725001510;AKP250/WH;Four Vapeur;Four vapeur;Four
+1;522670;Whirlpool;857725001511;AKP250/WH;Four Vapeur;Four vapeur;Four
+1;522671;Whirlpool;857725001512;AKP250/WH;Four Vapeur;Four vapeur;Four
+1;522672;Whirlpool;857725001513;AKP250/WH;Four Vapeur;Four vapeur;Four
+1;522673;Whirlpool;857725001514;AKP250/WH;Four Vapeur;Four vapeur;Four
+1;522674;Whirlpool;857725001515;AKP250/WH;Four Vapeur;Four vapeur;Four
+1;522675;Whirlpool;857725001516;AKP250/WH;Four Vapeur;Four vapeur;Four
+1;522676;Whirlpool;857725001517;AKP250/WH;Four Vapeur;Four vapeur;Four
+1;522677;Whirlpool;857725001518;AKP250/WH;Four Vapeur;Four vapeur;Four
+1;522678;Whirlpool;857725001519;AKP250/WH;Four Vapeur;Four vapeur;Four
+1;522692;Whirlpool;857725101500;AKP251/IX;;Four vapeur;Four
+1;522693;Whirlpool;857725101501;AKP251/IX;;Four vapeur;Four
+1;522694;Whirlpool;857725101502;AKP251/IX;;Four vapeur;Four
+1;522695;Whirlpool;857725101503;AKP251/IX;;Four vapeur;Four
+1;522696;Whirlpool;857725101504;AKP251/IX;;Four vapeur;Four
+1;522697;Whirlpool;857725280000;AKP252/IX;;Four vapeur;Four
+1;522698;Whirlpool;857725301500;AKP253/IX;;Four vapeur;Four
+1;522699;Whirlpool;857725301501;AKP253/IX;;Four vapeur;Four
+1;522700;Whirlpool;857725301503;AKP253/IX;;Four vapeur;Four
+1;522701;Whirlpool;857725301504;AKP253/IX;;Four vapeur;Four
+1;522702;Whirlpool;857725301505;AKP253/IX;;Four vapeur;Four
+1;522703;Whirlpool;857725301506;AKP253/IX;;Four vapeur;Four
+1;522704;Whirlpool;857725438000;AKP254NA;;Four vapeur;Four
+1;522705;Whirlpool;857725438001;AKP254NA;;Four vapeur;Four
+1;522706;Whirlpool;857725438500;AKP254/NA;;Four vapeur;Four
+1;522713;Whirlpool;857725538020;AKP255/IX;Four Vapeur;Four vapeur;Four
+1;522714;Whirlpool;857725538021;AKP255/IX;Four Vapeur;Four vapeur;Four
+1;522715;Whirlpool;857725538022;AKP255/IX;Four Vapeur;Four vapeur;Four
+1;522723;Whirlpool;857725538520;AKP255/IX;Four Vapeur;Four vapeur;Four
+1;522724;Whirlpool;857725538521;AKP255/IX;Four Vapeur;Four vapeur;Four
+1;522711;Whirlpool;857725538011;AKP255/JA;Four Vapeur;Four vapeur;Four
+1;522712;Whirlpool;857725538012;AKP255/JA;Four Vapeur;Four vapeur;Four
+1;522719;Whirlpool;857725538510;AKP255/JA;Four Vapeur;Four vapeur;Four
+1;522720;Whirlpool;857725538511;AKP255/JA;Four Vapeur;Four vapeur;Four
+1;522721;Whirlpool;857725538512;AKP255/JA;Four Vapeur;Four vapeur;Four
+1;522722;Whirlpool;857725538513;AKP255/JA;Four Vapeur;Four vapeur;Four
+1;522707;Whirlpool;857725538000;AKP255/NA;Four Vapeur;Four vapeur;Four
+1;522708;Whirlpool;857725538001;AKP255/NA;Four Vapeur;Four vapeur;Four
+1;522709;Whirlpool;857725538002;AKP255/NA;Four Vapeur;Four vapeur;Four
+1;522716;Whirlpool;857725538500;AKP255/NA;Four Vapeur;Four vapeur;Four
+1;522717;Whirlpool;857725538501;AKP255/NA;Four Vapeur;Four vapeur;Four
+1;522718;Whirlpool;857725538502;AKP255/NA;Four Vapeur;Four vapeur;Four
+1;522725;Whirlpool;857725638000;AKP256/NA;Four Vapeur;Four vapeur;Four
+1;522726;Whirlpool;857725638001;AKP256/NA;Four Vapeur;Four vapeur;Four
+1;522727;Whirlpool;857725638002;AKP256/NA;Four Vapeur;Four vapeur;Four
+1;522728;Whirlpool;857725638500;AKP256/NA;Four Vapeur;Four vapeur;Four
+1;522729;Whirlpool;857725638501;AKP256/NA;Four Vapeur;Four vapeur;Four
+1;522733;Whirlpool;857725838500;AKP258/IX;;Four vapeur;Four
+1;522734;Whirlpool;857725838501;AKP258/IX;;Four vapeur;Four
+1;522735;Whirlpool;857725838502;AKP258/IX;;Four vapeur;Four
+1;522736;Whirlpool;857725838503;AKP258/IX;;Four vapeur;Four
+1;522737;Whirlpool;857725838504;AKP258/IX;;Four vapeur;Four
+1;522738;Whirlpool;857725838505;AKP258/IX;;Four vapeur;Four
+1;522739;Whirlpool;857725838510;AKP258/NB;;Four vapeur;Four
+1;522740;Whirlpool;857725838511;AKP258/NB;;Four vapeur;Four
+1;522741;Whirlpool;857725838512;AKP258/NB;;Four vapeur;Four
+1;522742;Whirlpool;857725838514;AKP258/NB;;Four vapeur;Four
+1;522743;Whirlpool;857725838520;AKP258/WH;;Four vapeur;Four
+1;522744;Whirlpool;857725838521;AKP258/WH;;Four vapeur;Four
+1;522745;Whirlpool;857725838522;AKP258/WH;;Four vapeur;Four
+1;522746;Whirlpool;857725838524;AKP258/WH;;Four vapeur;Four
+1;522747;Whirlpool;857725938500;AKP259/IX;;Four vapeur;Four
+1;522748;Whirlpool;857725938501;AKP259/IX;;Four vapeur;Four
+1;522749;Whirlpool;857725938502;AKP259/IX;;Four vapeur;Four
+1;522750;Whirlpool;857725938503;AKP259/IX;;Four vapeur;Four
+1;522751;Whirlpool;857725938504;AKP259/IX;;Four vapeur;Four
+1;522754;Whirlpool;857726138500;AKP261/IX;;Four vapeur;Four
+1;522755;Whirlpool;857726138501;AKP261/IX;;Four vapeur;Four
+1;522756;Whirlpool;857726138502;AKP261/IX;;Four vapeur;Four
+1;522757;Whirlpool;857726138503;AKP261/IX;;Four vapeur;Four
+1;522758;Whirlpool;857726238500;AKP262/IX;Four Vapeur;Four vapeur;Four
+1;522759;Whirlpool;857726238501;AKP262/IX;Four Vapeur;Four vapeur;Four
+1;522760;Whirlpool;857726238502;AKP262/IX;Four Vapeur;Four vapeur;Four
+1;522761;Whirlpool;857726238503;AKP262/IX;Four Vapeur;Four vapeur;Four
+1;522762;Whirlpool;857726238510;AKP262/WH;Four Vapeur;Four vapeur;Four
+1;522763;Whirlpool;857726238511;AKP262/WH;Four Vapeur;Four vapeur;Four
+1;522764;Whirlpool;857726238512;AKP262/WH;Four Vapeur;Four vapeur;Four
+1;522765;Whirlpool;857726238513;AKP262/WH;Four Vapeur;Four vapeur;Four
+1;522774;Whirlpool;857726338500;AKP263/IX;;Four vapeur;Four
+1;522775;Whirlpool;857726338501;AKP263/IX;;Four vapeur;Four
+1;522766;Whirlpool;857726301500;AKP263/JA;;Four vapeur;Four
+1;522767;Whirlpool;857726301501;AKP263/JA;;Four vapeur;Four
+1;522768;Whirlpool;857726301502;AKP263/JA;;Four vapeur;Four
+1;522769;Whirlpool;857726301503;AKP263/JA;;Four vapeur;Four
+1;522770;Whirlpool;857726301510;AKP263/NA;;Four vapeur;Four
+1;522771;Whirlpool;857726301511;AKP263/NA;;Four vapeur;Four
+1;522772;Whirlpool;857726301512;AKP263/NA;;Four vapeur;Four
+1;522773;Whirlpool;857726301513;AKP263/NA;;Four vapeur;Four
+1;522776;Whirlpool;857726401500;AKP264/IX;Four Vapeur;Four vapeur;Four
+1;522777;Whirlpool;857726401501;AKP264/IX;Four Vapeur;Four vapeur;Four
+1;522778;Whirlpool;857726401502;AKP264/IX;Four Vapeur;Four vapeur;Four
+1;522779;Whirlpool;857726401510;AKP264/NB;Four Vapeur;Four vapeur;Four
+1;522780;Whirlpool;857726401511;AKP264/NB;Four Vapeur;Four vapeur;Four
+1;522781;Whirlpool;857726401512;AKP264/NB;Four Vapeur;Four vapeur;Four
+1;522782;Whirlpool;857726401513;AKP264/NB;Four Vapeur;Four vapeur;Four
+1;522783;Whirlpool;857726501500;AKP265/IX;;Four vapeur;Four
+1;522784;Whirlpool;857726501501;AKP265/IX;;Four vapeur;Four
+1;522785;Whirlpool;857726601500;AKP266IX;;Four vapeur;Four
+1;522786;Whirlpool;857727101500;AKP271/IX;;Four vapeur;Four
+1;522787;Whirlpool;857727101501;AKP271/IX;;Four vapeur;Four
+1;522791;Whirlpool;857727301503;AKP273/IX;Four Vapeur;Four vapeur;Four
+1;522792;Whirlpool;857727301504;AKP273/IX;Four Vapeur;Four vapeur;Four
+1;522793;Whirlpool;857727401500;AKP274/IX;Four Vapeur;Four vapeur;Four
+1;522794;Whirlpool;857727401501;AKP274/IX;Four Vapeur;Four vapeur;Four
+1;522795;Whirlpool;857727401502;AKP274/IX;Four Vapeur;Four vapeur;Four
+1;522796;Whirlpool;857727401503;AKP274/IX;Four Vapeur;Four vapeur;Four
+1;522797;Whirlpool;857727401504;AKP274/IX;Four Vapeur;Four vapeur;Four
+1;522798;Whirlpool;857727501500;AKP275/IX;Four Vapeur;Four vapeur;Four
+1;522799;Whirlpool;857727501501;AKP275/IX;Four Vapeur;Four vapeur;Four
+1;522800;Whirlpool;857727501502;AKP275/IX;Four Vapeur;Four vapeur;Four
+1;522801;Whirlpool;857727501503;AKP275/IX;Four Vapeur;Four vapeur;Four
+1;522802;Whirlpool;857727501504;AKP275/IX;Four Vapeur;Four vapeur;Four
+1;522803;Whirlpool;857727501505;AKP275/IX;Four Vapeur;Four vapeur;Four
+1;522807;Whirlpool;857727501520;AKP275/NB;Four Vapeur;Four vapeur;Four
+1;522808;Whirlpool;857727501521;AKP275/NB;Four Vapeur;Four vapeur;Four
+1;522809;Whirlpool;857727501522;AKP275/NB;Four Vapeur;Four vapeur;Four
+1;522804;Whirlpool;857727501510;AKP275/WH;Four Vapeur;Four vapeur;Four
+1;522805;Whirlpool;857727501511;AKP275/WH;Four Vapeur;Four vapeur;Four
+1;522806;Whirlpool;857727501512;AKP275/WH;Four Vapeur;Four vapeur;Four
+1;522810;Whirlpool;857727601500;AKP276/IX;Four Vapeur;Four vapeur;Four
+1;522811;Whirlpool;857727601502;AKP276/IX;Four Vapeur;Four vapeur;Four
+1;522812;Whirlpool;857727701500;AKP277/IX;;Four vapeur;Four
+1;522813;Whirlpool;857727701501;AKP277/IX;;Four vapeur;Four
+1;522814;Whirlpool;857727801500;AKP278IX;;Four vapeur;Four
+1;522815;Whirlpool;857728101500;AKP281/IX;;Four vapeur;Four
+1;522816;Whirlpool;857728101501;AKP281/IX;;Four vapeur;Four
+1;522823;Whirlpool;857728401500;AKP284IX;;Four vapeur;Four
+1;522862;Whirlpool;857728801030;AKP288/AE;Four Vapeur;Four vapeur;Four
+1;522863;Whirlpool;857728801031;AKP288/AE;Four Vapeur;Four vapeur;Four
+1;522867;Whirlpool;857728801050;AKP288/AE/01;Four Vapeur;Four vapeur;Four
+1;522868;Whirlpool;857728801051;AKP288/AE/01;Four Vapeur;Four vapeur;Four
+1;522869;Whirlpool;857728801052;AKP288/AE/01;Four Vapeur;Four vapeur;Four
+1;522870;Whirlpool;857728801053;AKP288/AE/01;Four Vapeur;Four vapeur;Four
+1;522871;Whirlpool;857728801054;AKP288/AE/01;Four Vapeur;Four vapeur;Four
+1;522872;Whirlpool;857728801055;AKP288/AE/01;Four Vapeur;Four vapeur;Four
+1;522864;Whirlpool;857728801040;AKP288/CU;Four Vapeur;Four vapeur;Four
+1;522865;Whirlpool;857728801041;AKP288/CU;Four Vapeur;Four vapeur;Four
+1;522866;Whirlpool;857728801042;AKP288/CU;Four Vapeur;Four vapeur;Four
+1;522850;Whirlpool;857728801000;AKP288/IX;Four Vapeur;Four vapeur;Four
+1;522851;Whirlpool;857728801001;AKP288/IX;Four Vapeur;Four vapeur;Four
+1;522852;Whirlpool;857728801002;AKP288/IX;Four Vapeur;Four vapeur;Four
+1;522873;Whirlpool;857728801500;AKP288/IX;Four Vapeur;Four vapeur;Four
+1;522874;Whirlpool;857728801501;AKP288/IX;Four Vapeur;Four vapeur;Four
+1;522875;Whirlpool;857728801502;AKP288/IX;Four Vapeur;Four vapeur;Four
+1;522876;Whirlpool;857728801503;AKP288/IX;Four Vapeur;Four vapeur;Four
+1;522877;Whirlpool;857728801504;AKP288/IX;Four Vapeur;Four vapeur;Four
+1;522858;Whirlpool;857728801020;AKP288/JA;Four Vapeur;Four vapeur;Four
+1;522859;Whirlpool;857728801021;AKP288/JA;Four Vapeur;Four vapeur;Four
+1;522860;Whirlpool;857728801022;AKP288/JA;Four Vapeur;Four vapeur;Four
+1;522861;Whirlpool;857728801023;AKP288/JA;Four Vapeur;Four vapeur;Four
+1;522883;Whirlpool;857728801520;AKP288/JA;Four Vapeur;Four vapeur;Four
+1;522884;Whirlpool;857728801521;AKP288/JA;Four Vapeur;Four vapeur;Four
+1;522885;Whirlpool;857728801522;AKP288/JA;Four Vapeur;Four vapeur;Four
+1;522886;Whirlpool;857728801523;AKP288/JA;Four Vapeur;Four vapeur;Four
+1;522887;Whirlpool;857728801524;AKP288/JA;Four Vapeur;Four vapeur;Four
+1;522853;Whirlpool;857728801010;AKP288/NA;Four Vapeur;Four vapeur;Four
+1;522854;Whirlpool;857728801011;AKP288/NA;Four Vapeur;Four vapeur;Four
+1;522855;Whirlpool;857728801012;AKP288/NA;Four Vapeur;Four vapeur;Four
+1;522856;Whirlpool;857728801013;AKP288/NA;Four Vapeur;Four vapeur;Four
+1;522857;Whirlpool;857728801014;AKP288/NA;Four Vapeur;Four vapeur;Four
+1;522878;Whirlpool;857728801510;AKP288/NA;Four Vapeur;Four vapeur;Four
+1;522879;Whirlpool;857728801511;AKP288/NA;Four Vapeur;Four vapeur;Four
+1;522880;Whirlpool;857728801512;AKP288/NA;Four Vapeur;Four vapeur;Four
+1;522881;Whirlpool;857728801513;AKP288/NA;Four Vapeur;Four vapeur;Four
+1;522882;Whirlpool;857728801514;AKP288/NA;Four Vapeur;Four vapeur;Four
+1;522888;Whirlpool;857728901000;AKP289/IX;;Four vapeur;Four
+1;522889;Whirlpool;857728901001;AKP289/IX;;Four vapeur;Four
+1;522891;Whirlpool;857728901020;AKP289/IX/01;;Four vapeur;Four
+1;522892;Whirlpool;857728901021;AKP289/IX/01;;Four vapeur;Four
+1;522890;Whirlpool;857728901010;AKP289/NA;;Four vapeur;Four
+1;522893;Whirlpool;857728901030;AKP289/NA/01;;Four vapeur;Four
+1;522894;Whirlpool;857728901031;AKP289/NA/01;;Four vapeur;Four
+1;522900;Whirlpool;857729001010;AKP290/IX;Four Vapeur;Four vapeur;Four
+1;522901;Whirlpool;857729001011;AKP290/IX;Four Vapeur;Four vapeur;Four
+1;522902;Whirlpool;857729001012;AKP290/IX;Four Vapeur;Four vapeur;Four
+1;522908;Whirlpool;857729001510;AKP290/IX;Four Vapeur;Four vapeur;Four
+1;522909;Whirlpool;857729001511;AKP290/IX;Four Vapeur;Four vapeur;Four
+1;522895;Whirlpool;857729001000;AKP290/NA;Four Vapeur;Four vapeur;Four
+1;522896;Whirlpool;857729001001;AKP290/NA;Four Vapeur;Four vapeur;Four
+1;522897;Whirlpool;857729001002;AKP290/NA;Four Vapeur;Four vapeur;Four
+1;522898;Whirlpool;857729001003;AKP290/NA;Four Vapeur;Four vapeur;Four
+1;522899;Whirlpool;857729001004;AKP290/NA;Four Vapeur;Four vapeur;Four
+1;522903;Whirlpool;857729001500;AKP290/NA;Four Vapeur;Four vapeur;Four
+1;522904;Whirlpool;857729001501;AKP290/NA;Four Vapeur;Four vapeur;Four
+1;522905;Whirlpool;857729001502;AKP290/NA;Four Vapeur;Four vapeur;Four
+1;522906;Whirlpool;857729001503;AKP290/NA;Four Vapeur;Four vapeur;Four
+1;522907;Whirlpool;857729001504;AKP290/NA;Four Vapeur;Four vapeur;Four
+1;522912;Whirlpool;857729229000;AKP292/IX;Four Vapeur;Four vapeur;Four
+1;522913;Whirlpool;857729229001;AKP292/IX;Four Vapeur;Four vapeur;Four
+1;522916;Whirlpool;857729229020;AKP292/JA;Four Vapeur;Four vapeur;Four
+1;522917;Whirlpool;857729229021;AKP292/JA;Four Vapeur;Four vapeur;Four
+1;522914;Whirlpool;857729229010;AKP292/NA;Four Vapeur;Four vapeur;Four
+1;522915;Whirlpool;857729229011;AKP292/NA;Four Vapeur;Four vapeur;Four
+1;512218;Whirlpool;39945060000;AKP295JA;Four Vapeur;Four vapeur;Four
+1;522921;Whirlpool;857729510500;AKP295JA;Four Vapeur;Four vapeur;Four
+1;522922;Whirlpool;857729510501;AKP295JA;Four Vapeur;Four vapeur;Four
+1;522923;Whirlpool;857729510510;AKP295NA;Four Vapeur;Four vapeur;Four
+1;522924;Whirlpool;857729510511;AKP295NA;Four Vapeur;Four vapeur;Four
+1;522931;Whirlpool;857730018520;AKP300/IX/02;;Four vapeur;Four
+1;522932;Whirlpool;857730018521;AKP300/IX/02;;Four vapeur;Four
+1;522933;Whirlpool;857730018522;AKP300/IX/02;;Four vapeur;Four
+1;522934;Whirlpool;857730018523;AKP300/IX/02;;Four vapeur;Four
+1;522935;Whirlpool;857730018524;AKP300IX02;;Four vapeur;Four
+1;522936;Whirlpool;857730018525;AKP300/IX/02;;Four vapeur;Four
+1;522925;Whirlpool;857730018510;AKP300/WH/02;;Four vapeur;Four
+1;522926;Whirlpool;857730018511;AKP300/WH/02;;Four vapeur;Four
+1;522927;Whirlpool;857730018512;AKP300/WH/02;;Four vapeur;Four
+1;522928;Whirlpool;857730018513;AKP300/WH/02;;Four vapeur;Four
+1;522929;Whirlpool;857730018514;AKP300WH02;;Four vapeur;Four
+1;522930;Whirlpool;857730018515;AKP300/WH/02;;Four vapeur;Four
+1;522982;Whirlpool;857730901580;AKP309/02IX;;Four vapeur;Four
+1;522983;Whirlpool;857730901581;AKP309/02IX;;Four vapeur;Four
+1;522985;Whirlpool;857730901583;AKP309/02IX;;Four vapeur;Four
+1;522986;Whirlpool;857730901584;AKP309/02IX;;Four vapeur;Four
+1;522977;Whirlpool;857730901570;AKP309/02NB;;Four vapeur;Four
+1;522978;Whirlpool;857730901571;AKP309/02NB;;Four vapeur;Four
+1;522979;Whirlpool;857730901572;AKP309/02NB;;Four vapeur;Four
+1;522980;Whirlpool;857730901573;AKP309/02NB;;Four vapeur;Four
+1;522981;Whirlpool;857730901574;AKP309/02NB;;Four vapeur;Four
+1;522973;Whirlpool;857730901560;AKP309/02WH;;Four vapeur;Four
+1;522974;Whirlpool;857730901561;AKP309/02WH;;Four vapeur;Four
+1;522975;Whirlpool;857730901562;AKP309/02WH;;Four vapeur;Four
+1;522976;Whirlpool;857730901564;AKP309/02WH;;Four vapeur;Four
+1;522999;Whirlpool;857730910000;AKP309/IX;;Four vapeur;Four
+1;522984;Whirlpool;857730901582;AKP309IX02;;Four vapeur;Four
+1;522995;Whirlpool;857730901620;AKP309/IX/03;;Four vapeur;Four
+1;522996;Whirlpool;857730901621;AKP309/IX/03;;Four vapeur;Four
+1;522997;Whirlpool;857730901622;AKP309/IX/03;;Four vapeur;Four
+1;522998;Whirlpool;857730901623;AKP309/IX/03;;Four vapeur;Four
+1;522991;Whirlpool;857730901610;AKP309/NB/03;;Four vapeur;Four
+1;522992;Whirlpool;857730901611;AKP309/NB/03;;Four vapeur;Four
+1;522993;Whirlpool;857730901612;AKP309/NB/03;;Four vapeur;Four
+1;522994;Whirlpool;857730901613;AKP309/NB/03;;Four vapeur;Four
+1;522987;Whirlpool;857730901600;AKP309/WH/03;;Four vapeur;Four
+1;522988;Whirlpool;857730901601;AKP309/WH/03;;Four vapeur;Four
+1;522989;Whirlpool;857730901602;AKP309/WH/03;;Four vapeur;Four
+1;522990;Whirlpool;857730901603;AKP309/WH/03;;Four vapeur;Four
+1;523000;Whirlpool;857731018500;AKP310/01WH;;Four vapeur;Four
+1;523001;Whirlpool;857731018501;AKP310/01WH;;Four vapeur;Four
+1;523002;Whirlpool;857731018502;AKP310/01WH;;Four vapeur;Four
+1;523003;Whirlpool;857731018503;AKP310/01WH;;Four vapeur;Four
+1;523005;Whirlpool;857731018505;AKP310/01WH;;Four vapeur;Four
+1;523006;Whirlpool;857731018506;AKP310/01WH;;Four vapeur;Four
+1;523004;Whirlpool;857731018504;AKP310WH02;;Four vapeur;Four
+1;523027;Whirlpool;857731101560;AKP311/02WH;;Four vapeur;Four
+1;523028;Whirlpool;857731101561;AKP311/02WH;;Four vapeur;Four
+1;523029;Whirlpool;857731101562;AKP311/02WH;;Four vapeur;Four
+1;523030;Whirlpool;857731101563;AKP311/02WH;;Four vapeur;Four
+1;523031;Whirlpool;857731101564;AKP311/02WH;;Four vapeur;Four
+1;523032;Whirlpool;857731101565;AKP311/02WH;;Four vapeur;Four
+1;523033;Whirlpool;857731101566;AKP311/02WH;;Four vapeur;Four
+1;523066;Whirlpool;857731110030;AKP311IX;;Four vapeur;Four
+1;523067;Whirlpool;857731110031;AKP311/IX;;Four vapeur;Four
+1;523041;Whirlpool;857731101580;AKP311/IX/02;;Four vapeur;Four
+1;523042;Whirlpool;857731101581;AKP311/IX/02;;Four vapeur;Four
+1;523043;Whirlpool;857731101582;AKP311/IX/02;;Four vapeur;Four
+1;523044;Whirlpool;857731101583;AKP311/IX/02;;Four vapeur;Four
+1;523045;Whirlpool;857731101584;AKP311IX02;;Four vapeur;Four
+1;523046;Whirlpool;857731101585;AKP311/IX/02;;Four vapeur;Four
+1;523047;Whirlpool;857731101586;AKP311/IX/02;;Four vapeur;Four
+1;523058;Whirlpool;857731101620;AKP311/IX/03;;Four vapeur;Four
+1;523059;Whirlpool;857731101621;AKP311/IX/03;;Four vapeur;Four
+1;523060;Whirlpool;857731101622;AKP311/IX/03;;Four vapeur;Four
+1;523061;Whirlpool;857731101623;AKP311/IX/03;;Four vapeur;Four
+1;523062;Whirlpool;857731101624;AKP311/IX/03;;Four vapeur;Four
+1;523063;Whirlpool;857731101625;AKP311/IX/03;;Four vapeur;Four
+1;523064;Whirlpool;857731101626;AKP311/IX/03;;Four vapeur;Four
+1;523065;Whirlpool;857731101627;AKP311/IX/03;;Four vapeur;Four
+1;523034;Whirlpool;857731101570;AKP311/NB/02;;Four vapeur;Four
+1;523035;Whirlpool;857731101571;AKP311/NB/02;;Four vapeur;Four
+1;523036;Whirlpool;857731101572;AKP311/NB/02;;Four vapeur;Four
+1;523037;Whirlpool;857731101573;AKP311/NB/02;;Four vapeur;Four
+1;523038;Whirlpool;857731101574;AKP311/NB/02;;Four vapeur;Four
+1;523039;Whirlpool;857731101575;AKP311/NB/02;;Four vapeur;Four
+1;523040;Whirlpool;857731101576;AKP311/NB/02;;Four vapeur;Four
+1;523053;Whirlpool;857731101610;AKP311/NB/03;;Four vapeur;Four
+1;523054;Whirlpool;857731101611;AKP311/NB/03;;Four vapeur;Four
+1;523055;Whirlpool;857731101612;AKP311/NB/03;;Four vapeur;Four
+1;523056;Whirlpool;857731101613;AKP311/NB/03;;Four vapeur;Four
+1;523057;Whirlpool;857731101614;AKP311/NB/03;;Four vapeur;Four
+1;523048;Whirlpool;857731101600;AKP311/WH/03;;Four vapeur;Four
+1;523049;Whirlpool;857731101601;AKP311/WH/03;;Four vapeur;Four
+1;523050;Whirlpool;857731101602;AKP311/WH/03;;Four vapeur;Four
+1;523051;Whirlpool;857731101603;AKP311/WH/03;;Four vapeur;Four
+1;523052;Whirlpool;857731101604;AKP311/WH/03;;Four vapeur;Four
+1;523068;Whirlpool;857731201500;AKP312/IX;;Four vapeur;Four
+1;523069;Whirlpool;857731201501;AKP312/IX;;Four vapeur;Four
+1;523070;Whirlpool;857731201502;AKP312/IX;;Four vapeur;Four
+1;523071;Whirlpool;857731201503;AKP312/IX;;Four vapeur;Four
+1;523074;Whirlpool;857731201520;AKP312/NB;;Four vapeur;Four
+1;523075;Whirlpool;857731201521;AKP312/NB;;Four vapeur;Four
+1;523072;Whirlpool;857731201510;AKP312/WH;;Four vapeur;Four
+1;523073;Whirlpool;857731201511;AKP312/WH;;Four vapeur;Four
+1;523076;Whirlpool;857731301500;AKP313/IX;;Four vapeur;Four
+1;523077;Whirlpool;857731301501;AKP313/IX;;Four vapeur;Four
+1;523078;Whirlpool;857731301502;AKP313/IX;;Four vapeur;Four
+1;523081;Whirlpool;857731301520;AKP313/NB;;Four vapeur;Four
+1;523082;Whirlpool;857731301521;AKP313/NB;;Four vapeur;Four
+1;523079;Whirlpool;857731301510;AKP313/WH;;Four vapeur;Four
+1;523080;Whirlpool;857731301511;AKP313/WH;;Four vapeur;Four
+1;523083;Whirlpool;857731401500;AKP314/IX;;Four vapeur;Four
+1;523084;Whirlpool;857731401501;AKP314/IX;;Four vapeur;Four
+1;523085;Whirlpool;857731401502;AKP314/IX;;Four vapeur;Four
+1;523086;Whirlpool;857731501500;AKP315/IX;;Four vapeur;Four
+1;523087;Whirlpool;857731501501;AKP315/IX;;Four vapeur;Four
+1;523088;Whirlpool;857731501502;AKP315/IX;;Four vapeur;Four
+1;523089;Whirlpool;857731601500;AKP316/IX;;Four vapeur;Four
+1;523090;Whirlpool;857731601501;AKP316/IX;;Four vapeur;Four
+1;523091;Whirlpool;857731601502;AKP316/IX;;Four vapeur;Four
+1;523092;Whirlpool;857731601503;AKP316/IX;;Four vapeur;Four
+1;523093;Whirlpool;857731701500;AKP317/IX;;Four vapeur;Four
+1;523094;Whirlpool;857731701501;AKP317/IX;;Four vapeur;Four
+1;523095;Whirlpool;857731801500;AKP318/IX;;Four vapeur;Four
+1;523096;Whirlpool;857731801501;AKP318/IX;;Four vapeur;Four
+1;523102;Whirlpool;857733310510;AKP333/01IX;;Four vapeur;Four
+1;523103;Whirlpool;857733310511;AKP333/01IX;;Four vapeur;Four
+1;523104;Whirlpool;857733310512;AKP333/01IX;;Four vapeur;Four
+1;523120;Whirlpool;857733422535;AKP334/05IX;;Four vapeur;Four
+1;523121;Whirlpool;857733422536;AKP334/05IX;;Four vapeur;Four
+1;523113;Whirlpool;857733422520;AKP334AV;;Four vapeur;Four
+1;523114;Whirlpool;857733422521;AKP334AV;;Four vapeur;Four
+1;523115;Whirlpool;857733422523;AKP334AV;;Four vapeur;Four
+1;523122;Whirlpool;857733422540;AKP334/AV/05;;Four vapeur;Four
+1;523123;Whirlpool;857733422542;AKP334/AV/05;;Four vapeur;Four
+1;523124;Whirlpool;857733422544;AKP334/AV05;;Four vapeur;Four
+1;523125;Whirlpool;857733422545;AKP334/AV05;;Four vapeur;Four
+1;523105;Whirlpool;857733422500;AKP334IX;;Four vapeur;Four
+1;523106;Whirlpool;857733422501;AKP334IX;;Four vapeur;Four
+1;523107;Whirlpool;857733422502;AKP334IX;;Four vapeur;Four
+1;523108;Whirlpool;857733422503;AKP334IX;;Four vapeur;Four
+1;523116;Whirlpool;857733422530;AKP334/IX/05;;Four vapeur;Four
+1;523117;Whirlpool;857733422532;AKP334/IX/05;;Four vapeur;Four
+1;523118;Whirlpool;857733422533;AKP334/IX/05;;Four vapeur;Four
+1;523119;Whirlpool;857733422534;AKP334/IX/05;;Four vapeur;Four
+1;523109;Whirlpool;857733422510;AKP334WH;;Four vapeur;Four
+1;523110;Whirlpool;857733422511;AKP334WH;;Four vapeur;Four
+1;523111;Whirlpool;857733422512;AKP334WH;;Four vapeur;Four
+1;523112;Whirlpool;857733422513;AKP334WH;;Four vapeur;Four
+1;523126;Whirlpool;857733422550;AKP334/WH/05;;Four vapeur;Four
+1;523127;Whirlpool;857733422555;AKP334/WH05;;Four vapeur;Four
+1;523131;Whirlpool;857733510520;AKP335/01IX;;Four vapeur;Four
+1;523132;Whirlpool;857733510521;AKP335/01IX;;Four vapeur;Four
+1;523133;Whirlpool;857733510522;AKP335/01IX;;Four vapeur;Four
+1;523134;Whirlpool;857733510523;AKP335/01IX;;Four vapeur;Four
+1;523135;Whirlpool;857733510524;AKP335/01IX;;Four vapeur;Four
+1;523136;Whirlpool;857733510525;AKP335/01IX;;Four vapeur;Four
+1;523137;Whirlpool;857733510526;AKP335/01IX;;Four vapeur;Four
+1;523147;Whirlpool;857733510540;AKP335/05AV;;Four vapeur;Four
+1;523150;Whirlpool;857733510544;AKP335/05AV;;Four vapeur;Four
+1;523151;Whirlpool;857733510545;AKP335/05AV;;Four vapeur;Four
+1;523152;Whirlpool;857733510550;AKP335/05WH;;Four vapeur;Four
+1;523155;Whirlpool;857733510554;AKP335/05WH;;Four vapeur;Four
+1;523156;Whirlpool;857733510555;AKP335/05WH;;Four vapeur;Four
+1;523148;Whirlpool;857733510542;AKP335/AV/05;;Four vapeur;Four
+1;523149;Whirlpool;857733510543;AKP335/AV/05;;Four vapeur;Four
+1;523138;Whirlpool;857733510530;AKP335/IX/05;;Four vapeur;Four
+1;523139;Whirlpool;857733510532;AKP335/IX/05;;Four vapeur;Four
+1;523140;Whirlpool;857733510533;AKP335/IX/05;;Four vapeur;Four
+1;523141;Whirlpool;857733510534;AKP335/IX/05;;Four vapeur;Four
+1;523142;Whirlpool;857733510535;AKP335/IX/05;;Four vapeur;Four
+1;523143;Whirlpool;857733510536;AKP335/IX/05;;Four vapeur;Four
+1;523144;Whirlpool;857733510537;AKP335/IX/05;;Four vapeur;Four
+1;523145;Whirlpool;857733510538;AKP335/IX/05;;Four vapeur;Four
+1;523146;Whirlpool;857733510539;AKP335/IX/05;;Four vapeur;Four
+1;523153;Whirlpool;857733510552;AKP335/WH/05;;Four vapeur;Four
+1;523154;Whirlpool;857733510553;AKP335/WH/05;;Four vapeur;Four
+1;523196;Whirlpool;857740038502;AKP400/IX;;Four vapeur;Four
+1;523197;Whirlpool;857740038503;AKP400/IX;;Four vapeur;Four
+1;523198;Whirlpool;857740138500;AKP401/IX;Four Vapeur;Four vapeur;Four
+1;523199;Whirlpool;857740138501;AKP401/IX;Four Vapeur;Four vapeur;Four
+1;523200;Whirlpool;857740138502;AKP401/IX;Four Vapeur;Four vapeur;Four
+1;523201;Whirlpool;857740238500;AKP402/IX;Four Vapeur;Four vapeur;Four
+1;523202;Whirlpool;857740238503;AKP402/IX;Four Vapeur;Four vapeur;Four
+1;523203;Whirlpool;857740238504;AKP402/IX;Four Vapeur;Four vapeur;Four
+1;523204;Whirlpool;857740238505;AKP402/IX;Four Vapeur;Four vapeur;Four
+1;523205;Whirlpool;857740238506;AKP402/IX;Four Vapeur;Four vapeur;Four
+1;523206;Whirlpool;857740238507;AKP402/IX;Four Vapeur;Four vapeur;Four
+1;523207;Whirlpool;857740238508;AKP402/IX;Four Vapeur;Four vapeur;Four
+1;523209;Whirlpool;857740338500;AKP403/IX;;Four vapeur;Four
+1;523210;Whirlpool;857740338501;AKP403/IX;;Four vapeur;Four
+1;523211;Whirlpool;857740338502;AKP403/IX;;Four vapeur;Four
+1;523212;Whirlpool;857740538500;AKP405/IX;Four Vapeur;Four vapeur;Four
+1;523213;Whirlpool;857740538501;AKP405/IX;Four Vapeur;Four vapeur;Four
+1;523214;Whirlpool;857740538502;AKP405/IX;Four Vapeur;Four vapeur;Four
+1;523215;Whirlpool;857740629500;AKP406/IX;Four Vapeur;Four vapeur;Four
+1;523216;Whirlpool;857740629501;AKP406/IX;Four Vapeur;Four vapeur;Four
+1;523217;Whirlpool;857740629502;AKP406/IX;Four Vapeur;Four vapeur;Four
+1;523218;Whirlpool;857740629503;AKP406/IX;Four Vapeur;Four vapeur;Four
+1;523219;Whirlpool;857740701500;AKP407/IX;Four Vapeur;Four vapeur;Four
+1;523220;Whirlpool;857740701501;AKP407/IX;Four Vapeur;Four vapeur;Four
+1;523221;Whirlpool;857740701502;AKP407/IX;Four Vapeur;Four vapeur;Four
+1;523222;Whirlpool;857740701503;AKP407/IX;Four Vapeur;Four vapeur;Four
+1;523223;Whirlpool;857740701504;AKP407/IX;Four Vapeur;Four vapeur;Four
+1;523224;Whirlpool;857740829500;AKP408/IX;Four Vapeur;Four vapeur;Four
+1;523225;Whirlpool;857741029500;AKP410IX;Four Vapeur;Four vapeur;Four
+1;515605;Whirlpool;759991634300;AKP 420 IX;Four Vapeur;Four vapeur;Four
+1;523226;Whirlpool;857742801500;AKP428/IX;;Four vapeur;Four
+1;523236;Whirlpool;857743301500;AKP433/IX;;Four vapeur;Four
+1;523237;Whirlpool;857743301501;AKP433/IX;;Four vapeur;Four
+1;523238;Whirlpool;857743401500;AKP434/IX;;Four vapeur;Four
+1;523239;Whirlpool;857743401501;AKP434/IX;;Four vapeur;Four
+1;523240;Whirlpool;857743401502;AKP434/IX;;Four vapeur;Four
+1;523241;Whirlpool;857743401503;AKP434/IX;;Four vapeur;Four
+1;523242;Whirlpool;857743401504;AKP434/IX;;Four vapeur;Four
+1;523243;Whirlpool;857743401505;AKP434/IX;;Four vapeur;Four
+1;523244;Whirlpool;857743615500;AKP436/IX;Four Vapeur;Four vapeur;Four
+1;523246;Whirlpool;857743615520;AKP436/NB;Four Vapeur;Four vapeur;Four
+1;523245;Whirlpool;857743615510;AKP436/WH;Four Vapeur;Four vapeur;Four
+1;523247;Whirlpool;857743715500;AKP437/IX;Four Vapeur;Four vapeur;Four
+1;523273;Whirlpool;857744301500;AKP443/IX;;Four vapeur;Four
+1;523274;Whirlpool;857744301501;AKP443/IX;;Four vapeur;Four
+1;523275;Whirlpool;857744301502;AKP443/IX;;Four vapeur;Four
+1;523276;Whirlpool;857744301503;AKP443/IX;;Four vapeur;Four
+1;523277;Whirlpool;857744301504;AKP443/IX;;Four vapeur;Four
+1;523278;Whirlpool;857744301510;AKP443/NB;;Four vapeur;Four
+1;523279;Whirlpool;857744301511;AKP443/NB;;Four vapeur;Four
+1;523282;Whirlpool;857744401500;AKP444/IX;;Four vapeur;Four
+1;523283;Whirlpool;857744401501;AKP444/IX;;Four vapeur;Four
+1;523284;Whirlpool;857744401502;AKP444/IX;;Four vapeur;Four
+1;523285;Whirlpool;857744401503;AKP444/IX;;Four vapeur;Four
+1;523286;Whirlpool;857744401504;AKP444/IX;;Four vapeur;Four
+1;523280;Whirlpool;857744401000;AKP444/MR;;Four vapeur;Four
+1;523281;Whirlpool;857744401001;AKP444/MR;;Four vapeur;Four
+1;523297;Whirlpool;857744401530;AKP444/MR;;Four vapeur;Four
+1;523293;Whirlpool;857744401520;AKP444/NB;;Four vapeur;Four
+1;523294;Whirlpool;857744401521;AKP444/NB;;Four vapeur;Four
+1;523295;Whirlpool;857744401522;AKP444/NB;;Four vapeur;Four
+1;523296;Whirlpool;857744401523;AKP444/NB;;Four vapeur;Four
+1;523287;Whirlpool;857744401510;AKP444/WH;;Four vapeur;Four
+1;523288;Whirlpool;857744401511;AKP444/WH;;Four vapeur;Four
+1;523289;Whirlpool;857744401512;AKP444/WH;;Four vapeur;Four
+1;523290;Whirlpool;857744401513;AKP444/WH;;Four vapeur;Four
+1;523291;Whirlpool;857744401514;AKP444/WH;;Four vapeur;Four
+1;523292;Whirlpool;857744401515;AKP444/WH;;Four vapeur;Four
+1;523298;Whirlpool;857744518500;AKP445/IX;;Four vapeur;Four
+1;523299;Whirlpool;857744518502;AKP445/IX;;Four vapeur;Four
+1;523300;Whirlpool;857744601500;AKP446/IX;;Four vapeur;Four
+1;523301;Whirlpool;857744601501;AKP446/IX;;Four vapeur;Four
+1;523302;Whirlpool;857744601502;AKP446/IX;;Four vapeur;Four
+1;523303;Whirlpool;857744601503;AKP446/IX;;Four vapeur;Four
+1;523304;Whirlpool;857744601510;AKP446/WH;;Four vapeur;Four
+1;523305;Whirlpool;857744701500;AKP447/IX;Four Vapeur;Four vapeur;Four
+1;523306;Whirlpool;857744701501;AKP447/IX;Four Vapeur;Four vapeur;Four
+1;523308;Whirlpool;857744701502;AKP447/IX;Four Vapeur;Four vapeur;Four
+1;523309;Whirlpool;857744701503;AKP447/IX;Four Vapeur;Four vapeur;Four
+1;523310;Whirlpool;857744701504;AKP447/IX;Four Vapeur;Four vapeur;Four
+1;523322;Whirlpool;857744701530;AKP447/IX/01;Four Vapeur;Four vapeur;Four
+1;523311;Whirlpool;857744701510;AKP447/NB;Four Vapeur;Four vapeur;Four
+1;523312;Whirlpool;857744701511;AKP447/NB;Four Vapeur;Four vapeur;Four
+1;523313;Whirlpool;857744701512;AKP447/NB;Four Vapeur;Four vapeur;Four
+1;523314;Whirlpool;857744701513;AKP447/NB;Four Vapeur;Four vapeur;Four
+1;523315;Whirlpool;857744701514;AKP447/NB;Four Vapeur;Four vapeur;Four
+1;523323;Whirlpool;857744701540;AKP447/NB/01;Four Vapeur;Four vapeur;Four
+1;523316;Whirlpool;857744701520;AKP447/WH;Four Vapeur;Four vapeur;Four
+1;523317;Whirlpool;857744701521;AKP447/WH;Four Vapeur;Four vapeur;Four
+1;523318;Whirlpool;857744701522;AKP447/WH;Four Vapeur;Four vapeur;Four
+1;523319;Whirlpool;857744701523;AKP447/WH;Four Vapeur;Four vapeur;Four
+1;523320;Whirlpool;857744701524;AKP447/WH;Four Vapeur;Four vapeur;Four
+1;523325;Whirlpool;857744801000;AKP448/MR;Four Vapeur;Four vapeur;Four
+1;523326;Whirlpool;857744801001;AKP448/MR;Four Vapeur;Four vapeur;Four
+1;512219;Whirlpool;39945120000;AKP449/IX;;Four vapeur;Four
+1;523327;Whirlpool;857744910500;AKP449/IX;;Four vapeur;Four
+1;523328;Whirlpool;857744910501;AKP449/IX;;Four vapeur;Four
+1;523329;Whirlpool;857744910502;AKP449/IX;;Four vapeur;Four
+1;523330;Whirlpool;857744910503;AKP449/IX;;Four vapeur;Four
+1;523331;Whirlpool;857744910504;AKP449/IX;;Four vapeur;Four
+1;523332;Whirlpool;857744910505;AKP449/IX;;Four vapeur;Four
+1;523333;Whirlpool;857745001500;AKP450/IX;;Four vapeur;Four
+1;523334;Whirlpool;857745001501;AKP450/IX;;Four vapeur;Four
+1;523335;Whirlpool;857745001502;AKP450/IX;;Four vapeur;Four
+1;523336;Whirlpool;857745001503;AKP450/IX;;Four vapeur;Four
+1;523337;Whirlpool;857745101000;AKP451/ICE;Four Vapeur;Four vapeur;Four
+1;523338;Whirlpool;857745101001;AKP451/ICE;Four Vapeur;Four vapeur;Four
+1;523339;Whirlpool;857745101500;AKP451/IX;Four Vapeur;Four vapeur;Four
+1;523340;Whirlpool;857745101501;AKP451/IX;Four Vapeur;Four vapeur;Four
+1;523341;Whirlpool;857745101502;AKP451/IX;Four Vapeur;Four vapeur;Four
+1;523342;Whirlpool;857745101503;AKP451/IX;Four Vapeur;Four vapeur;Four
+1;523346;Whirlpool;857745101520;AKP451/MR;Four Vapeur;Four vapeur;Four
+1;523347;Whirlpool;857745101521;AKP451/MR;Four Vapeur;Four vapeur;Four
+1;523343;Whirlpool;857745101510;AKP451/WH;Four Vapeur;Four vapeur;Four
+1;523344;Whirlpool;857745101511;AKP451/WH;Four Vapeur;Four vapeur;Four
+1;523345;Whirlpool;857745101512;AKP451/WH;Four Vapeur;Four vapeur;Four
+1;523348;Whirlpool;857745201500;AKP452/IX;;Four vapeur;Four
+1;523349;Whirlpool;857745201501;AKP452/IX;;Four vapeur;Four
+1;523350;Whirlpool;857745201502;AKP452/IX;;Four vapeur;Four
+1;523351;Whirlpool;857745201503;AKP452/IX;;Four vapeur;Four
+1;523355;Whirlpool;857745301500;AKP453/IX;Four Vapeur;Four vapeur;Four
+1;523356;Whirlpool;857745301501;AKP453/IX;Four Vapeur;Four vapeur;Four
+1;523357;Whirlpool;857745301502;AKP453/IX;Four Vapeur;Four vapeur;Four
+1;523358;Whirlpool;857745301503;AKP453/IX;Four Vapeur;Four vapeur;Four
+1;523362;Whirlpool;857745355500;AKP453/IX;Four Vapeur;Four vapeur;Four
+1;523352;Whirlpool;857745301000;AKP453/MR;Four Vapeur;Four vapeur;Four
+1;523353;Whirlpool;857745301001;AKP453/MR;Four Vapeur;Four vapeur;Four
+1;523354;Whirlpool;857745301002;AKP453/MR;Four Vapeur;Four vapeur;Four
+1;523359;Whirlpool;857745301510;AKP453/MR;Four Vapeur;Four vapeur;Four
+1;523360;Whirlpool;857745301511;AKP453/MR;Four Vapeur;Four vapeur;Four
+1;523361;Whirlpool;857745301512;AKP453/MR;Four Vapeur;Four vapeur;Four
+1;523363;Whirlpool;857745401500;AKP454/IX;Four Vapeur;Four vapeur;Four
+1;523364;Whirlpool;857745401501;AKP454/IX;Four Vapeur;Four vapeur;Four
+1;523365;Whirlpool;857745401502;AKP454/IX;Four Vapeur;Four vapeur;Four
+1;523366;Whirlpool;857745401503;AKP454/IX;Four Vapeur;Four vapeur;Four
+1;523368;Whirlpool;857745401504;AKP454/IX;Four Vapeur;Four vapeur;Four
+1;523369;Whirlpool;857745401505;AKP454/IX;Four Vapeur;Four vapeur;Four
+1;523370;Whirlpool;857745401510;AKP454/NB;Four Vapeur;Four vapeur;Four
+1;523371;Whirlpool;857745401511;AKP454/NB;Four Vapeur;Four vapeur;Four
+1;523372;Whirlpool;857745401512;AKP454/NB;Four Vapeur;Four vapeur;Four
+1;523373;Whirlpool;857745401513;AKP454/NB;Four Vapeur;Four vapeur;Four
+1;523374;Whirlpool;857745401514;AKP454/NB;Four Vapeur;Four vapeur;Four
+1;523375;Whirlpool;857745401515;AKP454/NB;Four Vapeur;Four vapeur;Four
+1;523376;Whirlpool;857745401520;AKP454/WH;Four Vapeur;Four vapeur;Four
+1;523377;Whirlpool;857745401521;AKP454/WH;Four Vapeur;Four vapeur;Four
+1;523378;Whirlpool;857745401522;AKP454/WH;Four Vapeur;Four vapeur;Four
+1;523379;Whirlpool;857745561500;AKP455/IX;Four Vapeur;Four vapeur;Four
+1;523380;Whirlpool;857745561501;AKP455/IX;Four Vapeur;Four vapeur;Four
+1;523381;Whirlpool;857745561502;AKP455/IX;Four Vapeur;Four vapeur;Four
+1;523382;Whirlpool;857745561510;AKP455/WH;Four Vapeur;Four vapeur;Four
+1;523383;Whirlpool;857745561511;AKP455/WH;Four Vapeur;Four vapeur;Four
+1;523384;Whirlpool;857745561512;AKP455/WH;Four Vapeur;Four vapeur;Four
+1;523385;Whirlpool;857745661500;AKP456/IX;Four Vapeur;Four vapeur;Four
+1;523386;Whirlpool;857745661501;AKP456/IX;Four Vapeur;Four vapeur;Four
+1;523387;Whirlpool;857745661502;AKP456/IX;Four Vapeur;Four vapeur;Four
+1;523388;Whirlpool;857745661503;AKP456/IX;Four Vapeur;Four vapeur;Four
+1;523389;Whirlpool;857745661504;AKP456/IX;Four Vapeur;Four vapeur;Four
+1;523395;Whirlpool;857745661520;AKP456/NB;Four Vapeur;Four vapeur;Four
+1;523396;Whirlpool;857745661521;AKP456/NB;Four Vapeur;Four vapeur;Four
+1;523390;Whirlpool;857745661510;AKP456/WH;Four Vapeur;Four vapeur;Four
+1;523391;Whirlpool;857745661511;AKP456/WH;Four Vapeur;Four vapeur;Four
+1;523392;Whirlpool;857745661512;AKP456/WH;Four Vapeur;Four vapeur;Four
+1;523393;Whirlpool;857745661513;AKP456/WH;Four Vapeur;Four vapeur;Four
+1;523394;Whirlpool;857745661514;AKP456/WH;Four Vapeur;Four vapeur;Four
+1;523397;Whirlpool;857745761500;AKP457/IX;Four Vapeur;Four vapeur;Four
+1;523398;Whirlpool;857745761501;AKP457/IX;Four Vapeur;Four vapeur;Four
+1;523399;Whirlpool;857745761502;AKP457/IX;Four Vapeur;Four vapeur;Four
+1;523400;Whirlpool;857745761503;AKP457/IX;Four Vapeur;Four vapeur;Four
+1;523401;Whirlpool;857745761504;AKP457/IX;Four Vapeur;Four vapeur;Four
+1;523407;Whirlpool;857745761520;AKP457/NB;Four Vapeur;Four vapeur;Four
+1;523408;Whirlpool;857745761521;AKP457/NB;Four Vapeur;Four vapeur;Four
+1;523402;Whirlpool;857745761510;AKP457/WH;Four Vapeur;Four vapeur;Four
+1;523403;Whirlpool;857745761511;AKP457/WH;Four Vapeur;Four vapeur;Four
+1;523404;Whirlpool;857745761512;AKP457/WH;Four Vapeur;Four vapeur;Four
+1;523405;Whirlpool;857745761513;AKP457/WH;Four Vapeur;Four vapeur;Four
+1;523406;Whirlpool;857745761514;AKP457/WH;Four Vapeur;Four vapeur;Four
+1;512220;Whirlpool;39945140000;AKP458/IX;Four Vapeur;Four vapeur;Four
+1;523409;Whirlpool;857745861500;AKP458/IX;Four Vapeur;Four vapeur;Four
+1;523410;Whirlpool;857745861501;AKP458/IX;Four Vapeur;Four vapeur;Four
+1;523411;Whirlpool;857745861502;AKP458/IX;Four Vapeur;Four vapeur;Four
+1;523412;Whirlpool;857745861503;AKP458/IX;Four Vapeur;Four vapeur;Four
+1;523413;Whirlpool;857745861504;AKP458/IX;Four Vapeur;Four vapeur;Four
+1;523414;Whirlpool;857745861505;AKP458/IX;Four Vapeur;Four vapeur;Four
+1;523419;Whirlpool;857745861520;AKP458/NB;Four Vapeur;Four vapeur;Four
+1;523420;Whirlpool;857745861521;AKP458/NB;Four Vapeur;Four vapeur;Four
+1;523421;Whirlpool;857745861522;AKP458/NB;Four Vapeur;Four vapeur;Four
+1;523422;Whirlpool;857745861523;AKP458/NB;Four Vapeur;Four vapeur;Four
+1;523423;Whirlpool;857745861524;AKP458/NB;Four Vapeur;Four vapeur;Four
+1;523424;Whirlpool;857745861525;AKP458/NB;Four Vapeur;Four vapeur;Four
+1;523425;Whirlpool;857745861526;AKP458/NB;Four Vapeur;Four vapeur;Four
+1;523415;Whirlpool;857745861510;AKP458/WH;Four Vapeur;Four vapeur;Four
+1;523416;Whirlpool;857745861511;AKP458/WH;Four Vapeur;Four vapeur;Four
+1;523417;Whirlpool;857745861512;AKP458/WH;Four Vapeur;Four vapeur;Four
+1;523418;Whirlpool;857745861514;AKP458/WH;Four Vapeur;Four vapeur;Four
+1;523426;Whirlpool;857745910500;AKP459/IX;Four Vapeur;Four vapeur;Four
+1;523427;Whirlpool;857745910501;AKP459/IX;Four Vapeur;Four vapeur;Four
+1;523428;Whirlpool;857745910502;AKP459/IX;Four Vapeur;Four vapeur;Four
+1;523429;Whirlpool;857745910503;AKP459/IX;Four Vapeur;Four vapeur;Four
+1;523430;Whirlpool;857745910504;AKP459/IX;Four Vapeur;Four vapeur;Four
+1;512221;Whirlpool;39945180000;AKP460/IX;;Four vapeur;Four
+1;523431;Whirlpool;857746010000;AKP460/IX;;Four vapeur;Four
+1;523432;Whirlpool;857746010001;AKP460/IX;;Four vapeur;Four
+1;523434;Whirlpool;857746010500;AKP460/IX;;Four vapeur;Four
+1;523435;Whirlpool;857746010501;AKP460/IX;;Four vapeur;Four
+1;523436;Whirlpool;857746010502;AKP460/IX;;Four vapeur;Four
+1;523437;Whirlpool;857746010503;AKP460/IX;;Four vapeur;Four
+1;523438;Whirlpool;857746010504;AKP460/IX;;Four vapeur;Four
+1;512222;Whirlpool;39945190000;AKP460/NB;;Four vapeur;Four
+1;523433;Whirlpool;857746010010;AKP460/NB;;Four vapeur;Four
+1;523439;Whirlpool;857746010510;AKP460/NB;;Four vapeur;Four
+1;523440;Whirlpool;857746010511;AKP460/NB;;Four vapeur;Four
+1;523441;Whirlpool;857746010512;AKP460/NB;;Four vapeur;Four
+1;523442;Whirlpool;857746010513;AKP460/NB;;Four vapeur;Four
+1;523443;Whirlpool;857746010514;AKP460/NB;;Four vapeur;Four
+1;523444;Whirlpool;857746110000;AKP461/IX;Four Vapeur;Four vapeur;Four
+1;523447;Whirlpool;857746110500;AKP461/IX;Four Vapeur;Four vapeur;Four
+1;523448;Whirlpool;857746110501;AKP461/IX;Four Vapeur;Four vapeur;Four
+1;523449;Whirlpool;857746110502;AKP461/IX;Four Vapeur;Four vapeur;Four
+1;523450;Whirlpool;857746110503;AKP461/IX;Four Vapeur;Four vapeur;Four
+1;523451;Whirlpool;857746110504;AKP461/IX;Four Vapeur;Four vapeur;Four
+1;523445;Whirlpool;857746110010;AKP461/NB;Four Vapeur;Four vapeur;Four
+1;523452;Whirlpool;857746110510;AKP461/NB;Four Vapeur;Four vapeur;Four
+1;523453;Whirlpool;857746110511;AKP461/NB;Four Vapeur;Four vapeur;Four
+1;523454;Whirlpool;857746110512;AKP461/NB;Four Vapeur;Four vapeur;Four
+1;523455;Whirlpool;857746110513;AKP461/NB;Four Vapeur;Four vapeur;Four
+1;523456;Whirlpool;857746110514;AKP461/NB;Four Vapeur;Four vapeur;Four
+1;523457;Whirlpool;857746110515;AKP461/NB;Four Vapeur;Four vapeur;Four
+1;523446;Whirlpool;857746110020;AKP461/WH;Four Vapeur;Four vapeur;Four
+1;523458;Whirlpool;857746110520;AKP461/WH;Four Vapeur;Four vapeur;Four
+1;523459;Whirlpool;857746110521;AKP461/WH;Four Vapeur;Four vapeur;Four
+1;523460;Whirlpool;857746110522;AKP461/WH;Four Vapeur;Four vapeur;Four
+1;523461;Whirlpool;857746110523;AKP461/WH;Four Vapeur;Four vapeur;Four
+1;523462;Whirlpool;857746110524;AKP461/WH;Four Vapeur;Four vapeur;Four
+1;523463;Whirlpool;857746210000;AKP462/IX;Four Vapeur;Four vapeur;Four
+1;523464;Whirlpool;857746210500;AKP462/IX;Four Vapeur;Four vapeur;Four
+1;523465;Whirlpool;857746210501;AKP462/IX;Four Vapeur;Four vapeur;Four
+1;523466;Whirlpool;857746210502;AKP462/IX;Four Vapeur;Four vapeur;Four
+1;523467;Whirlpool;857746210503;AKP462/IX;Four Vapeur;Four vapeur;Four
+1;523468;Whirlpool;857746210504;AKP462/IX;Four Vapeur;Four vapeur;Four
+1;523469;Whirlpool;857746210505;AKP462/IX;Four Vapeur;Four vapeur;Four
+1;523470;Whirlpool;857746318500;AKP463/IX;;Four vapeur;Four
+1;523471;Whirlpool;857746418500;AKP464/IX;Four Vapeur;Four vapeur;Four
+1;523472;Whirlpool;857746529500;AKP465/IX;Four Vapeur;Four vapeur;Four
+1;523473;Whirlpool;857746529501;AKP465/IX;Four Vapeur;Four vapeur;Four
+1;523474;Whirlpool;857746529502;AKP465/IX;Four Vapeur;Four vapeur;Four
+1;523475;Whirlpool;857746529503;AKP465/IX;Four Vapeur;Four vapeur;Four
+1;523476;Whirlpool;857746529510;AKP465/NB;Four Vapeur;Four vapeur;Four
+1;523477;Whirlpool;857746610500;AKP466/IX;Four Vapeur;Four vapeur;Four
+1;523478;Whirlpool;857746610501;AKP466/IX;Four Vapeur;Four vapeur;Four
+1;523479;Whirlpool;857746610503;AKP466/IX;Four Vapeur;Four vapeur;Four
+1;523480;Whirlpool;857746710500;AKP467/IX;Four Vapeur;Four vapeur;Four
+1;523481;Whirlpool;857746710501;AKP467/IX;Four Vapeur;Four vapeur;Four
+1;523482;Whirlpool;857746710502;AKP467/IX;Four Vapeur;Four vapeur;Four
+1;523483;Whirlpool;857746710503;AKP467/IX;Four Vapeur;Four vapeur;Four
+1;523484;Whirlpool;857746810000;AKP468/IX;Four Vapeur;Four vapeur;Four
+1;523485;Whirlpool;857746810500;AKP468/IX;Four Vapeur;Four vapeur;Four
+1;523486;Whirlpool;857746810501;AKP468/IX;Four Vapeur;Four vapeur;Four
+1;523487;Whirlpool;857746810502;AKP468/IX;Four Vapeur;Four vapeur;Four
+1;523488;Whirlpool;857746810503;AKP468/IX;Four Vapeur;Four vapeur;Four
+1;523489;Whirlpool;857746810504;AKP468/IX;Four Vapeur;Four vapeur;Four
+1;523490;Whirlpool;857746901500;AKP469/IX;;Four vapeur;Four
+1;523491;Whirlpool;857746901501;AKP469/IX;;Four vapeur;Four
+1;523492;Whirlpool;857746901502;AKP469/IX;;Four vapeur;Four
+1;523493;Whirlpool;857746901503;AKP469/IX;;Four vapeur;Four
+1;523494;Whirlpool;857746901504;AKP469/IX;;Four vapeur;Four
+1;523495;Whirlpool;857747022500;AKP470/IX;;Four vapeur;Four
+1;523496;Whirlpool;857747022501;AKP470/IX;;Four vapeur;Four
+1;523497;Whirlpool;857747022502;AKP470/IX;;Four vapeur;Four
+1;523498;Whirlpool;857747022504;AKP470/IX;;Four vapeur;Four
+1;523499;Whirlpool;857747101500;AKP471/IX;Four Vapeur;Four vapeur;Four
+1;523500;Whirlpool;857747101501;AKP471/IX;Four Vapeur;Four vapeur;Four
+1;523501;Whirlpool;857747101502;AKP471/IX;Four Vapeur;Four vapeur;Four
+1;523502;Whirlpool;857747101503;AKP471/IX;Four Vapeur;Four vapeur;Four
+1;523511;Whirlpool;857747101530;AKP471/IX/01;;Four vapeur;Four
+1;523503;Whirlpool;857747101510;AKP471/NB;Four Vapeur;Four vapeur;Four
+1;523504;Whirlpool;857747101511;AKP471/NB;Four Vapeur;Four vapeur;Four
+1;523505;Whirlpool;857747101512;AKP471/NB;Four Vapeur;Four vapeur;Four
+1;523506;Whirlpool;857747101513;AKP471/NB;Four Vapeur;Four vapeur;Four
+1;523512;Whirlpool;857747101540;AKP471/NB/01;;Four vapeur;Four
+1;523507;Whirlpool;857747101520;AKP471/WH;Four Vapeur;Four vapeur;Four
+1;523508;Whirlpool;857747101521;AKP471/WH;Four Vapeur;Four vapeur;Four
+1;523509;Whirlpool;857747101522;AKP471/WH;Four Vapeur;Four vapeur;Four
+1;523510;Whirlpool;857747101523;AKP471/WH;Four Vapeur;Four vapeur;Four
+1;523514;Whirlpool;857747210500;AKP472/IX;Four Vapeur;Four vapeur;Four
+1;523515;Whirlpool;857747210501;AKP472/IX;Four Vapeur;Four vapeur;Four
+1;523516;Whirlpool;857747210502;AKP472/IX;Four Vapeur;Four vapeur;Four
+1;523517;Whirlpool;857747210503;AKP472/IX;Four Vapeur;Four vapeur;Four
+1;523518;Whirlpool;857747329500;AKP473/IX;Four Vapeur;Four vapeur;Four
+1;523519;Whirlpool;857747329501;AKP473/IX;Four Vapeur;Four vapeur;Four
+1;523520;Whirlpool;857747329502;AKP473/IX;Four Vapeur;Four vapeur;Four
+1;523521;Whirlpool;857747329503;AKP473/IX;Four Vapeur;Four vapeur;Four
+1;523522;Whirlpool;857747329504;AKP473/IX;Four Vapeur;Four vapeur;Four
+1;523530;Whirlpool;857747329530;AKP473/IX/01;Four Vapeur;Four vapeur;Four
+1;523526;Whirlpool;857747329520;AKP473/NB;Four Vapeur;Four vapeur;Four
+1;523527;Whirlpool;857747329521;AKP473/NB;Four Vapeur;Four vapeur;Four
+1;523528;Whirlpool;857747329522;AKP473/NB;Four Vapeur;Four vapeur;Four
+1;523529;Whirlpool;857747329523;AKP473/NB;Four Vapeur;Four vapeur;Four
+1;523532;Whirlpool;857747329550;AKP473/NB/01;Four Vapeur;Four vapeur;Four
+1;523523;Whirlpool;857747329510;AKP473/WH;Four Vapeur;Four vapeur;Four
+1;523524;Whirlpool;857747329511;AKP473/WH;Four Vapeur;Four vapeur;Four
+1;523525;Whirlpool;857747329512;AKP473/WH;Four Vapeur;Four vapeur;Four
+1;523531;Whirlpool;857747329540;AKP473/WH/01;Four Vapeur;Four vapeur;Four
+1;523533;Whirlpool;857747461500;AKP474/IX;Four Vapeur;Four vapeur;Four
+1;523534;Whirlpool;857747461510;AKP474/WH;Four Vapeur;Four vapeur;Four
+1;523535;Whirlpool;857747501500;AKP475/IX;;Four vapeur;Four
+1;523536;Whirlpool;857747501501;AKP475/IX;;Four vapeur;Four
+1;523537;Whirlpool;857747501503;AKP475/IX;;Four vapeur;Four
+1;523538;Whirlpool;857749015500;AKP490/IX;Four Vapeur;Four vapeur;Four
+1;523540;Whirlpool;857749015520;AKP490/NB;Four Vapeur;Four vapeur;Four
+1;523539;Whirlpool;857749015510;AKP490/WH;Four Vapeur;Four vapeur;Four
+1;523541;Whirlpool;857749115500;AKP491/IX;Four Vapeur;Four vapeur;Four
+1;523543;Whirlpool;857749115520;AKP491/NB;Four Vapeur;Four vapeur;Four
+1;523542;Whirlpool;857749115510;AKP491/WH;Four Vapeur;Four vapeur;Four
+1;523544;Whirlpool;857750120050;AKP501/NB;;Four vapeur;Four
+1;523564;Whirlpool;857751029501;AKP510/MR;Four Vapeur;Four vapeur;Four
+1;523565;Whirlpool;857751029502;AKP510/MR;Four Vapeur;Four vapeur;Four
+1;523566;Whirlpool;857751029503;AKP510/MR;Four Vapeur;Four vapeur;Four
+1;523595;Whirlpool;857753029500;AKP530/MR;Four Vapeur;Four vapeur;Four
+1;523596;Whirlpool;857753029501;AKP530/MR;Four Vapeur;Four vapeur;Four
+1;523597;Whirlpool;857753029502;AKP530/MR;Four Vapeur;Four vapeur;Four
+1;523601;Whirlpool;857753361500;AKP533/IX;Four Vapeur;Four vapeur;Four
+1;523602;Whirlpool;857753361501;AKP533/IX;Four Vapeur;Four vapeur;Four
+1;523603;Whirlpool;857753361502;AKP533/IX;Four Vapeur;Four vapeur;Four
+1;523604;Whirlpool;857753361503;AKP533/IX;Four Vapeur;Four vapeur;Four
+1;523605;Whirlpool;857753901500;AKP539/IX;;Four vapeur;Four
+1;523606;Whirlpool;857753901501;AKP539/IX;;Four vapeur;Four
+1;523607;Whirlpool;857753901502;AKP539/IX;;Four vapeur;Four
+1;523608;Whirlpool;857753901503;AKP539/IX;;Four vapeur;Four
+1;523609;Whirlpool;857753901510;AKP539/NB;;Four vapeur;Four
+1;523610;Whirlpool;857753901511;AKP539/NB;;Four vapeur;Four
+1;523611;Whirlpool;857753901512;AKP539/NB;;Four vapeur;Four
+1;523612;Whirlpool;857753901513;AKP539/NB;;Four vapeur;Four
+1;523613;Whirlpool;857754001500;AKP540/IX;Four Vapeur;Four vapeur;Four
+1;523614;Whirlpool;857754001501;AKP540/IX;Four Vapeur;Four vapeur;Four
+1;523615;Whirlpool;857754001502;AKP540/IX;Four Vapeur;Four vapeur;Four
+1;523616;Whirlpool;857754101500;AKP541IX;;Four vapeur;Four
+1;523617;Whirlpool;857754101501;AKP541IX;;Four vapeur;Four
+1;523618;Whirlpool;857754101502;AKP541IX;;Four vapeur;Four
+1;523619;Whirlpool;857754101503;AKP541IX;;Four vapeur;Four
+1;523627;Whirlpool;857754301500;AKP543IX;;Four vapeur;Four
+1;523628;Whirlpool;857754301501;AKP543IX;;Four vapeur;Four
+1;523629;Whirlpool;857754301502;AKP543IX;;Four vapeur;Four
+1;523630;Whirlpool;857754301503;AKP543IX;;Four vapeur;Four
+1;523633;Whirlpool;857754301520;AKP543NB;;Four vapeur;Four
+1;523634;Whirlpool;857754301521;AKP543NB;;Four vapeur;Four
+1;523631;Whirlpool;857754301510;AKP543WH;;Four vapeur;Four
+1;523632;Whirlpool;857754301511;AKP543WH;;Four vapeur;Four
+1;523635;Whirlpool;857754401000;AKP544IX;;Four vapeur;Four
+1;523636;Whirlpool;857754501000;AKP545IX;Four Vapeur;Four vapeur;Four
+1;523637;Whirlpool;857754601000;AKP546IX;;Four vapeur;Four
+1;523638;Whirlpool;857754701500;AKP547/IX;;Four vapeur;Four
+1;523639;Whirlpool;857754701501;AKP547/IX;;Four vapeur;Four
+1;523640;Whirlpool;857754701502;AKP547/IX;;Four vapeur;Four
+1;523641;Whirlpool;857754701503;AKP547/IX;;Four vapeur;Four
+1;523642;Whirlpool;857754801500;AKP548IX;;Four vapeur;Four
+1;523643;Whirlpool;857754801501;AKP548IX;;Four vapeur;Four
+1;523644;Whirlpool;857754801502;AKP548IX;;Four vapeur;Four
+1;523645;Whirlpool;857754901500;AKP549IX;;Four vapeur;Four
+1;523646;Whirlpool;857754901501;AKP549IX;;Four vapeur;Four
+1;523647;Whirlpool;857754901502;AKP549IX;;Four vapeur;Four
+1;523648;Whirlpool;857754901503;AKP549IX;;Four vapeur;Four
+1;523675;Whirlpool;857755529510;AKP555/05IX;Four Vapeur;Four vapeur;Four
+1;523676;Whirlpool;857755529513;AKP555/05IX;Four Vapeur;Four vapeur;Four
+1;523677;Whirlpool;857755529514;AKP555/05IX;Four Vapeur;Four vapeur;Four
+1;523678;Whirlpool;857755801500;AKP558IX;;Four vapeur;Four
+1;523679;Whirlpool;857755801501;AKP558IX;;Four vapeur;Four
+1;523680;Whirlpool;857755801502;AKP558IX;;Four vapeur;Four
+1;523681;Whirlpool;857755901500;AKP559/IX;;Four vapeur;Four
+1;523682;Whirlpool;857755901501;AKP559/IX;;Four vapeur;Four
+1;523683;Whirlpool;857755901502;AKP559/IX;;Four vapeur;Four
+1;523684;Whirlpool;857755901503;AKP559/IX;;Four vapeur;Four
+1;523685;Whirlpool;857755901504;AKP559/IX;;Four vapeur;Four
+1;523686;Whirlpool;857755901510;AKP559/IX/01;;Four vapeur;Four
+1;523687;Whirlpool;857755901511;AKP559/IX/01;;Four vapeur;Four
+1;523688;Whirlpool;857755901512;AKP559/IX/01;;Four vapeur;Four
+1;523689;Whirlpool;857756038500;AKP560IX;;Four vapeur;Four
+1;523690;Whirlpool;857756038501;AKP560IX;;Four vapeur;Four
+1;523691;Whirlpool;857756038502;AKP560IX;;Four vapeur;Four
+1;523692;Whirlpool;857756038503;AKP560IX;;Four vapeur;Four
+1;523693;Whirlpool;857756038504;AKP560IX;;Four vapeur;Four
+1;523694;Whirlpool;857756038505;AKP560IX;;Four vapeur;Four
+1;523695;Whirlpool;857756038506;AKP560IX;;Four vapeur;Four
+1;523708;Whirlpool;857756038530;AKP560/IX/01;;Four vapeur;Four
+1;523709;Whirlpool;857756038531;AKP560/IX/01;;Four vapeur;Four
+1;523710;Whirlpool;857756038532;AKP560/IX/01;;Four vapeur;Four
+1;523711;Whirlpool;857756038533;AKP560/IX/01;;Four vapeur;Four
+1;523712;Whirlpool;857756038534;AKP560/IX/01;;Four vapeur;Four
+1;523696;Whirlpool;857756038510;AKP560/NB;;Four vapeur;Four
+1;523697;Whirlpool;857756038511;AKP560/NB;;Four vapeur;Four
+1;523698;Whirlpool;857756038512;AKP560/NB;;Four vapeur;Four
+1;523699;Whirlpool;857756038513;AKP560/NB;;Four vapeur;Four
+1;523700;Whirlpool;857756038514;AKP560/NB;;Four vapeur;Four
+1;523701;Whirlpool;857756038515;AKP560/NB;;Four vapeur;Four
+1;523702;Whirlpool;857756038520;AKP560/WH;;Four vapeur;Four
+1;523703;Whirlpool;857756038521;AKP560/WH;;Four vapeur;Four
+1;523704;Whirlpool;857756038522;AKP560/WH;;Four vapeur;Four
+1;523705;Whirlpool;857756038523;AKP560/WH;;Four vapeur;Four
+1;523706;Whirlpool;857756038524;AKP560/WH;;Four vapeur;Four
+1;523707;Whirlpool;857756038525;AKP560/WH;;Four vapeur;Four
+1;523713;Whirlpool;857756101000;AKP561IX;Four Vapeur;Four vapeur;Four
+1;523714;Whirlpool;857756101001;AKP561IX;Four Vapeur;Four vapeur;Four
+1;523715;Whirlpool;857756101002;AKP561IX;Four Vapeur;Four vapeur;Four
+1;523716;Whirlpool;857756201500;AKP562/IX;;Four vapeur;Four
+1;523717;Whirlpool;857756201501;AKP562/IX;;Four vapeur;Four
+1;523718;Whirlpool;857756201502;AKP562/IX;;Four vapeur;Four
+1;523719;Whirlpool;857756201503;AKP562/IX;;Four vapeur;Four
+1;523720;Whirlpool;857756301500;AKP563/IX;;Four vapeur;Four
+1;523721;Whirlpool;857756301501;AKP563/IX;;Four vapeur;Four
+1;523722;Whirlpool;857756301502;AKP563/IX;;Four vapeur;Four
+1;523723;Whirlpool;857756301510;AKP563/NB;;Four vapeur;Four
+1;523724;Whirlpool;857756301511;AKP563/NB;;Four vapeur;Four
+1;523725;Whirlpool;857756301520;AKP563/WH;;Four vapeur;Four
+1;523726;Whirlpool;857756301521;AKP563/WH;;Four vapeur;Four
+1;523727;Whirlpool;857756510500;AKP565/IX;;Four vapeur;Four
+1;523728;Whirlpool;857756510501;AKP565/IX;;Four vapeur;Four
+1;523729;Whirlpool;857756510502;AKP565/IX;;Four vapeur;Four
+1;523730;Whirlpool;857756510510;AKP565/IX/01;;Four vapeur;Four
+1;523731;Whirlpool;857756510511;AKP565/IX/01;;Four vapeur;Four
+1;523732;Whirlpool;857756510512;AKP565/IX/01;;Four vapeur;Four
+1;523733;Whirlpool;857756510513;AKP565/IX/01;;Four vapeur;Four
+1;523734;Whirlpool;857756510515;AKP565/IX/01;;Four vapeur;Four
+1;523735;Whirlpool;857756610500;AKP566/IX;;Four vapeur;Four
+1;523737;Whirlpool;857756710510;AKP567/IX/01;Four Vapeur;Four vapeur;Four
+1;523738;Whirlpool;857756710511;AKP567/IX/01;Four Vapeur;Four vapeur;Four
+1;523739;Whirlpool;857756710512;AKP567/IX/01;Four Vapeur;Four vapeur;Four
+1;523740;Whirlpool;857756710513;AKP567/IX/01;Four Vapeur;Four vapeur;Four
+1;523741;Whirlpool;857756710514;AKP567/IX/01;Four Vapeur;Four vapeur;Four
+1;523743;Whirlpool;857756810510;AKP568/IX/01;Four Vapeur;Four vapeur;Four
+1;523744;Whirlpool;857756810511;AKP568/IX/01;Four Vapeur;Four vapeur;Four
+1;523745;Whirlpool;857756810512;AKP568/IX/01;Four Vapeur;Four vapeur;Four
+1;523746;Whirlpool;857756810513;AKP568/IX/01;Four Vapeur;Four vapeur;Four
+1;523747;Whirlpool;857756810514;AKP568/IX/01;Four Vapeur;Four vapeur;Four
+1;523748;Whirlpool;857756910500;AKP568/IX/02;Four Vapeur;Four vapeur;Four
+1;523749;Whirlpool;857756910502;AKP568/IX/02;Four Vapeur;Four vapeur;Four
+1;523750;Whirlpool;857756910503;AKP568/IX/02;Four Vapeur;Four vapeur;Four
+1;523751;Whirlpool;857756910504;AKP568/IX/02;Four Vapeur;Four vapeur;Four
+1;523752;Whirlpool;857757001500;AKP570IX;;Four vapeur;Four
+1;523753;Whirlpool;857757001501;AKP570IX;;Four vapeur;Four
+1;523754;Whirlpool;857758929500;AKP589/IX;;Four vapeur;Four
+1;523755;Whirlpool;857758929501;AKP589/IX;;Four vapeur;Four
+1;523756;Whirlpool;857758929502;AKP589/IX;;Four vapeur;Four
+1;523757;Whirlpool;857758929503;AKP589/IX;;Four vapeur;Four
+1;523760;Whirlpool;857758929530;AKP589/MR;;Four vapeur;Four
+1;523758;Whirlpool;857758929510;AKP589/NB;;Four vapeur;Four
+1;523759;Whirlpool;857758929520;AKP 589/WH;;Four vapeur;Four
+1;523866;Whirlpool;857766001500;AKP660/IX;;Four vapeur;Four
+1;523867;Whirlpool;857766001510;AKP660/IX/01;;Four vapeur;Four
+1;523868;Whirlpool;857766101500;AKP661/IX;Four Vapeur;Four vapeur;Four
+1;523869;Whirlpool;857766101510;AKP661/IX/01;;Four vapeur;Four
+1;523870;Whirlpool;857766201500;AKP662/IX;Four Vapeur;Four vapeur;Four
+1;523871;Whirlpool;857766201501;AKP662/IX;Four Vapeur;Four vapeur;Four
+1;523872;Whirlpool;857766201510;AKP662/IX/01;Four Vapeur;Four vapeur;Four
+1;523873;Whirlpool;857767101500;AKP671/IX;Four Vapeur;Four vapeur;Four
+1;523874;Whirlpool;857767101501;AKP671/IX;Four Vapeur;Four vapeur;Four
+1;523875;Whirlpool;857767101502;AKP671/IX;Four Vapeur;Four vapeur;Four
+1;523876;Whirlpool;857767101503;AKP671/IX;Four Vapeur;Four vapeur;Four
+1;523877;Whirlpool;857767101504;AKP671/IX;Four Vapeur;Four vapeur;Four
+1;523881;Whirlpool;857768101001;AKP681/IX;;Four vapeur;Four
+1;523882;Whirlpool;857768101010;AKP681IX;Four Vapeur;Four vapeur;Four
+1;523880;Whirlpool;857768101000;AKP681NB;Four Vapeur;Four vapeur;Four
+1;523883;Whirlpool;857768101510;AKP681/NB;;Four vapeur;Four
+1;523884;Whirlpool;857768101511;AKP681/NB;;Four vapeur;Four
+1;523885;Whirlpool;857768101512;AKP681/NB;;Four vapeur;Four
+1;523886;Whirlpool;857768101520;AKP681/WH;;Four vapeur;Four
+1;523887;Whirlpool;857768101521;AKP681/WH;;Four vapeur;Four
+1;523888;Whirlpool;857768101522;AKP681/WH;;Four vapeur;Four
+1;523890;Whirlpool;857768201001;AKP682/IX;;Four vapeur;Four
+1;523892;Whirlpool;857768201020;AKP682IX;Four Vapeur;Four vapeur;Four
+1;523893;Whirlpool;857768201500;AKP682/IX;;Four vapeur;Four
+1;523894;Whirlpool;857768201501;AKP682/IX;;Four vapeur;Four
+1;523891;Whirlpool;857768201010;AKP682/JA;Four Vapeur;Four vapeur;Four
+1;523889;Whirlpool;857768201000;AKP682NA;Four Vapeur;Four vapeur;Four
+1;523895;Whirlpool;857768201510;AKP682/NB;;Four vapeur;Four
+1;523896;Whirlpool;857768201511;AKP682NB;;Four vapeur;Four
+1;523897;Whirlpool;857768201512;AKP682/NB;;Four vapeur;Four
+1;523898;Whirlpool;857768201520;AKP682/WH;;Four vapeur;Four
+1;523899;Whirlpool;857768201521;AKP682/WH;;Four vapeur;Four
+1;523900;Whirlpool;857768201522;AKP682/WH;;Four vapeur;Four
+1;523938;Whirlpool;857772801500;AKP728IX;Four Vapeur;Four vapeur;Four
+1;523939;Whirlpool;857772801501;AKP728IX;Four Vapeur;Four vapeur;Four
+1;523940;Whirlpool;857772801502;AKP728IX;Four Vapeur;Four vapeur;Four
+1;523941;Whirlpool;857772901500;AKP729IX;Four Vapeur;Four vapeur;Four
+1;523942;Whirlpool;857772901501;AKP729IX;Four Vapeur;Four vapeur;Four
+1;523943;Whirlpool;857773101500;AKP731IX;Four Vapeur;Four vapeur;Four
+1;523944;Whirlpool;857773201500;AKP732IX;Four Vapeur;Four vapeur;Four
+1;523945;Whirlpool;857773201501;AKP732IX;Four Vapeur;Four vapeur;Four
+1;523946;Whirlpool;857773301500;AKP733IX;Four Vapeur;Four vapeur;Four
+1;523947;Whirlpool;857773501500;AKP735IX;Four Vapeur;Four vapeur;Four
+1;523948;Whirlpool;857773701500;AKP737IX;Four Vapeur;Four vapeur;Four
+1;523949;Whirlpool;857773701501;AKP737IX;Four Vapeur;Four vapeur;Four
+1;512223;Whirlpool;39945280000;AKP738IX;Four Vapeur;Four vapeur;Four
+1;523950;Whirlpool;857773801500;AKP738IX;Four Vapeur;Four vapeur;Four
+1;523951;Whirlpool;857773801501;AKP738IX;Four Vapeur;Four vapeur;Four
+1;523956;Whirlpool;857773801530;AKP738IX;Four Vapeur;Four vapeur;Four
+1;523957;Whirlpool;857773801531;AKP738IX;Four Vapeur;Four vapeur;Four
+1;512224;Whirlpool;39945300000;AKP738NB;Four Vapeur;Four vapeur;Four
+1;523954;Whirlpool;857773801520;AKP738NB;Four Vapeur;Four vapeur;Four
+1;523955;Whirlpool;857773801521;AKP738NB;Four Vapeur;Four vapeur;Four
+1;523952;Whirlpool;857773801510;AKP738WH;Four Vapeur;Four vapeur;Four
+1;523953;Whirlpool;857773801511;AKP738WH;Four Vapeur;Four vapeur;Four
+1;523958;Whirlpool;857773901500;AKP739IX;Four Vapeur;Four vapeur;Four
+1;523959;Whirlpool;857773901501;AKP739IX;Four Vapeur;Four vapeur;Four
+1;523960;Whirlpool;857774001500;AKP740IX;Four Vapeur;Four vapeur;Four
+1;523961;Whirlpool;857774101500;AKP741IX;Four Vapeur;Four vapeur;Four
+1;523962;Whirlpool;857774101501;AKP741IX;Four Vapeur;Four vapeur;Four
+1;523963;Whirlpool;857774201500;AKP742IX;Four Vapeur;Four vapeur;Four
+1;523964;Whirlpool;857774301010;AKP743NB;Four Vapeur;Four vapeur;Four
+1;523965;Whirlpool;857774301020;AKP743WH;Four Vapeur;Four vapeur;Four
+1;513394;Whirlpool;61003360000;AKP744IX;Four Vapeur;Four vapeur;Four
+1;523966;Whirlpool;857774401500;AKP744IX;Four Vapeur;Four vapeur;Four
+1;523967;Whirlpool;857774501500;AKP745IX;Four Vapeur;Four vapeur;Four
+1;508273;Whirlpool;14945330000;AKP745NB;Four Vapeur;Four vapeur;Four
+1;523969;Whirlpool;857774501520;AKP745NB;Four Vapeur;Four vapeur;Four
+1;523968;Whirlpool;857774501510;AKP745WH;Four Vapeur;Four vapeur;Four
+1;523970;Whirlpool;857774601700;AKP 7460 IX;Four Vapeur;Four vapeur;Four
+1;530458;Whirlpool;Q0945340000;AKP 7460 IX;Four Vapeur;Four vapeur;Four
+1;513651;Whirlpool;757774601701;AKP 7460 IX1;Four Vapeur;Four vapeur;Four
+1;523971;Whirlpool;857774601701;AKP 7460 IX1;Four Vapeur;Four vapeur;Four
+1;530459;Whirlpool;Q0945340001;AKP 7460 IX1;Four Vapeur;Four vapeur;Four
+1;524011;Whirlpool;857778001500;AKP780IX;Four Vapeur;Four vapeur;Four
+1;524012;Whirlpool;857778201500;AKP782IX;Four Vapeur;Four vapeur;Four
+1;524013;Whirlpool;857778401500;AKP784IX;Four Vapeur;Four vapeur;Four
+1;524014;Whirlpool;857778501500;AKP785IX;Four Vapeur;Four vapeur;Four
+1;524015;Whirlpool;857778501530;AKP785IX;Four Vapeur;Four vapeur;Four
+1;513415;Whirlpool;61012730000;AKP786IX;Four Vapeur;Four vapeur;Four
+1;513652;Whirlpool;757778601500;AKP 786 IX;Four Vapeur;Four vapeur;Four
+1;524016;Whirlpool;857778601500;AKP 786 IX;Four Vapeur;Four vapeur;Four
+1;524018;Whirlpool;857778601520;AKP786NB;Four Vapeur;Four vapeur;Four
+1;524017;Whirlpool;857778601510;AKP786WH;Four Vapeur;Four vapeur;Four
+1;515395;Whirlpool;759991580840;AKP9140CIX;Four Vapeur;Four vapeur;Four
+1;515396;Whirlpool;759991580841;AKP9140CIX;Four Vapeur;Four vapeur;Four
+1;514636;Whirlpool;759991541210;AKP9785IXAUS;Four Vapeur;Four vapeur;Four
+1;514637;Whirlpool;759991541211;AKP9785IXAUS;Four Vapeur;Four vapeur;Four
+1;514350;Whirlpool;759991531170;AKP9786IX;Four Vapeur;Four vapeur;Four
+1;514351;Whirlpool;759991531180;AKP9786NB;Four Vapeur;Four vapeur;Four
+1;514352;Whirlpool;759991531181;AKP9786NB;Four Vapeur;Four vapeur;Four
+1;514640;Whirlpool;759991541230;AKP9854CIX;Four Vapeur;Four vapeur;Four
+1;522752;Whirlpool;857726001500;AKPC260/IX;;Four vapeur;Four
+1;522753;Whirlpool;857726001501;AKPC260/IX;;Four vapeur;Four
+1;517360;Whirlpool;852565838100;AKPM6580/IX;Four Vapeur;Four vapeur;Four
+1;517361;Whirlpool;852565838101;AKPM6580/IX;Four Vapeur;Four vapeur;Four
+1;517362;Whirlpool;852565838110;AKPM6580/IXL;Four Vapeur;Four vapeur;Four
+1;517363;Whirlpool;852565838111;AKPM6580/IXL;Four Vapeur;Four vapeur;Four
+1;517364;Whirlpool;852565838112;AKPM6580/IXL;Four Vapeur;Four vapeur;Four
+1;517365;Whirlpool;852565838113;AKPM6580/IXL;Four Vapeur;Four vapeur;Four
+1;517353;Whirlpool;852565838000;AKPM658/IX;Four Vapeur;Four vapeur;Four
+1;517354;Whirlpool;852565838001;AKPM658/IX;Four Vapeur;Four vapeur;Four
+1;517355;Whirlpool;852565838002;AKPM658/IX;Four Vapeur;Four vapeur;Four
+1;517356;Whirlpool;852565838003;AKPM658/IX;Four Vapeur;Four vapeur;Four
+1;517357;Whirlpool;852565838004;AKPM658/IX;Four Vapeur;Four vapeur;Four
+1;517358;Whirlpool;852565838005;AKPM658/IX;Four Vapeur;Four vapeur;Four
+1;517359;Whirlpool;852565838006;AKPM658/IX;Four Vapeur;Four vapeur;Four
+1;517516;Whirlpool;852574961000;AKPM749/IX;Four Vapeur;Four vapeur;Four
+1;517517;Whirlpool;852574961001;AKPM749/IX;Four Vapeur;Four vapeur;Four
+1;517518;Whirlpool;852574961002;AKPM749/IX;Four Vapeur;Four vapeur;Four
+1;517674;Whirlpool;852575838000;AKPM758/IX;Four Vapeur;Four vapeur;Four
+1;517675;Whirlpool;852575838001;AKPM758/IX;;Four vapeur;Four
+1;517676;Whirlpool;852575838010;AKPM758/NB;Four Vapeur;Four vapeur;Four
+1;517677;Whirlpool;852575838011;AKPM758/NB;;Four vapeur;Four
+1;517678;Whirlpool;852575838012;AKPM758/NB;;Four vapeur;Four
+1;517679;Whirlpool;852575838013;AKPM758/NB;;Four vapeur;Four
+1;517680;Whirlpool;852575838014;AKPM758/NB;;Four vapeur;Four
+1;517681;Whirlpool;852575938000;AKPM759/IX;Four Vapeur;Four vapeur;Four
+1;517682;Whirlpool;852575938001;AKPM759/IX;;Four vapeur;Four
+1;517683;Whirlpool;852575938002;AKPM759/IX;;Four vapeur;Four
+1;517684;Whirlpool;852575938003;AKPM759/IX;;Four vapeur;Four
+1;517685;Whirlpool;852575938004;AKPM759/IX;;Four vapeur;Four
+1;517689;Whirlpool;852575953000;AKPM759/IX;;Four vapeur;Four
+1;517690;Whirlpool;852575953001;AKPM759/IX;;Four vapeur;Four
+1;517686;Whirlpool;852575938010;AKPM759/IXL;;Four vapeur;Four
+1;517687;Whirlpool;852575938011;AKPM759/IXL;Four Vapeur;Four vapeur;Four
+1;517688;Whirlpool;852575938012;AKPM759/IXL;Four Vapeur;Four vapeur;Four
+1;517693;Whirlpool;852575956000;AKPM759IXL;;Four vapeur;Four
+1;517694;Whirlpool;852575956001;AKPM759IXL;Four Vapeur;Four vapeur;Four
+1;517691;Whirlpool;852575953010;AKPM759/WH;;Four vapeur;Four
+1;517692;Whirlpool;852575953011;AKPM759/WH;;Four vapeur;Four
+1;517731;Whirlpool;852576301000;AKPM763/IX;;Four vapeur;Four
+1;517732;Whirlpool;852576301001;AKPM763/IX;;Four vapeur;Four
+1;517733;Whirlpool;852576301002;AKPM763/IX;;Four vapeur;Four
+1;517875;Whirlpool;852577738101;AKPM7770/IX;Four Vapeur;Four vapeur;Four
+1;517876;Whirlpool;852577738110;AKPM7770/IXL;Four Vapeur;Four vapeur;Four
+1;517877;Whirlpool;852577738111;AKPM7770/IXL;Four Vapeur;Four vapeur;Four
+1;517873;Whirlpool;852577738000;AKPM777/IX;Four Vapeur;Four vapeur;Four
+1;517874;Whirlpool;852577738001;AKPM777/IX;Four Vapeur;Four vapeur;Four
+1;517970;Whirlpool;852578938000;AKPM789/IX;Four Vapeur;Four vapeur;Four
+1;517971;Whirlpool;852578938001;AKPM789/IX;Four Vapeur;Four vapeur;Four
+1;517972;Whirlpool;852578938002;AKPM789/IX;Four Vapeur;Four vapeur;Four
+1;517976;Whirlpool;852578953000;AKPM789IX;Four Vapeur;Four vapeur;Four
+1;517977;Whirlpool;852578953001;AKPM789IX;Four Vapeur;Four vapeur;Four
+1;517973;Whirlpool;852578938010;AKPM789/IXL;Four Vapeur;Four vapeur;Four
+1;517974;Whirlpool;852578938011;AKPM789/IXL;Four Vapeur;Four vapeur;Four
+1;517975;Whirlpool;852578938012;AKPM789/IXL;Four Vapeur;Four vapeur;Four
+1;517978;Whirlpool;852579038000;AKPM790/IX;;Four vapeur;Four
+1;518013;Whirlpool;852579529000;AKPM795/IX;;Four vapeur;Four
+1;518014;Whirlpool;852579529001;AKPM795/IX;;Four vapeur;Four
+1;525236;Whirlpool;858510506000;AKZ105/IX;;Four vapeur;Four
+1;525237;Whirlpool;858510506001;AKZ105/IX;;Four vapeur;Four
+1;525238;Whirlpool;858510506002;AKZ105/IX;;Four vapeur;Four
+1;525239;Whirlpool;858510506003;AKZ105/IX;;Four vapeur;Four
+1;525333;Whirlpool;858513606000;AKZ136/IX;Four Vapeur;Four vapeur;Four
+1;525334;Whirlpool;858513606001;AKZ136/IX;Four Vapeur;Four vapeur;Four
+1;525335;Whirlpool;858513606002;AKZ136/IX;Four Vapeur;Four vapeur;Four
+1;525336;Whirlpool;858513606010;AKZ136/NB;Four Vapeur;Four vapeur;Four
+1;525337;Whirlpool;858513606011;AKZ136/NB;Four Vapeur;Four vapeur;Four
+1;525338;Whirlpool;858513606012;AKZ136/NB;Four Vapeur;Four vapeur;Four
+1;525339;Whirlpool;858513606020;AKZ136/WH;Four Vapeur;Four vapeur;Four
+1;525340;Whirlpool;858513606021;AKZ136/WH;Four Vapeur;Four vapeur;Four
+1;525341;Whirlpool;858513606022;AKZ136/WH;Four Vapeur;Four vapeur;Four
+1;525427;Whirlpool;858516522000;AKZ165/IX;;Four vapeur;Four
+1;525428;Whirlpool;858516522001;AKZ165/IX;;Four vapeur;Four
+1;525501;Whirlpool;858519506000;AKZ195/IX;Four Vapeur;Four vapeur;Four
+1;525502;Whirlpool;858519506001;AKZ195/IX;Four Vapeur;Four vapeur;Four
+1;525620;Whirlpool;858521838000;AKZ218/IX;Four Vapeur;Four vapeur;Four
+1;525621;Whirlpool;858521838001;AKZ218/IX;Four Vapeur;Four vapeur;Four
+1;525622;Whirlpool;858521838002;AKZ218/IX;Four Vapeur;Four vapeur;Four
+1;525623;Whirlpool;858521838003;AKZ218/IX;Four Vapeur;Four vapeur;Four
+1;525658;Whirlpool;858522404030;AKZ224/AV;Four Vapeur;Four vapeur;Four
+1;525659;Whirlpool;858522404031;AKZ224/AV;Four Vapeur;Four vapeur;Four
+1;525653;Whirlpool;858522404000;AKZ224/IX;Four Vapeur;Four vapeur;Four
+1;525654;Whirlpool;858522404001;AKZ224/IX;Four Vapeur;Four vapeur;Four
+1;525655;Whirlpool;858522404002;AKZ224/IX;Four Vapeur;Four vapeur;Four
+1;525661;Whirlpool;858522489000;AKZ224/IX;Four Vapeur;Four vapeur;Four
+1;525662;Whirlpool;858522489001;AKZ224/IX;Four Vapeur;Four vapeur;Four
+1;525663;Whirlpool;858522489002;AKZ224/IX;Four Vapeur;Four vapeur;Four
+1;525747;Whirlpool;858523429000;AKZ234/IX;;Four vapeur;Four
+1;525748;Whirlpool;858523515000;AKZ235/IX;Four à Pyrolyse;Four vapeur;Four
+1;525749;Whirlpool;858523515001;AKZ235/IX;Four à Pyrolyse;Four vapeur;Four
+1;525750;Whirlpool;858523606000;AKZ236/IX;Four Vapeur;Four vapeur;Four
+1;525751;Whirlpool;858523606001;AKZ236/IX;Four Vapeur;Four vapeur;Four
+1;525752;Whirlpool;858523701000;AKZ237/IX;Four Vapeur;Four vapeur;Four
+1;525753;Whirlpool;858523701001;AKZ237/IX;Four Vapeur;Four vapeur;Four
+1;525754;Whirlpool;858523701002;AKZ237/IX;Four Vapeur;Four vapeur;Four
+1;525761;Whirlpool;858523701100;AKZ237/IX/01;Four Vapeur;Four vapeur;Four
+1;525762;Whirlpool;858523701101;AKZ237/IX/01;Four Vapeur;Four vapeur;Four
+1;525763;Whirlpool;858523701102;AKZ237/IX/01;Four Vapeur;Four vapeur;Four
+1;525755;Whirlpool;858523701010;AKZ237/NB;Four Vapeur;Four vapeur;Four
+1;525756;Whirlpool;858523701011;AKZ237/NB;Four Vapeur;Four vapeur;Four
+1;525757;Whirlpool;858523701012;AKZ237/NB;Four Vapeur;Four vapeur;Four
+1;525758;Whirlpool;858523701020;AKZ237/WH;Four Vapeur;Four vapeur;Four
+1;525759;Whirlpool;858523701021;AKZ237/WH;Four Vapeur;Four vapeur;Four
+1;525760;Whirlpool;858523701022;AKZ237/WH;Four Vapeur;Four vapeur;Four
+1;525770;Whirlpool;858524004000;AKZ240/IX;Four Vapeur;Four vapeur;Four
+1;525771;Whirlpool;858524004001;AKZ240/IX;Four Vapeur;Four vapeur;Four
+1;525772;Whirlpool;858524004002;AKZ240/IX;Four Vapeur;Four vapeur;Four
+1;525773;Whirlpool;858524104000;AKZ241/IX;;Four vapeur;Four
+1;525774;Whirlpool;858524104001;AKZ241/IX;;Four vapeur;Four
+1;525775;Whirlpool;858524104002;AKZ241/IX;;Four vapeur;Four
+1;525776;Whirlpool;858524122000;AKZ241/IX;Four Vapeur;Four vapeur;Four
+1;525777;Whirlpool;858524201000;AKZ242/IX;Four Vapeur;Four vapeur;Four
+1;525778;Whirlpool;858524201001;AKZ242/IX;Four Vapeur;Four vapeur;Four
+1;525779;Whirlpool;858524201002;AKZ242/IX;Four Vapeur;Four vapeur;Four
+1;525780;Whirlpool;858524201003;AKZ242/IX;Four Vapeur;Four vapeur;Four
+1;525781;Whirlpool;858524361000;AKZ243/IX;Four Vapeur;Four vapeur;Four
+1;525782;Whirlpool;858524361001;AKZ243/IX;Four Vapeur;Four vapeur;Four
+1;525783;Whirlpool;858524361010;AKZ243/NB;Four Vapeur;Four vapeur;Four
+1;525784;Whirlpool;858524361011;AKZ243/NB;Four Vapeur;Four vapeur;Four
+1;525785;Whirlpool;858524361020;AKZ243/WH;Four Vapeur;Four vapeur;Four
+1;525786;Whirlpool;858524361021;AKZ243/WH;Four Vapeur;Four vapeur;Four
+1;525787;Whirlpool;858524361022;AKZ243/WH;Four Vapeur;Four vapeur;Four
+1;525788;Whirlpool;858524461000;AKZ244/IX;Four Vapeur;Four vapeur;Four
+1;525789;Whirlpool;858524461001;AKZ244/IX;Four Vapeur;Four vapeur;Four
+1;525790;Whirlpool;858524461002;AKZ244/IX;Four Vapeur;Four vapeur;Four
+1;525791;Whirlpool;858524461003;AKZ244/IX;Four Vapeur;Four vapeur;Four
+1;525792;Whirlpool;858524461004;AKZ244/IX;Four Vapeur;Four vapeur;Four
+1;525798;Whirlpool;858524461020;AKZ244/NB;Four Vapeur;Four vapeur;Four
+1;525799;Whirlpool;858524461021;AKZ244/NB;Four Vapeur;Four vapeur;Four
+1;525800;Whirlpool;858524461022;AKZ244/NB;Four Vapeur;Four vapeur;Four
+1;525801;Whirlpool;858524461023;AKZ244/NB;Four Vapeur;Four vapeur;Four
+1;525802;Whirlpool;858524461024;AKZ244/NB;Four Vapeur;Four vapeur;Four
+1;525793;Whirlpool;858524461010;AKZ244/WH;Four Vapeur;Four vapeur;Four
+1;525794;Whirlpool;858524461011;AKZ244/WH;Four Vapeur;Four vapeur;Four
+1;525795;Whirlpool;858524461012;AKZ244/WH;Four Vapeur;Four vapeur;Four
+1;525796;Whirlpool;858524461013;AKZ244/WH;Four Vapeur;Four vapeur;Four
+1;525797;Whirlpool;858524461014;AKZ244/WH;Four Vapeur;Four vapeur;Four
+1;525803;Whirlpool;858524561000;AKZ245/IX;Four Vapeur;Four vapeur;Four
+1;525804;Whirlpool;858524561001;AKZ245/IX;Four Vapeur;Four vapeur;Four
+1;525805;Whirlpool;858524561002;AKZ245/IX;Four Vapeur;Four vapeur;Four
+1;525812;Whirlpool;858524561500;AKZ245/IX;Four Vapeur;Four vapeur;Four
+1;525809;Whirlpool;858524561020;AKZ245/NB;Four Vapeur;Four vapeur;Four
+1;525810;Whirlpool;858524561021;AKZ245/NB;Four Vapeur;Four vapeur;Four
+1;525811;Whirlpool;858524561022;AKZ245/NB;Four Vapeur;Four vapeur;Four
+1;525814;Whirlpool;858524561520;AKZ245/NB;Four Vapeur;Four vapeur;Four
+1;525806;Whirlpool;858524561010;AKZ245/WH;Four Vapeur;Four vapeur;Four
+1;525807;Whirlpool;858524561011;AKZ245/WH;Four Vapeur;Four vapeur;Four
+1;525808;Whirlpool;858524561012;AKZ245/WH;Four Vapeur;Four vapeur;Four
+1;525813;Whirlpool;858524561510;AKZ245/WH;Four Vapeur;Four vapeur;Four
+1;525825;Whirlpool;858527301000;AKZ273/IX;Four Vapeur;Four vapeur;Four
+1;525826;Whirlpool;858527401000;AKZ274/IX;Four Vapeur;Four vapeur;Four
+1;525827;Whirlpool;858527401001;AKZ274/IX;Four Vapeur;Four vapeur;Four
+1;525830;Whirlpool;858527506020;AKZ275/IX;Four Vapeur;Four vapeur;Four
+1;525865;Whirlpool;858529210000;AKZ292/IX;Four Vapeur;Four vapeur;Four
+1;525924;Whirlpool;858532361000;AKZ323/IX;Four Vapeur;Four vapeur;Four
+1;525925;Whirlpool;858532361001;AKZ323/IX;Four Vapeur;Four vapeur;Four
+1;525929;Whirlpool;858533429000;AKZ334/IX;;Four vapeur;Four
+1;526025;Whirlpool;858540310000;AKZ403/IX;;Four vapeur;Four
+1;526026;Whirlpool;858540310001;AKZ403/IX;;Four vapeur;Four
+1;526027;Whirlpool;858540310002;AKZ403/IX;;Four vapeur;Four
+1;526350;Whirlpool;858548229000;AKZ482/IX;;Four vapeur;Four
+1;526351;Whirlpool;858548229001;AKZ482/IX;;Four vapeur;Four
+1;526352;Whirlpool;858548229002;AKZ482/IX;;Four vapeur;Four
+1;526353;Whirlpool;858548229010;AKZ482/NB;;Four vapeur;Four
+1;526354;Whirlpool;858548229011;AKZ482/NB;;Four vapeur;Four
+1;526355;Whirlpool;858548229020;AKZ482/WH;;Four vapeur;Four
+1;526356;Whirlpool;858548229021;AKZ482/WH;;Four vapeur;Four
+1;526538;Whirlpool;858553110026;AKZ531/NB/01;Four Vapeur;Four vapeur;Four
+1;526561;Whirlpool;858554001000;AKZ540IX;;Four vapeur;Four
+1;526562;Whirlpool;858554001001;AKZ540IX;;Four vapeur;Four
+1;526563;Whirlpool;858554101000;AKZ541IX;Four Vapeur;Four vapeur;Four
+1;526564;Whirlpool;858554101002;AKZ541IX;Four Vapeur;Four vapeur;Four
+1;526565;Whirlpool;858554801000;AKZ548IX;Four Vapeur;Four vapeur;Four
+1;526566;Whirlpool;858554801001;AKZ548IX;Four Vapeur;Four vapeur;Four
+1;526567;Whirlpool;858554801002;AKZ548IX;Four Vapeur;Four vapeur;Four
+1;526577;Whirlpool;858555801000;AKZ558/IX;;Four vapeur;Four
+1;526578;Whirlpool;858555801001;AKZ558/IX;;Four vapeur;Four
+1;526579;Whirlpool;858555801002;AKZ558/IX;;Four vapeur;Four
+1;526580;Whirlpool;858555910000;AKZ559/IX;Four Vapeur;Four vapeur;Four
+1;526581;Whirlpool;858555910001;AKZ559/IX;Four Vapeur;Four vapeur;Four
+1;526594;Whirlpool;858556001030;AKZ560/1/IX;Four Vapeur;Four vapeur;Four
+1;526595;Whirlpool;858556001031;AKZ560/1/IX;Four Vapeur;Four vapeur;Four
+1;526596;Whirlpool;858556001032;AKZ560/1/IX;Four Vapeur;Four vapeur;Four
+1;526582;Whirlpool;858556001000;AKZ560/IX;Four Vapeur;Four vapeur;Four
+1;526583;Whirlpool;858556001001;AKZ560/IX;Four Vapeur;Four vapeur;Four
+1;526584;Whirlpool;858556001002;AKZ560/IX;Four Vapeur;Four vapeur;Four
+1;526585;Whirlpool;858556001003;AKZ560/IX;Four Vapeur;Four vapeur;Four
+1;526586;Whirlpool;858556001010;AKZ560/NB;Four Vapeur;Four vapeur;Four
+1;526587;Whirlpool;858556001011;AKZ560/NB;Four Vapeur;Four vapeur;Four
+1;526588;Whirlpool;858556001012;AKZ560/NB;Four Vapeur;Four vapeur;Four
+1;526589;Whirlpool;858556001013;AKZ560/NB;Four Vapeur;Four vapeur;Four
+1;526590;Whirlpool;858556001020;AKZ560/WH;Four Vapeur;Four vapeur;Four
+1;526591;Whirlpool;858556001021;AKZ560/WH;Four Vapeur;Four vapeur;Four
+1;526592;Whirlpool;858556001022;AKZ560/WH;Four Vapeur;Four vapeur;Four
+1;526593;Whirlpool;858556001023;AKZ560/WH;Four Vapeur;Four vapeur;Four
+1;526597;Whirlpool;858556101000;AKZ561/IX;Four Vapeur;Four vapeur;Four
+1;526598;Whirlpool;858556101001;AKZ561/IX;Four Vapeur;Four vapeur;Four
+1;526599;Whirlpool;858556101003;AKZ561/IX;Four Vapeur;Four vapeur;Four
+1;526623;Whirlpool;858559029000;AKZ590/IX;;Four vapeur;Four
+1;526624;Whirlpool;858559029001;AKZ590/IX;;Four vapeur;Four
+1;526625;Whirlpool;858559029010;AKZ590/NB;;Four vapeur;Four
+1;526626;Whirlpool;858559029011;AKZ590/NB;;Four vapeur;Four
+1;526627;Whirlpool;858559029020;AKZ590/WH;;Four vapeur;Four
+1;526628;Whirlpool;858559029021;AKZ590/WH;;Four vapeur;Four
+1;526692;Whirlpool;858561801500;AKZ618IX;Four Vapeur;Four vapeur;Four
+1;526693;Whirlpool;858561801501;AKZ618IX;Four Vapeur;Four vapeur;Four
+1;526694;Whirlpool;858562001700;AKZ6200IX;Four Vapeur;Four vapeur;Four
+1;526695;Whirlpool;858562001701;AKZ6200IX;Four Vapeur;Four vapeur;Four
+1;526696;Whirlpool;858562101700;AKZ6210IX;Four Vapeur;Four vapeur;Four
+1;526697;Whirlpool;858562101701;AKZ6210IX;Four Vapeur;Four vapeur;Four
+1;526698;Whirlpool;858562101702;AKZ6210IX;Four Vapeur;Four vapeur;Four
+1;526699;Whirlpool;858562101710;AKZ6210WH;Four Vapeur;Four vapeur;Four
+1;526700;Whirlpool;858562101711;AKZ6210WH;Four Vapeur;Four vapeur;Four
+1;526701;Whirlpool;858562101712;AKZ6210WH;Four Vapeur;Four vapeur;Four
+1;526702;Whirlpool;858562201700;AKZ6220IX;Four Vapeur;Four vapeur;Four
+1;526703;Whirlpool;858562201701;AKZ6220IX;Four Vapeur;Four vapeur;Four
+1;512226;Whirlpool;39961010000;AKZ6220WH;Four Vapeur;Four vapeur;Four
+1;526704;Whirlpool;858562201710;AKZ6220WH;Four Vapeur;Four vapeur;Four
+1;526705;Whirlpool;858562201711;AKZ6220WH;Four Vapeur;Four vapeur;Four
+1;526706;Whirlpool;858562301700;AKZ6230IX;Four Vapeur;Four vapeur;Four
+1;526707;Whirlpool;858562301701;AKZ6230IX;Four Vapeur;Four vapeur;Four
+1;526710;Whirlpool;858562301720;AKZ6230NB;Four Vapeur;Four vapeur;Four
+1;526711;Whirlpool;858562301721;AKZ6230NB;Four Vapeur;Four vapeur;Four
+1;526712;Whirlpool;858562301722;AKZ6230NB;Four Vapeur;Four vapeur;Four
+1;526713;Whirlpool;858562301730;AKZ6230S;Four Vapeur;Four vapeur;Four
+1;526714;Whirlpool;858562301731;AKZ6230S;Four Vapeur;Four vapeur;Four
+1;526708;Whirlpool;858562301710;AKZ6230WH;Four Vapeur;Four vapeur;Four
+1;526709;Whirlpool;858562301711;AKZ6230WH;Four Vapeur;Four vapeur;Four
+1;526715;Whirlpool;858562401700;AKZ6240IX;Four Vapeur;Four vapeur;Four
+1;526716;Whirlpool;858562401701;AKZ6240IX;Four Vapeur;Four vapeur;Four
+1;526719;Whirlpool;858562401720;AKZ6240/NB;Four Vapeur;Four vapeur;Four
+1;526720;Whirlpool;858562401721;AKZ6240/NB;Four Vapeur;Four vapeur;Four
+1;526717;Whirlpool;858562401710;AKZ6240/WH;Four Vapeur;Four vapeur;Four
+1;526718;Whirlpool;858562401711;AKZ6240/WH;Four Vapeur;Four vapeur;Four
+1;526853;Whirlpool;858566501000;AKZ665/IX;;Four vapeur;Four
+1;526879;Whirlpool;858567101000;AKZ671/IX;Four Vapeur;Four vapeur;Four
+1;526880;Whirlpool;858567101001;AKZ671/IX;Four Vapeur;Four vapeur;Four
+1;526881;Whirlpool;858567101002;AKZ671/IX;Four Vapeur;Four vapeur;Four
+1;526882;Whirlpool;858567101003;AKZ671/IX;Four Vapeur;Four vapeur;Four
+1;526883;Whirlpool;858567115000;AKZ671/IX;Four à Pyrolyse;Four vapeur;Four
+1;526884;Whirlpool;858567201000;AKZ672/IX;;Four vapeur;Four
+1;526885;Whirlpool;858567201001;AKZ672/IX;;Four vapeur;Four
+1;526886;Whirlpool;858567201002;AKZ672/IX;;Four vapeur;Four
+1;526910;Whirlpool;858567501000;AKZ675/IX;;Four vapeur;Four
+1;526911;Whirlpool;858567501001;AKZ675/IX;;Four vapeur;Four
+1;526912;Whirlpool;858567501002;AKZ675/IX;;Four vapeur;Four
+1;526913;Whirlpool;858567501003;AKZ675/IX;;Four vapeur;Four
+1;526914;Whirlpool;858567501004;AKZ675/IX;;Four vapeur;Four
+1;526916;Whirlpool;858567529010;AKZ675IX;Four à Pyrolyse;Four vapeur;Four
+1;526917;Whirlpool;858567529011;AKZ675IX;Four à Pyrolyse;Four vapeur;Four
+1;526918;Whirlpool;858567529012;AKZ675/IX;Four à Pyrolyse;Four vapeur;Four
+1;526948;Whirlpool;858578901700;AKZ7890IX;Four Vapeur;Four vapeur;Four
+1;526949;Whirlpool;858578901701;AKZ7890IX;Four Vapeur;Four vapeur;Four
+1;526950;Whirlpool;858579001700;AKZ7900IX;Four Vapeur;Four vapeur;Four
+1;526951;Whirlpool;858579001701;AKZ7900IX;Four Vapeur;Four vapeur;Four
+1;526954;Whirlpool;858579201700;AKZ7920IX;Four Vapeur;Four vapeur;Four
+1;526955;Whirlpool;858579201701;AKZ7920IX;Four Vapeur;Four vapeur;Four
+1;526958;Whirlpool;858579201720;AKZ7920NB;Four Vapeur;Four vapeur;Four
+1;526959;Whirlpool;858579201721;AKZ7920NB;Four Vapeur;Four vapeur;Four
+1;526956;Whirlpool;858579201710;AKZ7920WH;Four Vapeur;Four vapeur;Four
+1;526957;Whirlpool;858579201711;AKZ7920WH;Four Vapeur;Four vapeur;Four
+1;526960;Whirlpool;858579401700;AKZ7940IX;Four Vapeur;Four vapeur;Four
+1;526961;Whirlpool;858579401701;AKZ7940IX;Four Vapeur;Four vapeur;Four
+1;526971;Whirlpool;858579729000;AKZ797/IX;Four Vapeur;Four vapeur;Four
+1;526972;Whirlpool;858579729001;AKZ797/IX;Four Vapeur;Four vapeur;Four
+1;526984;Whirlpool;858581001000;AKZ810/IX;Four Vapeur;Four vapeur;Four
+1;526985;Whirlpool;858581001001;AKZ810/IX;Four Vapeur;Four vapeur;Four
+1;526986;Whirlpool;858581010000;AKZ810/IX;Four Vapeur;Four vapeur;Four
+1;526987;Whirlpool;858581010001;AKZ810/IX;Four Vapeur;Four vapeur;Four
+1;526988;Whirlpool;858581029000;AKZ810/IX;Four Vapeur;Four vapeur;Four
+1;526989;Whirlpool;858581029001;AKZ810/IX;Four Vapeur;Four vapeur;Four
+1;530157;Whirlpool;859991530410;AKZ96220IX;Four Vapeur;Four vapeur;Four
+1;514483;Whirlpool;759991535870;AKZ96220WH;Four Vapeur;Four vapeur;Four
+1;514484;Whirlpool;759991535871;AKZ96220WH;Four Vapeur;Four vapeur;Four
+1;514485;Whirlpool;759991535872;AKZ96220WH;Four Vapeur;Four vapeur;Four
+1;514486;Whirlpool;759991535873;AKZ96220WH;Four Vapeur;Four vapeur;Four
+1;514317;Whirlpool;759991530380;AKZ96230IX;Four Vapeur;Four vapeur;Four
+1;514318;Whirlpool;759991530381;AKZ96230IX;Four Vapeur;Four vapeur;Four
+1;514319;Whirlpool;759991530382;AKZ96230IX;Four Vapeur;Four vapeur;Four
+1;514320;Whirlpool;759991530383;AKZ96230IX;Four Vapeur;Four vapeur;Four
+1;530154;Whirlpool;859991530380;AKZ96230IX;Four Vapeur;Four vapeur;Four
+1;530155;Whirlpool;859991530390;AKZ96230NB;Four Vapeur;Four vapeur;Four
+1;514321;Whirlpool;759991530400;AKZ9 6230 S;Four Vapeur;Four vapeur;Four
+1;514322;Whirlpool;759991530401;AKZ9 6230 S;Four Vapeur;Four vapeur;Four
+1;514323;Whirlpool;759991530402;AKZ9 6230 S;Four Vapeur;Four vapeur;Four
+1;514324;Whirlpool;759991530403;AKZ9 6230 S;Four Vapeur;Four vapeur;Four
+1;530156;Whirlpool;859991530400;AKZ9 6230 S;Four Vapeur;Four vapeur;Four
+1;514476;Whirlpool;759991535770;AKZ9 6230 WH;Four Vapeur;Four vapeur;Four
+1;514477;Whirlpool;759991535771;AKZ9 6230 WH;Four Vapeur;Four vapeur;Four
+1;514478;Whirlpool;759991535772;AKZ9 6230 WH;Four Vapeur;Four vapeur;Four
+1;514479;Whirlpool;759991535773;AKZ9 6230 WH;Four Vapeur;Four vapeur;Four
+1;530206;Whirlpool;859991535770;AKZ9 6230 WH;Four Vapeur;Four vapeur;Four
+1;514387;Whirlpool;759991531450;AKZ9 6240 IX;Four Vapeur;Four vapeur;Four
+1;514388;Whirlpool;759991531451;AKZ9 6240 IX;Four Vapeur;Four vapeur;Four
+1;514389;Whirlpool;759991531452;AKZ9 6240 IX;Four Vapeur;Four vapeur;Four
+1;514390;Whirlpool;759991531453;AKZ9 6240 IX;Four Vapeur;Four vapeur;Four
+1;530180;Whirlpool;859991531450;AKZ9 6240 IX;Four Vapeur;Four vapeur;Four
+1;514391;Whirlpool;759991531460;AKZ9 6240 NB;Four Vapeur;Four vapeur;Four
+1;514392;Whirlpool;759991531461;AKZ9 6240 NB;Four Vapeur;Four vapeur;Four
+1;514393;Whirlpool;759991531462;AKZ9 6240 NB;Four Vapeur;Four vapeur;Four
+1;514394;Whirlpool;759991531463;AKZ9 6240 NB;Four Vapeur;Four vapeur;Four
+1;530181;Whirlpool;859991531460;AKZ9 6240 NB;Four Vapeur;Four vapeur;Four
+1;514328;Whirlpool;759991530940;AKZ9 7890 IX;Four Vapeur;Four vapeur;Four
+1;514329;Whirlpool;759991530941;AKZ9 7890 IX;Four Vapeur;Four vapeur;Four
+1;514330;Whirlpool;759991530942;AKZ9 7890 IX;Four Vapeur;Four vapeur;Four
+1;514331;Whirlpool;759991530943;AKZ9 7890 IX;Four Vapeur;Four vapeur;Four
+1;530159;Whirlpool;859991530940;AKZ9 7890 IX;Four Vapeur;Four vapeur;Four
+1;514442;Whirlpool;759991533820;AKZ97891IX;Four Vapeur;Four vapeur;Four
+1;514443;Whirlpool;759991533821;AKZ97891IX;Four Vapeur;Four vapeur;Four
+1;514444;Whirlpool;759991533822;AKZ97891IX;Four Vapeur;Four vapeur;Four
+1;514445;Whirlpool;759991533823;AKZ97891IX;Four Vapeur;Four vapeur;Four
+1;514346;Whirlpool;759991531130;AKZ9 7940 IX;Four Vapeur;Four vapeur;Four
+1;514347;Whirlpool;759991531131;AKZ9 7940 IX;Four Vapeur;Four vapeur;Four
+1;514348;Whirlpool;759991531132;AKZ9 7940 IX;Four Vapeur;Four vapeur;Four
+1;514349;Whirlpool;759991531133;AKZ9 7940 IX;Four Vapeur;Four vapeur;Four
+1;530169;Whirlpool;859991531130;AKZ9 7940 IX;Four Vapeur;Four vapeur;Four
+1;515612;Whirlpool;759991635720;AKZ9 7940 NB;Four Vapeur;Four vapeur;Four
+1;515613;Whirlpool;759991635721;AKZ9 7940 NB;Four Vapeur;Four vapeur;Four
+1;515697;Whirlpool;759991639440;AKZ9 9421 CS NB;Four Vapeur;Four vapeur;Four
+1;515698;Whirlpool;759991639441;AKZ9 9421 CS NB;Four Vapeur;Four vapeur;Four
+1;517233;Whirlpool;852565453100;AKZM6540HIX;Four Vapeur;Four vapeur;Four
+1;517221;Whirlpool;852565438100;AKZM6540/IX;;Four vapeur;Four
+1;517222;Whirlpool;852565438101;AKZM6540/IX;;Four vapeur;Four
+1;517223;Whirlpool;852565438102;AKZM6540/IX;;Four vapeur;Four
+1;517224;Whirlpool;852565438103;AKZM6540/IX;Four Vapeur;Four vapeur;Four
+1;517225;Whirlpool;852565438104;AKZM6540/IX;Four Vapeur;Four vapeur;Four
+1;517226;Whirlpool;852565438110;AKZM6540/IXL;;Four vapeur;Four
+1;517227;Whirlpool;852565438111;AKZM6540/IXL;Four Vapeur;Four vapeur;Four
+1;517228;Whirlpool;852565438112;AKZM6540/IXL;Four Vapeur;Four vapeur;Four
+1;517234;Whirlpool;852565481100;AKZM6540/IXL;Four Vapeur;Four vapeur;Four
+1;517204;Whirlpool;852565401000;AKZM654/IX;Four Vapeur;Four vapeur;Four
+1;517205;Whirlpool;852565401001;AKZM654/IX;Four Vapeur;Four vapeur;Four
+1;517206;Whirlpool;852565401002;AKZM654/IX;Four Vapeur;Four vapeur;Four
+1;517207;Whirlpool;852565401003;AKZM654/IX;Four Vapeur;Four vapeur;Four
+1;517208;Whirlpool;852565401004;AKZM654/IX;Four Vapeur;Four vapeur;Four
+1;517209;Whirlpool;852565401005;AKZM654/IX;Four Vapeur;Four vapeur;Four
+1;517210;Whirlpool;852565401006;AKZM654/IX;Four Vapeur;Four vapeur;Four
+1;517211;Whirlpool;852565438000;AKZM654/IX;Four Vapeur;Four vapeur;Four
+1;517212;Whirlpool;852565438001;AKZM654/IX;Four Vapeur;Four vapeur;Four
+1;517213;Whirlpool;852565438002;AKZM654/IX;Four Vapeur;Four vapeur;Four
+1;517214;Whirlpool;852565438003;AKZM654/IX;Four Vapeur;Four vapeur;Four
+1;517215;Whirlpool;852565438004;AKZM654/IX;Four Vapeur;Four vapeur;Four
+1;517216;Whirlpool;852565438005;AKZM654/IX;;Four vapeur;Four
+1;517217;Whirlpool;852565438006;AKZM654/IX;;Four vapeur;Four
+1;517218;Whirlpool;852565438007;AKZM654/IX;;Four vapeur;Four
+1;517219;Whirlpool;852565438008;AKZM654/IX;;Four vapeur;Four
+1;517220;Whirlpool;852565438009;AKZM654/IX;Four Vapeur;Four vapeur;Four
+1;517229;Whirlpool;852565453000;AKZM654/IX;Four Vapeur;Four vapeur;Four
+1;517230;Whirlpool;852565453001;AKZM654/IX;Four Vapeur;Four vapeur;Four
+1;517231;Whirlpool;852565453002;AKZM654/IX;Four Vapeur;Four vapeur;Four
+1;517232;Whirlpool;852565453003;AKZM654/IX;Four Vapeur;Four vapeur;Four
+1;517268;Whirlpool;852565553100;AKZM6550HIX;;Four vapeur;Four
+1;517257;Whirlpool;852565538100;AKZM6550/IX;;Four vapeur;Four
+1;517258;Whirlpool;852565538101;AKZM6550/IX;;Four vapeur;Four
+1;517259;Whirlpool;852565538102;AKZM6550/IX;;Four vapeur;Four
+1;517269;Whirlpool;852565561100;AKZM6550/IX;;Four vapeur;Four
+1;517242;Whirlpool;852565501100;AKZM6550/IXL;;Four vapeur;Four
+1;517243;Whirlpool;852565501101;AKZM6550/IXL;Four Vapeur;Four vapeur;Four
+1;517244;Whirlpool;852565501102;AKZM6550/IXL;Four Vapeur;Four vapeur;Four
+1;517260;Whirlpool;852565538110;AKZM6550/IXL;;Four vapeur;Four
+1;517261;Whirlpool;852565538111;AKZM6550/IXL;Four Vapeur;Four vapeur;Four
+1;517262;Whirlpool;852565538112;AKZM6550/IXL;Four Vapeur;Four vapeur;Four
+1;517270;Whirlpool;852565561110;AKZM6550/IXL;Four Vapeur;Four vapeur;Four
+1;517271;Whirlpool;852565561112;AKZM6550/IXL;Four Vapeur;Four vapeur;Four
+1;517263;Whirlpool;852565538120;AKZM6551/IXL;;Four vapeur;Four
+1;517245;Whirlpool;852565506000;AKZM655/IX;;Four vapeur;Four
+1;517246;Whirlpool;852565506001;AKZM655/IX;;Four vapeur;Four
+1;517247;Whirlpool;852565506002;AKZM655/IX;;Four vapeur;Four
+1;517248;Whirlpool;852565538000;AKZM655/IX;;Four vapeur;Four
+1;517249;Whirlpool;852565538001;AKZM655/IX;;Four vapeur;Four
+1;517250;Whirlpool;852565538002;AKZM655/IX;;Four vapeur;Four
+1;517251;Whirlpool;852565538003;AKZM655/IX;;Four vapeur;Four
+1;517252;Whirlpool;852565538004;AKZM655/IX;;Four vapeur;Four
+1;517253;Whirlpool;852565538005;AKZM655/IX;;Four vapeur;Four
+1;517254;Whirlpool;852565538006;AKZM655/IX;;Four vapeur;Four
+1;517255;Whirlpool;852565538007;AKZM655/IX;;Four vapeur;Four
+1;517256;Whirlpool;852565538008;AKZM655/IX;Four Vapeur;Four vapeur;Four
+1;517264;Whirlpool;852565553000;AKZM655/IX;;Four vapeur;Four
+1;517265;Whirlpool;852565553001;AKZM655/IX;;Four vapeur;Four
+1;517266;Whirlpool;852565553002;AKZM655/IX;;Four vapeur;Four
+1;517267;Whirlpool;852565553003;AKZM655/IX;;Four vapeur;Four
+1;517272;Whirlpool;852565581000;AKZM655/IX;;Four vapeur;Four
+1;517273;Whirlpool;852565581001;AKZM655/IX;;Four vapeur;Four
+1;517274;Whirlpool;852565581002;AKZM655/IX;;Four vapeur;Four
+1;517275;Whirlpool;852565581003;AKZM655/IX;;Four vapeur;Four
+1;517276;Whirlpool;852565581004;AKZM655/IX;;Four vapeur;Four
+1;517235;Whirlpool;852565501000;AKZM655/IX/01;;Four vapeur;Four
+1;517236;Whirlpool;852565501002;AKZM655/IX/01;;Four vapeur;Four
+1;517237;Whirlpool;852565501003;AKZM655/IX/01;;Four vapeur;Four
+1;517238;Whirlpool;852565501004;AKZM655/IX/01;;Four vapeur;Four
+1;517239;Whirlpool;852565501005;AKZM655/IX/01;;Four vapeur;Four
+1;517240;Whirlpool;852565501006;AKZM655/IX/01;;Four vapeur;Four
+1;517241;Whirlpool;852565501007;AKZM655/IX/01;Four Vapeur;Four vapeur;Four
+1;517317;Whirlpool;852565653100;AKZM6560HIX;;Four vapeur;Four
+1;517303;Whirlpool;852565638100;AKZM6560/IX;;Four vapeur;Four
+1;517304;Whirlpool;852565638101;AKZM6560/IX;;Four vapeur;Four
+1;517305;Whirlpool;852565638102;AKZM6560/IX;;Four vapeur;Four
+1;517306;Whirlpool;852565638103;AKZM6560/IX;;Four vapeur;Four
+1;517285;Whirlpool;852565601100;AKZM6560/IXL;;Four vapeur;Four
+1;517286;Whirlpool;852565601101;AKZM6560/IXL;Four Vapeur;Four vapeur;Four
+1;517287;Whirlpool;852565601102;AKZM6560/IXL;Four Vapeur;Four vapeur;Four
+1;517307;Whirlpool;852565638110;AKZM6560/IXL;;Four vapeur;Four
+1;517308;Whirlpool;852565638111;AKZM6560/IXL;Four Vapeur;Four vapeur;Four
+1;517309;Whirlpool;852565638112;AKZM6560/IXL;Four Vapeur;Four vapeur;Four
+1;517324;Whirlpool;852565656100;AKZM6560IXL;;Four vapeur;Four
+1;517325;Whirlpool;852565656101;AKZM6560IXL;;Four vapeur;Four
+1;517326;Whirlpool;852565656102;AKZM6560IXL;Four Vapeur;Four vapeur;Four
+1;517288;Whirlpool;852565606000;AKZM656/IX;;Four vapeur;Four
+1;517289;Whirlpool;852565606001;AKZM656/IX;;Four vapeur;Four
+1;517290;Whirlpool;852565606002;AKZM656/IX;;Four vapeur;Four
+1;517291;Whirlpool;852565606003;AKZM656/IX;;Four vapeur;Four
+1;517292;Whirlpool;852565606004;AKZM656/IX;;Four vapeur;Four
+1;517293;Whirlpool;852565638000;AKZM656/IX;;Four vapeur;Four
+1;517294;Whirlpool;852565638001;AKZM656/IX;;Four vapeur;Four
+1;517295;Whirlpool;852565638002;AKZM656/IX;;Four vapeur;Four
+1;517296;Whirlpool;852565638003;AKZM656/IX;;Four vapeur;Four
+1;517297;Whirlpool;852565638004;AKZM656/IX;;Four vapeur;Four
+1;517298;Whirlpool;852565638005;AKZM656/IX;;Four vapeur;Four
+1;517299;Whirlpool;852565638006;AKZM656/IX;;Four vapeur;Four
+1;517300;Whirlpool;852565638007;AKZM656/IX;;Four vapeur;Four
+1;517301;Whirlpool;852565638008;AKZM656/IX;;Four vapeur;Four
+1;517302;Whirlpool;852565638009;AKZM656/IX;Four Vapeur;Four vapeur;Four
+1;517310;Whirlpool;852565641000;AKZM656IX;;Four vapeur;Four
+1;517311;Whirlpool;852565641001;AKZM656IX;;Four vapeur;Four
+1;517312;Whirlpool;852565641002;AKZM656IX;;Four vapeur;Four
+1;517313;Whirlpool;852565641003;AKZM656IX;;Four vapeur;Four
+1;517314;Whirlpool;852565641004;AKZM656IX;;Four vapeur;Four
+1;517315;Whirlpool;852565641005;AKZM656IX;;Four vapeur;Four
+1;517318;Whirlpool;852565655000;AKZM656IX;;Four vapeur;Four
+1;517319;Whirlpool;852565655001;AKZM656IX;;Four vapeur;Four
+1;517320;Whirlpool;852565655002;AKZM656IX;;Four vapeur;Four
+1;517321;Whirlpool;852565655003;AKZM656IX;;Four vapeur;Four
+1;517322;Whirlpool;852565655004;AKZM656IX;;Four vapeur;Four
+1;517277;Whirlpool;852565601000;AKZM656/IX/01;;Four vapeur;Four
+1;517278;Whirlpool;852565601001;AKZM656/IX/01;;Four vapeur;Four
+1;517279;Whirlpool;852565601002;AKZM656/IX/01;;Four vapeur;Four
+1;517280;Whirlpool;852565601003;AKZM656/IX/01;;Four vapeur;Four
+1;517281;Whirlpool;852565601004;AKZM656/IX/01;;Four vapeur;Four
+1;517282;Whirlpool;852565601005;AKZM656/IX/01;;Four vapeur;Four
+1;517283;Whirlpool;852565601006;AKZM656/IX/01;;Four vapeur;Four
+1;517284;Whirlpool;852565601007;AKZM656/IX/01;Four Vapeur;Four vapeur;Four
+1;517366;Whirlpool;85256592900;AKZM659/IX;;Four vapeur;Four
+1;517367;Whirlpool;852565929000;AKZM659/IX;Four Vapeur;Four vapeur;Four
+1;517368;Whirlpool;852565929001;AKZM659/IX;Four Vapeur;Four vapeur;Four
+1;517369;Whirlpool;852565929002;AKZM659/IX;Four Vapeur;Four vapeur;Four
+1;517370;Whirlpool;852565929003;AKZM659/IX;Four Vapeur;Four vapeur;Four
+1;517371;Whirlpool;852565929004;AKZM659/IX;Four Vapeur;Four vapeur;Four
+1;517387;Whirlpool;852566138100;AKZM6610/IX;;Four vapeur;Four
+1;517388;Whirlpool;852566138101;AKZM6610/IX;;Four vapeur;Four
+1;517389;Whirlpool;852566138102;AKZM6610/IX;;Four vapeur;Four
+1;517390;Whirlpool;852566138110;AKZM6610/IXL;;Four vapeur;Four
+1;517391;Whirlpool;852566138111;AKZM6610/IXL;Four Vapeur;Four vapeur;Four
+1;517392;Whirlpool;852566138112;AKZM6610/IXL;Four Vapeur;Four vapeur;Four
+1;517396;Whirlpool;852566138130;AKZM6610/TB;;Four vapeur;Four
+1;517397;Whirlpool;852566138131;AKZM6610/TB;Four Vapeur;Four vapeur;Four
+1;517398;Whirlpool;852566138132;AKZM6610/TB;Four Vapeur;Four vapeur;Four
+1;517393;Whirlpool;852566138120;AKZM6610/WA;;Four vapeur;Four
+1;517394;Whirlpool;852566138121;AKZM6610/WA;Four Vapeur;Four vapeur;Four
+1;517395;Whirlpool;852566138122;AKZM6610/WA;Four Vapeur;Four vapeur;Four
+1;517385;Whirlpool;852566138000;AKZM661/IX;Four Vapeur;Four vapeur;Four
+1;517386;Whirlpool;852566138001;AKZM661/IX;Four Vapeur;Four vapeur;Four
+1;517403;Whirlpool;852566210100;AKZM6620/IXL;Four Vapeur;Four vapeur;Four
+1;517404;Whirlpool;852566210101;AKZM6620/IXL;Four Vapeur;Four vapeur;Four
+1;517399;Whirlpool;852566210000;AKZM662/IX;;Four vapeur;Four
+1;517400;Whirlpool;852566210001;AKZM662/IX;;Four vapeur;Four
+1;517401;Whirlpool;852566210002;AKZM662/IX;;Four vapeur;Four
+1;517402;Whirlpool;852566210003;AKZM662/IX;;Four vapeur;Four
+1;517412;Whirlpool;852566310100;AKZM6630/IXL;Four Vapeur;Four vapeur;Four
+1;517413;Whirlpool;852566310101;AKZM6630/IXL;Four Vapeur;Four vapeur;Four
+1;517405;Whirlpool;852566310000;AKZM663/IX;;Four vapeur;Four
+1;517406;Whirlpool;852566310001;AKZM663/IX;;Four vapeur;Four
+1;517407;Whirlpool;852566310002;AKZM663/IX;;Four vapeur;Four
+1;517408;Whirlpool;852566310003;AKZM663/IX;;Four vapeur;Four
+1;517409;Whirlpool;852566310004;AKZM663/IX;;Four vapeur;Four
+1;517410;Whirlpool;852566310005;AKZM663/IX;Four Vapeur;Four vapeur;Four
+1;517411;Whirlpool;852566310010;AKZM663/IXL;;Four vapeur;Four
+1;517418;Whirlpool;852566510000;AKZM665/IX;;Four vapeur;Four
+1;517419;Whirlpool;852566510001;AKZM665/IX;Four Vapeur;Four vapeur;Four
+1;517420;Whirlpool;852566610000;AKZM666/IX;;Four vapeur;Four
+1;517421;Whirlpool;852566610001;AKZM666/IX;Four Vapeur;Four vapeur;Four
+1;517422;Whirlpool;852566610002;AKZM666/IX;Four Vapeur;Four vapeur;Four
+1;513571;Whirlpool;752584201100;AKZM 8420 IX;Four Vapeur;Four vapeur;Four
+1;513572;Whirlpool;752584201101;AKZM 8420 IX;Four Vapeur;Four vapeur;Four
+1;513573;Whirlpool;752584201102;AKZM 8420 IX;Four Vapeur;Four vapeur;Four
+1;513574;Whirlpool;752584201120;AKZM 8420 NB;Four Vapeur;Four vapeur;Four
+1;513575;Whirlpool;752584201121;AKZM 8420 NB;Four Vapeur;Four vapeur;Four
+1;513576;Whirlpool;752584201122;AKZM 8420 NB;Four Vapeur;Four vapeur;Four
+1;513577;Whirlpool;752584201130;AKZM 8420 S;Four Vapeur;Four vapeur;Four
+1;513578;Whirlpool;752584201131;AKZM 8420 S;Four Vapeur;Four vapeur;Four
+1;513579;Whirlpool;752584201132;AKZM 8420 S;Four Vapeur;Four vapeur;Four
+1;514766;Whirlpool;759991545530;AKZM8421HNB;Four Vapeur;Four vapeur;Four
+1;514767;Whirlpool;759991545532;AKZM8421HNB;Four Vapeur;Four vapeur;Four
+1;514768;Whirlpool;759991545533;AKZM8421HNB;Four Vapeur;Four vapeur;Four
+1;514769;Whirlpool;759991545540;AKZM8422HNB;Four Vapeur;Four vapeur;Four
+1;513601;Whirlpool;752586101100;AKZM 8610 IX;Four Vapeur;Four vapeur;Four
+1;513602;Whirlpool;752586101101;AKZM 8610 IX;Four Vapeur;Four vapeur;Four
+1;513603;Whirlpool;752586101102;AKZM 8610 IX;Four Vapeur;Four vapeur;Four
+2;530467;Whirlpool;759991670530;AKZ9S 8220 IX;Four Vapeur;Four;Four vapeur
+2;515832;Whirlpool;759991670570;AKZ9S 8270 FB;Four à Pyrolyse;Four;Four vapeur
+2;515833;Whirlpool;759991670571;AKZ9S 8270 FB;Four à Pyrolyse;Four;Four vapeur
+2;515834;Whirlpool;759991670580;AKZ9S 8270 NB;Four à Pyrolyse;Four;Four vapeur
+2;515836;Whirlpool;759991670640;AKZ9S 8271 IX;Four à Pyrolyse;Four;Four vapeur
+3;89507;Bosch;HSG616BS1/39;HSG616BS1;;Four;Four vapeur
+3;89508;Bosch;HSG616BS1/44;HSG616BS1;;Four;Four vapeur
+3;89509;Bosch;HSG616BS1/51;HSG616BS1;;Four;Four vapeur
+3;89510;Bosch;HSG616BS1/56;HSG616BS1;;Four;Four vapeur
+3;89511;Bosch;HSG616BS1/63;HSG616BS1;;Four;Four vapeur
+3;89512;Bosch;HSG616BS1/68;HSG616BS1;;Four;Four vapeur
+3;89513;Bosch;HSG636BB1/01;HSG636BB1;;Four;Four vapeur
+3;89514;Bosch;HSG636BB1/05;HSG636BB1;;Four;Four vapeur
+3;89515;Bosch;HSG636BB1/15;HSG636BB1;;Four;Four vapeur
+3;89516;Bosch;HSG636BB1/25;HSG636BB1;;Four;Four vapeur
+3;89517;Bosch;HSG636BB1/35;HSG636BB1;;Four;Four vapeur
+3;89518;Bosch;HSG636BB1/39;HSG636BB1;;Four;Four vapeur
+3;89519;Bosch;HSG636BB1/40;HSG636BB1;;Four;Four vapeur
+3;89520;Bosch;HSG636BB1/44;HSG636BB1;;Four;Four vapeur
+3;89521;Bosch;HSG636BB1/50;HSG636BB1;;Four;Four vapeur
+3;89522;Bosch;HSG636BB1/51;HSG636BB1;;Four;Four vapeur
+3;89523;Bosch;HSG636BB1/52;HSG636BB1;;Four;Four vapeur
+3;89524;Bosch;HSG636BB1/54;HSG636BB1;;Four;Four vapeur
+3;89525;Bosch;HSG636BB1/56;HSG636BB1;;Four;Four vapeur
+3;89526;Bosch;HSG636BB1/57;HSG636BB1;;Four;Four vapeur
+3;89527;Bosch;HSG636BB1/63;HSG636BB1;;Four;Four vapeur
+3;89528;Bosch;HSG636BB1/68;HSG636BB1;;Four;Four vapeur
+3;89529;Bosch;HSG636BB1/74;HSG636BB1;;Four;Four vapeur
+3;89530;Bosch;HSG636BB1/81;HSG636BB1;;Four;Four vapeur
+3;89531;Bosch;HSG636BB1/84;HSG636BB1;;Four;Four vapeur
+3;89532;Bosch;HSG636BB1/88;HSG636BB1;;Four;Four vapeur
+3;89533;Bosch;HSG636BB1/91;HSG636BB1;;Four;Four vapeur
+3;89534;Bosch;HSG636BB1/93;HSG636BB1;;Four;Four vapeur
+3;89535;Bosch;HSG636BB1/A1;HSG636BB1;;Four;Four vapeur
+3;89536;Bosch;HSG636BB1/B6;HSG636BB1;;Four;Four vapeur
+3;89537;Bosch;HSG636BB1/B7;HSG636BB1;;Four;Four vapeur
+3;89538;Bosch;HSG636BB1/D7;HSG636BB1;;Four;Four vapeur
+3;89539;Bosch;HSG636BS1/01;HSG636BS1;;Four;Four vapeur
+3;89540;Bosch;HSG636BS1/05;HSG636BS1;;Four;Four vapeur
+3;89541;Bosch;HSG636BS1/15;HSG636BS1;;Four;Four vapeur
+3;89542;Bosch;HSG636BS1/25;HSG636BS1;;Four;Four vapeur
+3;89543;Bosch;HSG636BS1/35;HSG636BS1;;Four;Four vapeur
+3;89544;Bosch;HSG636BS1/39;HSG636BS1;;Four;Four vapeur
+3;89545;Bosch;HSG636BS1/40;HSG636BS1;;Four;Four vapeur
+3;89546;Bosch;HSG636BS1/44;HSG636BS1;;Four;Four vapeur
+3;89547;Bosch;HSG636BS1/50;HSG636BS1;;Four;Four vapeur
+3;89548;Bosch;HSG636BS1/51;HSG636BS1;;Four;Four vapeur
+3;89549;Bosch;HSG636BS1/52;HSG636BS1;;Four;Four vapeur
+3;89550;Bosch;HSG636BS1/56;HSG636BS1;;Four;Four vapeur
+3;89551;Bosch;HSG636BS1/63;HSG636BS1;;Four;Four vapeur
+3;89552;Bosch;HSG636BS1/68;HSG636BS1;;Four;Four vapeur
+3;89553;Bosch;HSG636BS1/74;HSG636BS1;;Four;Four vapeur
+3;89554;Bosch;HSG636BS1/76;HSG636BS1;;Four;Four vapeur
+3;89555;Bosch;HSG636BS1/81;HSG636BS1;;Four;Four vapeur
+3;89556;Bosch;HSG636BS1/84;HSG636BS1;;Four;Four vapeur
+3;89557;Bosch;HSG636BS1/88;HSG636BS1;;Four;Four vapeur
+3;89558;Bosch;HSG636BS1/91;HSG636BS1;;Four;Four vapeur
+3;89559;Bosch;HSG636BS1/93;HSG636BS1;;Four;Four vapeur
+3;89560;Bosch;HSG636BS1/B6;HSG636BS1;;Four;Four vapeur
+3;89561;Bosch;HSG636BS1/B7;HSG636BS1;;Four;Four vapeur
+3;89562;Bosch;HSG636BS1/D7;HSG636BS1;;Four;Four vapeur
+3;89563;Bosch;HSG636BW1/01;HSG636BW1;;Four;Four vapeur
+3;89564;Bosch;HSG636BW1/05;HSG636BW1;;Four;Four vapeur
+3;89565;Bosch;HSG636BW1/15;HSG636BW1;;Four;Four vapeur
+3;89566;Bosch;HSG636BW1/25;HSG636BW1;;Four;Four vapeur
+3;89567;Bosch;HSG636BW1/35;HSG636BW1;;Four;Four vapeur
+3;89568;Bosch;HSG636BW1/39;HSG636BW1;;Four;Four vapeur
+3;89569;Bosch;HSG636BW1/40;HSG636BW1;;Four;Four vapeur
+3;89570;Bosch;HSG636BW1/44;HSG636BW1;;Four;Four vapeur
+3;89571;Bosch;HSG636BW1/50;HSG636BW1;;Four;Four vapeur
+3;89572;Bosch;HSG636BW1/51;HSG636BW1;;Four;Four vapeur
+3;89573;Bosch;HSG636BW1/56;HSG636BW1;;Four;Four vapeur
+3;89574;Bosch;HSG636BW1/57;HSG636BW1;;Four;Four vapeur
+3;89575;Bosch;HSG636BW1/63;HSG636BW1;;Four;Four vapeur
+3;89576;Bosch;HSG636BW1/68;HSG636BW1;;Four;Four vapeur
+3;89577;Bosch;HSG636BW1/74;HSG636BW1;;Four;Four vapeur
+3;89578;Bosch;HSG636BW1/81;HSG636BW1;;Four;Four vapeur
+3;89579;Bosch;HSG636BW1/84;HSG636BW1;;Four;Four vapeur
+3;89580;Bosch;HSG636BW1/88;HSG636BW1;;Four;Four vapeur
+3;89581;Bosch;HSG636BW1/91;HSG636BW1;;Four;Four vapeur
+3;89582;Bosch;HSG636BW1/93;HSG636BW1;;Four;Four vapeur
+3;89583;Bosch;HSG636BW1/A1;HSG636BW1;;Four;Four vapeur
+3;89584;Bosch;HSG636BW1/B6;HSG636BW1;;Four;Four vapeur
+3;89585;Bosch;HSG636BW1/B7;HSG636BW1;;Four;Four vapeur
+3;89586;Bosch;HSG636ES1/01;HSG636ES1;;Four;Four vapeur
+3;89587;Bosch;HSG636ES1/05;HSG636ES1;;Four;Four vapeur
+3;89588;Bosch;HSG636ES1/15;HSG636ES1;;Four;Four vapeur
+3;89589;Bosch;HSG636ES1/24;HSG636ES1;;Four;Four vapeur
+3;89590;Bosch;HSG636ES1/25;HSG636ES1;;Four;Four vapeur
+3;89591;Bosch;HSG636ES1/35;HSG636ES1;;Four;Four vapeur
+3;89592;Bosch;HSG636ES1/40;HSG636ES1;;Four;Four vapeur
+3;89593;Bosch;HSG636ES1/44;HSG636ES1;;Four;Four vapeur
+3;89594;Bosch;HSG636ES1/50;HSG636ES1;;Four;Four vapeur
+3;89595;Bosch;HSG636ES1/51;HSG636ES1;;Four;Four vapeur
+3;89596;Bosch;HSG636ES1/52;HSG636ES1;;Four;Four vapeur
+3;89597;Bosch;HSG636ES1/56;HSG636ES1;;Four;Four vapeur
+3;89598;Bosch;HSG636ES1/61;HSG636ES1;;Four;Four vapeur
+3;89599;Bosch;HSG636ES1/63;HSG636ES1;;Four;Four vapeur
+3;89600;Bosch;HSG636ES1/68;HSG636ES1;;Four;Four vapeur
+3;89601;Bosch;HSG636ES1/74;HSG636ES1;;Four;Four vapeur
+3;89602;Bosch;HSG636ES1/76;HSG636ES1;;Four;Four vapeur
+3;89603;Bosch;HSG636ES1/81;HSG636ES1;;Four;Four vapeur
+3;89604;Bosch;HSG636ES1/88;HSG636ES1;;Four;Four vapeur
+3;89605;Bosch;HSG636ES1/91;HSG636ES1;;Four;Four vapeur
+3;89606;Bosch;HSG636ES1/93;HSG636ES1;;Four;Four vapeur
+3;89607;Bosch;HSG636ES1/B1;HSG636ES1;;Four;Four vapeur
+3;89608;Bosch;HSG636ES1/B6;HSG636ES1;;Four;Four vapeur
+3;89609;Bosch;HSG636ES1/B7;HSG636ES1;;Four;Four vapeur
+3;89610;Bosch;HSG636ES1/C5;HSG636ES1;;Four;Four vapeur
+3;89611;Bosch;HSG636ES1/D7;HSG636ES1;;Four;Four vapeur
+3;89612;Bosch;HSG636ES1C/01;HSG636ES1C;;Four;Four vapeur
+3;89613;Bosch;HSG636ES1C/05;HSG636ES1C;;Four;Four vapeur
+3;89614;Bosch;HSG636ES1C/25;HSG636ES1C;;Four;Four vapeur
+3;89615;Bosch;HSG636ES1C/35;HSG636ES1C;;Four;Four vapeur
+3;89616;Bosch;HSG636ES1C/44;HSG636ES1C;;Four;Four vapeur
+3;89617;Bosch;HSG636ES1C/56;HSG636ES1C;;Four;Four vapeur
+3;89618;Bosch;HSG636ES1C/68;HSG636ES1C;;Four;Four vapeur
+3;89619;Bosch;HSG636ES1W/01;HSG636ES1W;;Four;Four vapeur
+3;89620;Bosch;HSG636ES1W/05;HSG636ES1W;;Four;Four vapeur
+3;89621;Bosch;HSG636ES1W/15;HSG636ES1W;;Four;Four vapeur
+3;89622;Bosch;HSG636ES1W/25;HSG636ES1W;;Four;Four vapeur
+3;89623;Bosch;HSG636ES1W/35;HSG636ES1W;;Four;Four vapeur
+3;89624;Bosch;HSG636ES1W/40;HSG636ES1W;;Four;Four vapeur
+3;89625;Bosch;HSG636ES1W/44;HSG636ES1W;;Four;Four vapeur
+3;89626;Bosch;HSG636ES1W/51;HSG636ES1W;;Four;Four vapeur
+3;89627;Bosch;HSG636ES1W/52;HSG636ES1W;;Four;Four vapeur
+3;89628;Bosch;HSG636ES1W/56;HSG636ES1W;;Four;Four vapeur
+3;89629;Bosch;HSG636ES1W/63;HSG636ES1W;;Four;Four vapeur
+3;89630;Bosch;HSG636ES1W/68;HSG636ES1W;;Four;Four vapeur
+3;89631;Bosch;HSG636ES1W/74;HSG636ES1W;;Four;Four vapeur
+3;89632;Bosch;HSG636ES1W/76;HSG636ES1W;;Four;Four vapeur
+3;89633;Bosch;HSG636ES1W/81;HSG636ES1W;;Four;Four vapeur
+3;89634;Bosch;HSG636ES1W/88;HSG636ES1W;;Four;Four vapeur
+3;89635;Bosch;HSG636ES1W/91;HSG636ES1W;;Four;Four vapeur
+3;89636;Bosch;HSG636ES1W/93;HSG636ES1W;;Four;Four vapeur
+3;89637;Bosch;HSG636ES1W/B1;HSG636ES1W;;Four;Four vapeur
+3;89638;Bosch;HSG636ES1W/B6;HSG636ES1W;;Four;Four vapeur
+3;89639;Bosch;HSG636ES1W/B7;HSG636ES1W;;Four;Four vapeur
+3;89640;Bosch;HSG636ES1W/C5;HSG636ES1W;;Four;Four vapeur
+3;89641;Bosch;HSG636ES1W/D7;HSG636ES1W;;Four;Four vapeur
+3;89642;Bosch;HSG636XS6/01;HSG636XS6;;Four;Four vapeur
+3;89643;Bosch;HSG636XS6/05;HSG636XS6;;Four;Four vapeur
+3;89644;Bosch;HSG636XS6/13;HSG636XS6;;Four;Four vapeur
+3;89645;Bosch;HSG636XS6/15;HSG636XS6;;Four;Four vapeur
+3;89646;Bosch;HSG636XS6/24;HSG636XS6;;Four;Four vapeur
+3;89647;Bosch;HSG636XS6/25;HSG636XS6;;Four;Four vapeur
+3;89648;Bosch;HSG636XS6/35;HSG636XS6;;Four;Four vapeur
+3;89649;Bosch;HSG636XS6/40;HSG636XS6;;Four;Four vapeur
+3;89650;Bosch;HSG636XS6/41;HSG636XS6;;Four;Four vapeur
+3;89651;Bosch;HSG636XS6/44;HSG636XS6;;Four;Four vapeur
+3;89652;Bosch;HSG636XS6/50;HSG636XS6;;Four;Four vapeur
+3;89653;Bosch;HSG636XS6/51;HSG636XS6;;Four;Four vapeur
+3;89654;Bosch;HSG636XS6/52;HSG636XS6;;Four;Four vapeur
+3;89655;Bosch;HSG636XS6/56;HSG636XS6;;Four;Four vapeur
+3;89656;Bosch;HSG636XS6/61;HSG636XS6;;Four;Four vapeur
+3;89657;Bosch;HSG636XS6/63;HSG636XS6;;Four;Four vapeur
+3;89658;Bosch;HSG636XS6/68;HSG636XS6;;Four;Four vapeur
+3;89659;Bosch;HSG636XS6/74;HSG636XS6;;Four;Four vapeur
+3;89660;Bosch;HSG636XS6/76;HSG636XS6;;Four;Four vapeur
+3;89661;Bosch;HSG636XS6/81;HSG636XS6;;Four;Four vapeur
+3;89662;Bosch;HSG636XS6/88;HSG636XS6;;Four;Four vapeur
+3;89663;Bosch;HSG636XS6/91;HSG636XS6;;Four;Four vapeur
+3;89664;Bosch;HSG636XS6/93;HSG636XS6;;Four;Four vapeur
+3;89665;Bosch;HSG636XS6/A4;HSG636XS6;;Four;Four vapeur
+3;89666;Bosch;HSG636XS6/B1;HSG636XS6;;Four;Four vapeur
+3;89667;Bosch;HSG636XS6/B6;HSG636XS6;;Four;Four vapeur
+3;89668;Bosch;HSG636XS6/B7;HSG636XS6;;Four;Four vapeur
+3;89669;Bosch;HSG636XS6/C5;HSG636XS6;;Four;Four vapeur
+3;89670;Bosch;HSG636XS6/D7;HSG636XS6;;Four;Four vapeur
+3;89671;Bosch;HSG656EW1W/91;HSG656EW1W;;Four;Four vapeur
+3;89672;Bosch;HSG656EW1W/93;HSG656EW1W;;Four;Four vapeur
+3;89673;Bosch;HSG656EW1W/A1;HSG656EW1W;;Four;Four vapeur
+3;89674;Bosch;HSG656EW1W/B1;HSG656EW1W;;Four;Four vapeur
+3;89675;Bosch;HSG656EW1W/B6;HSG656EW1W;;Four;Four vapeur
+3;89676;Bosch;HSG656EW1W/B7;HSG656EW1W;;Four;Four vapeur
+3;89677;Bosch;HSG656EW1W/C5;HSG656EW1W;;Four;Four vapeur
+3;89678;Bosch;HSG656RS1/01;HSG656RS1;;Four;Four vapeur
+3;89679;Bosch;HSG656RS1/05;HSG656RS1;;Four;Four vapeur
+3;89680;Bosch;HSG656RS1/15;HSG656RS1;;Four;Four vapeur
+3;89681;Bosch;HSG656RS1/25;HSG656RS1;;Four;Four vapeur
+3;89682;Bosch;HSG656RS1/35;HSG656RS1;;Four;Four vapeur
+3;89683;Bosch;HSG656RS1/40;HSG656RS1;;Four;Four vapeur
+3;89684;Bosch;HSG656RS1/44;HSG656RS1;;Four;Four vapeur
+3;89685;Bosch;HSG656RS1/51;HSG656RS1;;Four;Four vapeur
+3;89686;Bosch;HSG656RS1/52;HSG656RS1;;Four;Four vapeur
+3;89687;Bosch;HSG656RS1/56;HSG656RS1;;Four;Four vapeur
+3;89688;Bosch;HSG656RS1/61;HSG656RS1;;Four;Four vapeur
+3;89689;Bosch;HSG656RS1/63;HSG656RS1;;Four;Four vapeur
+3;89690;Bosch;HSG656RS1/68;HSG656RS1;;Four;Four vapeur
+3;89691;Bosch;HSG656RS1/74;HSG656RS1;;Four;Four vapeur
+3;89692;Bosch;HSG656RS1/76;HSG656RS1;;Four;Four vapeur
+3;89693;Bosch;HSG656RS1/81;HSG656RS1;;Four;Four vapeur
+3;89694;Bosch;HSG656RS1/88;HSG656RS1;;Four;Four vapeur
+3;89695;Bosch;HSG656RS1/91;HSG656RS1;;Four;Four vapeur
+3;89696;Bosch;HSG656RS1/93;HSG656RS1;;Four;Four vapeur
+3;89697;Bosch;HSG656RS1/B1;HSG656RS1;;Four;Four vapeur
+3;89698;Bosch;HSG656RS1/B6;HSG656RS1;;Four;Four vapeur
+3;89699;Bosch;HSG656RS1/B7;HSG656RS1;;Four;Four vapeur
+3;89700;Bosch;HSG656RS1/C5;HSG656RS1;;Four;Four vapeur
+3;89701;Bosch;HSG656XB6A/68;HSG656XB6A;;Four;Four vapeur
+3;89702;Bosch;HSG656XB6A/74;HSG656XB6A;;Four;Four vapeur
+3;89703;Bosch;HSG656XB6A/81;HSG656XB6A;;Four;Four vapeur
+3;89704;Bosch;HSG656XB6A/88;HSG656XB6A;;Four;Four vapeur
+3;89705;Bosch;HSG656XB6A/91;HSG656XB6A;;Four;Four vapeur
+3;89706;Bosch;HSG656XB6A/93;HSG656XB6A;;Four;Four vapeur
+3;89707;Bosch;HSG656XB6A/A4;HSG656XB6A;;Four;Four vapeur
+3;89708;Bosch;HSG656XB6A/B1;HSG656XB6A;;Four;Four vapeur
+3;89709;Bosch;HSG656XB6A/B6;HSG656XB6A;;Four;Four vapeur
+3;89710;Bosch;HSG656XB6A/B7;HSG656XB6A;;Four;Four vapeur
+3;89711;Bosch;HSG656XB6A/C5;HSG656XB6A;;Four;Four vapeur
+3;89712;Bosch;HSG656XS1/01;HSG656XS1;;Four;Four vapeur
+3;89713;Bosch;HSG656XS1/05;HSG656XS1;;Four;Four vapeur
+3;89714;Bosch;HSG656XS1/15;HSG656XS1;;Four;Four vapeur
+3;89715;Bosch;HSG656XS1/24;HSG656XS1;;Four;Four vapeur
+3;89716;Bosch;HSG656XS1/25;HSG656XS1;;Four;Four vapeur
+3;89717;Bosch;HSG656XS1/35;HSG656XS1;;Four;Four vapeur
+3;89718;Bosch;HSG656XS1/40;HSG656XS1;;Four;Four vapeur
+3;89719;Bosch;HSG656XS1/44;HSG656XS1;;Four;Four vapeur
+3;89720;Bosch;HSG656XS1/50;HSG656XS1;;Four;Four vapeur
+3;89721;Bosch;HSG656XS1/51;HSG656XS1;;Four;Four vapeur
+3;89722;Bosch;HSG656XS1/52;HSG656XS1;;Four;Four vapeur
+3;89723;Bosch;HSG656XS1/56;HSG656XS1;;Four;Four vapeur
+3;89724;Bosch;HSG656XS1/61;HSG656XS1;;Four;Four vapeur
+3;89725;Bosch;HSG656XS1/63;HSG656XS1;;Four;Four vapeur
+3;89726;Bosch;HSG656XS1/68;HSG656XS1;;Four;Four vapeur
+3;89727;Bosch;HSG656XS1/74;HSG656XS1;;Four;Four vapeur
+3;89728;Bosch;HSG656XS1/76;HSG656XS1;;Four;Four vapeur
+3;89729;Bosch;HSG656XS1/81;HSG656XS1;;Four;Four vapeur
+3;89730;Bosch;HSG656XS1/88;HSG656XS1;;Four;Four vapeur
+3;89731;Bosch;HSG656XS1/91;HSG656XS1;;Four;Four vapeur
+3;89732;Bosch;HSG656XS1/93;HSG656XS1;;Four;Four vapeur
+3;89733;Bosch;HSG656XS1/B1;HSG656XS1;;Four;Four vapeur
+3;89734;Bosch;HSG656XS1/B6;HSG656XS1;;Four;Four vapeur
+3;89735;Bosch;HSG656XS1/B7;HSG656XS1;;Four;Four vapeur
+3;89736;Bosch;HSG656XS1/C5;HSG656XS1;;Four;Four vapeur
+3;89737;Bosch;HSG656XS6W/05;HSG656XS6W;;Four;Four vapeur
+3;89738;Bosch;HSG656XS6W/25;HSG656XS6W;;Four;Four vapeur
+3;89739;Bosch;HSG656XS6W/35;HSG656XS6W;;Four;Four vapeur
+3;89740;Bosch;HSG656XS6W/40;HSG656XS6W;;Four;Four vapeur
+3;89741;Bosch;HSG656XS6W/41;HSG656XS6W;;Four;Four vapeur
+3;89742;Bosch;HSG656XS7W/44;HSG656XS7W;;Four;Four vapeur
+3;89743;Bosch;HSG656XS7W/51;HSG656XS7W;;Four;Four vapeur
+3;89744;Bosch;HSG656XS7W/52;HSG656XS7W;;Four;Four vapeur
+3;89745;Bosch;HSG656XS7W/56;HSG656XS7W;;Four;Four vapeur
+3;89746;Bosch;HSG656XS7W/63;HSG656XS7W;;Four;Four vapeur
+3;89747;Bosch;HSG656XS7W/68;HSG656XS7W;;Four;Four vapeur
+3;89748;Bosch;HSG656XS7W/74;HSG656XS7W;;Four;Four vapeur
+3;89749;Bosch;HSG656XS7W/76;HSG656XS7W;;Four;Four vapeur
+3;89750;Bosch;HSG656XS7W/81;HSG656XS7W;;Four;Four vapeur
+3;89751;Bosch;HSG656XS7W/88;HSG656XS7W;;Four;Four vapeur
+3;89752;Bosch;HSG656XS7W/91;HSG656XS7W;;Four;Four vapeur
+3;89753;Bosch;HSG656XS7W/93;HSG656XS7W;;Four;Four vapeur
+3;89754;Bosch;HSG656XS7W/A4;HSG656XS7W;;Four;Four vapeur
+3;89755;Bosch;HSG656XS7W/B1;HSG656XS7W;;Four;Four vapeur
+3;89756;Bosch;HSG656XS7W/B6;HSG656XS7W;;Four;Four vapeur
+3;89757;Bosch;HSG656XS7W/B7;HSG656XS7W;;Four;Four vapeur
+3;89758;Bosch;HSG656XS7W/C5;HSG656XS7W;;Four;Four vapeur
+3;89759;Bosch;HSG7261B1/B1;HSG7261B1;;Four;Four vapeur
+3;89760;Bosch;HSG7261B1/D3;HSG7261B1;;Four;Four vapeur
+3;89761;Bosch;HSG7261B1/D4;HSG7261B1;;Four;Four vapeur
+3;89762;Bosch;HSG7261B1/D7;HSG7261B1;;Four;Four vapeur
+3;655720;Bosch;HSG7261B1/F2;HSG7261B1;;Four;Four vapeur
+3;655721;Bosch;HSG7261B1/G7;HSG7261B1;;Four;Four vapeur
+3;655722;Bosch;HSG7261B1/H1;HSG7261B1;;Four;Four vapeur
+3;655723;Bosch;HSG7261B1/J6;HSG7261B1;;Four;Four vapeur
+3;655724;Bosch;HSG7261B1/J7;HSG7261B1;;Four;Four vapeur
+3;655725;Bosch;HSG7261B1/J8;HSG7261B1;;Four;Four vapeur
+3;89767;Bosch;HSG7361B1/01;HSG7361B1;;Four;Four vapeur
+3;89768;Bosch;HSG7361B1/B1;HSG7361B1;;Four;Four vapeur
+3;89769;Bosch;HSG7361B1/D3;HSG7361B1;;Four;Four vapeur
+3;89770;Bosch;HSG7361B1/D4;HSG7361B1;;Four;Four vapeur
+3;89771;Bosch;HSG7361B1/D7;HSG7361B1;;Four;Four vapeur
+3;655726;Bosch;HSG7361B1/F2;HSG7361B1;;Four;Four vapeur
+3;655727;Bosch;HSG7361B1/F8;HSG7361B1;;Four;Four vapeur
+3;655728;Bosch;HSG7361B1/G7;HSG7361B1;;Four;Four vapeur
+3;655729;Bosch;HSG7361B1/H1;HSG7361B1;;Four;Four vapeur
+3;655730;Bosch;HSG7361B1/J6;HSG7361B1;;Four;Four vapeur
+3;655731;Bosch;HSG7361B1/J7;HSG7361B1;;Four;Four vapeur
+3;655732;Bosch;HSG7361B1/J8;HSG7361B1;;Four;Four vapeur
+3;89772;Bosch;HSG7361W1/B1;HSG7361W1;;Four;Four vapeur
+3;89773;Bosch;HSG7361W1/D3;HSG7361W1;;Four;Four vapeur
+3;89774;Bosch;HSG7361W1/D4;HSG7361W1;;Four;Four vapeur
+3;89775;Bosch;HSG7361W1/D7;HSG7361W1;;Four;Four vapeur
+3;655733;Bosch;HSG7361W1/F2;HSG7361W1;;Four;Four vapeur
+3;655734;Bosch;HSG7361W1/G7;HSG7361W1;;Four;Four vapeur
+3;655735;Bosch;HSG7361W1/H1;HSG7361W1;;Four;Four vapeur
+3;655736;Bosch;HSG7361W1/J6;HSG7361W1;;Four;Four vapeur
+3;655737;Bosch;HSG7361W1/J7;HSG7361W1;;Four;Four vapeur
+3;655738;Bosch;HSG7361W1/J8;HSG7361W1;;Four;Four vapeur
+3;89790;Bosch;HSG7364B1/01;HSG7364B1;;Four;Four vapeur
+3;89791;Bosch;HSG7364B1/B1;HSG7364B1;;Four;Four vapeur
+3;89792;Bosch;HSG7364B1/C5;HSG7364B1;;Four;Four vapeur
+3;89793;Bosch;HSG7364B1/C8;HSG7364B1;;Four;Four vapeur
+3;89794;Bosch;HSG7364B1/D1;HSG7364B1;;Four;Four vapeur
+3;89795;Bosch;HSG7364B1/D3;HSG7364B1;;Four;Four vapeur
+3;89796;Bosch;HSG7364B1/D6;HSG7364B1;;Four;Four vapeur
+3;89797;Bosch;HSG7364B1/D7;HSG7364B1;;Four;Four vapeur
+3;655739;Bosch;HSG7364B1/F2;HSG7364B1;;Four;Four vapeur
+3;655740;Bosch;HSG7364B1/G9;HSG7364B1;;Four;Four vapeur
+3;655741;Bosch;HSG7364B1/H1;HSG7364B1;;Four;Four vapeur
+3;655742;Bosch;HSG7364B1/H2;HSG7364B1;;Four;Four vapeur
+3;655743;Bosch;HSG7364B1/H4;HSG7364B1;;Four;Four vapeur
+3;655744;Bosch;HSG7364B1/J6;HSG7364B1;;Four;Four vapeur
+3;655745;Bosch;HSG7364B1/J7;HSG7364B1;;Four;Four vapeur
+3;655746;Bosch;HSG7364B1/J8;HSG7364B1;;Four;Four vapeur
+3;89798;Bosch;HSG7364B1B/B1;HSG7364B1B;;Four;Four vapeur
+3;89799;Bosch;HSG7364B1B/C5;HSG7364B1B;;Four;Four vapeur
+3;89800;Bosch;HSG7364B1B/D1;HSG7364B1B;;Four;Four vapeur
+3;89801;Bosch;HSG7364B1B/D3;HSG7364B1B;;Four;Four vapeur
+3;89802;Bosch;HSG7364B1B/D6;HSG7364B1B;;Four;Four vapeur
+3;89803;Bosch;HSG7364B1B/D7;HSG7364B1B;;Four;Four vapeur
+3;655747;Bosch;HSG7364B1B/F2;HSG7364B1B;;Four;Four vapeur
+3;655748;Bosch;HSG7364B1B/G9;HSG7364B1B;;Four;Four vapeur
+3;655749;Bosch;HSG7364B1B/H1;HSG7364B1B;;Four;Four vapeur
+3;655750;Bosch;HSG7364B1B/H4;HSG7364B1B;;Four;Four vapeur
+3;655751;Bosch;HSG7364B1B/J6;HSG7364B1B;;Four;Four vapeur
+3;655752;Bosch;HSG7364B1B/J7;HSG7364B1B;;Four;Four vapeur
+3;655753;Bosch;HSG7364B1B/J8;HSG7364B1B;;Four;Four vapeur
+3;655754;Bosch;HSG7364W0W/F2;HSG7364W0W;;Four;Four vapeur
+3;655755;Bosch;HSG7364W0W/G9;HSG7364W0W;;Four;Four vapeur
+3;655756;Bosch;HSG7364W0W/H1;HSG7364W0W;;Four;Four vapeur
+3;655757;Bosch;HSG7364W0W/H4;HSG7364W0W;;Four;Four vapeur
+3;655758;Bosch;HSG7364W0W/J7;HSG7364W0W;;Four;Four vapeur
+3;655759;Bosch;HSG7364W0W/J8;HSG7364W0W;;Four;Four vapeur
+3;655760;Bosch;HSG738DB1/D7;HSG738DB1;;Four;Four vapeur
+3;655761;Bosch;HSG738DB1/F2;HSG738DB1;;Four;Four vapeur
+3;655762;Bosch;HSG738DB1/G9;HSG738DB1;;Four;Four vapeur
+3;655763;Bosch;HSG738DB1/H1;HSG738DB1;;Four;Four vapeur
+3;655764;Bosch;HSG738DB1/H4;HSG738DB1;;Four;Four vapeur
+3;655765;Bosch;HSG738DB1/J7;HSG738DB1;;Four;Four vapeur
+3;655766;Bosch;HSG738DB1/J8;HSG738DB1;;Four;Four vapeur
+3;89816;Bosch;HSG7564B1W/B1;HSG7564B1W;;Four;Four vapeur
+3;89817;Bosch;HSG7564B1W/C5;HSG7564B1W;;Four;Four vapeur
+3;89818;Bosch;HSG7564B1W/D1;HSG7564B1W;;Four;Four vapeur
+3;89819;Bosch;HSG7564B1W/D3;HSG7564B1W;;Four;Four vapeur
+3;89820;Bosch;HSG7564B1W/D6;HSG7564B1W;;Four;Four vapeur
+3;89821;Bosch;HSG7564B1W/D7;HSG7564B1W;;Four;Four vapeur
+3;655767;Bosch;HSG7564B1W/F2;HSG7564B1W;;Four;Four vapeur
+3;655768;Bosch;HSG7564B1W/G9;HSG7564B1W;;Four;Four vapeur
+3;655769;Bosch;HSG7564B1W/H1;HSG7564B1W;;Four;Four vapeur
+3;655770;Bosch;HSG7564B1W/H4;HSG7564B1W;;Four;Four vapeur
+3;655771;Bosch;HSG7564B1W/J7;HSG7564B1W;;Four;Four vapeur
+3;655772;Bosch;HSG7564B1W/J8;HSG7564B1W;;Four;Four vapeur
+3;89822;Bosch;HSG7584B1/01;HSG7584B1;;Four;Four vapeur
+3;89823;Bosch;HSG7584B1/B1;HSG7584B1;;Four;Four vapeur
+3;89824;Bosch;HSG7584B1/C5;HSG7584B1;;Four;Four vapeur
+3;89825;Bosch;HSG7584B1/D1;HSG7584B1;;Four;Four vapeur
+3;89826;Bosch;HSG7584B1/D3;HSG7584B1;;Four;Four vapeur
+3;89827;Bosch;HSG7584B1/D6;HSG7584B1;;Four;Four vapeur
+3;89828;Bosch;HSG7584B1/D7;HSG7584B1;;Four;Four vapeur
+3;655773;Bosch;HSG7584B1/F2;HSG7584B1;;Four;Four vapeur
+3;655774;Bosch;HSG7584B1/G9;HSG7584B1;;Four;Four vapeur
+3;655775;Bosch;HSG7584B1/H1;HSG7584B1;;Four;Four vapeur
+3;655776;Bosch;HSG7584B1/H4;HSG7584B1;;Four;Four vapeur
+3;655777;Bosch;HSG7584B1/J2;HSG7584B1;;Four;Four vapeur
+3;655778;Bosch;HSG7584B1/J7;HSG7584B1;;Four;Four vapeur
+3;655779;Bosch;HSG7584B1/J8;HSG7584B1;;Four;Four vapeur
+3;89829;Bosch;HSG758DB1A/B1;HSG758DB1A;;Four;Four vapeur
+3;89830;Bosch;HSG758DB1A/C5;HSG758DB1A;;Four;Four vapeur
+3;89831;Bosch;HSG758DB1A/D1;HSG758DB1A;;Four;Four vapeur
+3;89832;Bosch;HSG758DB1A/D3;HSG758DB1A;;Four;Four vapeur
+3;89833;Bosch;HSG758DB1A/D6;HSG758DB1A;;Four;Four vapeur
+3;89834;Bosch;HSG758DB1A/D7;HSG758DB1A;;Four;Four vapeur
+3;655780;Bosch;HSG758DB1A/F2;HSG758DB1A;;Four;Four vapeur
+3;655781;Bosch;HSG758DB1A/G9;HSG758DB1A;;Four;Four vapeur
+3;655782;Bosch;HSG758DB1A/H1;HSG758DB1A;;Four;Four vapeur
+3;655783;Bosch;HSG758DB1A/H4;HSG758DB1A;;Four;Four vapeur
+3;655784;Bosch;HSG758DB1A/J7;HSG758DB1A;;Four;Four vapeur
+3;655785;Bosch;HSG758DB1A/J8;HSG758DB1A;;Four;Four vapeur
+3;89835;Bosch;HSG836NC1/48;HSG836NC1;;Four;Four vapeur
+3;89836;Bosch;HSG836NC1/50;HSG836NC1;;Four;Four vapeur
+3;89837;Bosch;HSG836NC1/52;HSG836NC1;;Four;Four vapeur
+3;89838;Bosch;HSG836NC1/57;HSG836NC1;;Four;Four vapeur
+3;89839;Bosch;HSG836NC1/63;HSG836NC1;;Four;Four vapeur
+3;89840;Bosch;HSG836NC1/68;HSG836NC1;;Four;Four vapeur
+3;89841;Bosch;HSG836NC1/74;HSG836NC1;;Four;Four vapeur
+3;89842;Bosch;HSG836NC1/81;HSG836NC1;;Four;Four vapeur
+3;89843;Bosch;HSG836NC1/84;HSG836NC1;;Four;Four vapeur
+3;89844;Bosch;HSG836NC1/88;HSG836NC1;;Four;Four vapeur
+3;89845;Bosch;HSG836NC1/91;HSG836NC1;;Four;Four vapeur
+3;89846;Bosch;HSG836NC1/93;HSG836NC1;;Four;Four vapeur
+3;89847;Bosch;HSG836NC1/A1;HSG836NC1;;Four;Four vapeur
+3;89848;Bosch;HSG836NC1/B6;HSG836NC1;;Four;Four vapeur
+3;89849;Bosch;HSG836NC1/B7;HSG836NC1;;Four;Four vapeur
+3;89850;Bosch;HSG836NS1/48;HSG836NS1;;Four;Four vapeur
+3;89851;Bosch;HSG836NS1/50;HSG836NS1;;Four;Four vapeur
+3;89852;Bosch;HSG836NS1/56;HSG836NS1;;Four;Four vapeur
+3;89853;Bosch;HSG836NS1/63;HSG836NS1;;Four;Four vapeur
+3;89854;Bosch;HSG836NS1/68;HSG836NS1;;Four;Four vapeur
+3;89855;Bosch;HSG836NS1/74;HSG836NS1;;Four;Four vapeur
+3;89856;Bosch;HSG836NS1/76;HSG836NS1;;Four;Four vapeur
+3;89857;Bosch;HSG836NS1/81;HSG836NS1;;Four;Four vapeur
+3;89858;Bosch;HSG836NS1/84;HSG836NS1;;Four;Four vapeur
+3;89859;Bosch;HSG836NS1/88;HSG836NS1;;Four;Four vapeur
+3;89860;Bosch;HSG836NS1/91;HSG836NS1;;Four;Four vapeur
+3;89861;Bosch;HSG836NS1/93;HSG836NS1;;Four;Four vapeur
+3;89862;Bosch;HSG836NS1/B6;HSG836NS1;;Four;Four vapeur
+3;89863;Bosch;HSG836NS1/B7;HSG836NS1;;Four;Four vapeur
+3;89864;Bosch;HSG856XB6/05;HSG856XB6;;Four;Four vapeur
+3;89865;Bosch;HSG856XB6/13;HSG856XB6;;Four;Four vapeur
+3;89866;Bosch;HSG856XB6/15;HSG856XB6;;Four;Four vapeur
+3;89867;Bosch;HSG856XB6/24;HSG856XB6;;Four;Four vapeur
+3;89868;Bosch;HSG856XB6/25;HSG856XB6;;Four;Four vapeur
+3;89869;Bosch;HSG856XB6/35;HSG856XB6;;Four;Four vapeur
+3;89870;Bosch;HSG856XB6/40;HSG856XB6;;Four;Four vapeur
+3;89871;Bosch;HSG856XB6/41;HSG856XB6;;Four;Four vapeur
+3;89872;Bosch;HSG856XB6/44;HSG856XB6;;Four;Four vapeur
+3;89873;Bosch;HSG856XB6/50;HSG856XB6;;Four;Four vapeur
+3;89874;Bosch;HSG856XB6/51;HSG856XB6;;Four;Four vapeur
+3;89875;Bosch;HSG856XC1/B1;HSG856XC1;;Four;Four vapeur
+3;89876;Bosch;HSG856XC1/B6;HSG856XC1;;Four;Four vapeur
+3;89877;Bosch;HSG856XC1/B7;HSG856XC1;;Four;Four vapeur
+3;89878;Bosch;HSG856XC1/C5;HSG856XC1;;Four;Four vapeur
+3;89879;Bosch;HSG856XC6/48;HSG856XC6;;Four;Four vapeur
+3;89880;Bosch;HSG856XC6/50;HSG856XC6;;Four;Four vapeur
+3;89881;Bosch;HSG856XC6/51;HSG856XC6;;Four;Four vapeur
+3;89882;Bosch;HSG856XC6/52;HSG856XC6;;Four;Four vapeur
+3;89883;Bosch;HSG856XC6/54;HSG856XC6;;Four;Four vapeur
+3;89884;Bosch;HSG856XC6/56;HSG856XC6;;Four;Four vapeur
+3;89885;Bosch;HSG856XC6/57;HSG856XC6;;Four;Four vapeur
+3;89886;Bosch;HSG856XC6/61;HSG856XC6;;Four;Four vapeur
+3;89887;Bosch;HSG856XC6/63;HSG856XC6;;Four;Four vapeur
+3;89888;Bosch;HSG856XC6/68;HSG856XC6;;Four;Four vapeur
+3;89889;Bosch;HSG856XC6/74;HSG856XC6;;Four;Four vapeur
+3;89890;Bosch;HSG856XC6/81;HSG856XC6;;Four;Four vapeur
+3;89891;Bosch;HSG856XC6/88;HSG856XC6;;Four;Four vapeur
+3;89892;Bosch;HSG856XC6/91;HSG856XC6;;Four;Four vapeur
+3;89893;Bosch;HSG856XC6W/93;HSG856XC6W;;Four;Four vapeur
+3;89894;Bosch;HSG856XC6W/A4;HSG856XC6W;;Four;Four vapeur
+3;89895;Bosch;HSG856XC6W/B1;HSG856XC6W;;Four;Four vapeur
+3;89896;Bosch;HSG856XC6W/B6;HSG856XC6W;;Four;Four vapeur
+3;89897;Bosch;HSG856XC6W/B7;HSG856XC6W;;Four;Four vapeur
+3;89898;Bosch;HSG856XC6W/C5;HSG856XC6W;;Four;Four vapeur
+3;89899;Bosch;HSG856XC6W/D7;HSG856XC6W;;Four;Four vapeur
+3;89900;Bosch;HSG856XC7/74;HSG856XC7;;Four;Four vapeur
+3;89901;Bosch;HSG856XC7/81;HSG856XC7;;Four;Four vapeur
+3;89902;Bosch;HSG856XC7/88;HSG856XC7;;Four;Four vapeur
+3;89903;Bosch;HSG856XC7/91;HSG856XC7;;Four;Four vapeur
+3;89904;Bosch;HSG856XC7/93;HSG856XC7;;Four;Four vapeur
+3;89905;Bosch;HSG856XC7/A4;HSG856XC7;;Four;Four vapeur
+3;89906;Bosch;HSG856XC7/B1;HSG856XC7;;Four;Four vapeur
+3;89907;Bosch;HSG856XC7/B6;HSG856XC7;;Four;Four vapeur
+3;89908;Bosch;HSG856XC7/B7;HSG856XC7;;Four;Four vapeur
+3;89909;Bosch;HSG856XS1/01;HSG856XS1;;Four;Four vapeur
+3;89910;Bosch;HSG856XS1/05;HSG856XS1;;Four;Four vapeur
+3;89911;Bosch;HSG856XS6/01;HSG856XS6;;Four;Four vapeur
+3;89912;Bosch;HSG856XS6/05;HSG856XS6;;Four;Four vapeur
+3;89913;Bosch;HSG856XS6/13;HSG856XS6;;Four;Four vapeur
+3;89914;Bosch;HSG856XS6/15;HSG856XS6;;Four;Four vapeur
+3;89915;Bosch;HSG856XS6/25;HSG856XS6;;Four;Four vapeur
+3;89916;Bosch;HSG856XS6/35;HSG856XS6;;Four;Four vapeur
+3;89917;Bosch;HSG856XS6/40;HSG856XS6;;Four;Four vapeur
+3;89918;Bosch;HSG856XS6/41;HSG856XS6;;Four;Four vapeur
+3;89919;Bosch;HSG856XS6/44;HSG856XS6;;Four;Four vapeur
+3;89920;Bosch;HSG936AB1/B1;HSG936AB1;;Four;Four vapeur
+3;89921;Bosch;HSG936AB1/D2;HSG936AB1;;Four;Four vapeur
+3;89922;Bosch;HSG936AB1/D3;HSG936AB1;;Four;Four vapeur
+3;89923;Bosch;HSG936AB1/D4;HSG936AB1;;Four;Four vapeur
+3;89924;Bosch;HSG936AB1/D7;HSG936AB1;;Four;Four vapeur
+3;655786;Bosch;HSG936AB1/F2;HSG936AB1;;Four;Four vapeur
+3;655787;Bosch;HSG936AB1/G7;HSG936AB1;;Four;Four vapeur
+3;655788;Bosch;HSG936AB1/H1;HSG936AB1;;Four;Four vapeur
+3;655789;Bosch;HSG936AB1/J7;HSG936AB1;;Four;Four vapeur
+3;655790;Bosch;HSG936AB1/J8;HSG936AB1;;Four;Four vapeur
+3;89925;Bosch;HSG936DB1/B1;HSG936DB1;;Four;Four vapeur
+3;89926;Bosch;HSG936DB1/C5;HSG936DB1;;Four;Four vapeur
+3;89927;Bosch;HSG936DB1/D1;HSG936DB1;;Four;Four vapeur
+3;89928;Bosch;HSG936DB1/D2;HSG936DB1;;Four;Four vapeur
+3;89929;Bosch;HSG936DB1/D3;HSG936DB1;;Four;Four vapeur
+3;89930;Bosch;HSG936DB1/D6;HSG936DB1;;Four;Four vapeur
+3;89931;Bosch;HSG936DB1/D7;HSG936DB1;;Four;Four vapeur
+3;655791;Bosch;HSG936DB1/F2;HSG936DB1;;Four;Four vapeur
+3;655792;Bosch;HSG936DB1/G9;HSG936DB1;;Four;Four vapeur
+3;655793;Bosch;HSG936DB1/H1;HSG936DB1;;Four;Four vapeur
+3;655794;Bosch;HSG936DB1/H4;HSG936DB1;;Four;Four vapeur
+3;655795;Bosch;HSG936DB1/J7;HSG936DB1;;Four;Four vapeur
+3;655796;Bosch;HSG936DB1/J8;HSG936DB1;;Four;Four vapeur
+3;655797;Bosch;HSG938EB1/F2;HSG938EB1;;Four;Four vapeur
+3;655798;Bosch;HSG938EB1/G1;HSG938EB1;;Four;Four vapeur
+3;655799;Bosch;HSG938EB1/G9;HSG938EB1;;Four;Four vapeur
+3;655800;Bosch;HSG938EB1/H1;HSG938EB1;;Four;Four vapeur
+3;655801;Bosch;HSG938EB1/H4;HSG938EB1;;Four;Four vapeur
+3;655802;Bosch;HSG938EB1/J7;HSG938EB1;;Four;Four vapeur
+3;655803;Bosch;HSG938EB1/J8;HSG938EB1;;Four;Four vapeur
+3;679608;Bosch;HSG938EM1/J8;HSG938EM1;;Four;Four vapeur
+3;89932;Bosch;HSG958DB1/B1;HSG958DB1;;Four;Four vapeur
+3;89933;Bosch;HSG958DB1/C5;HSG958DB1;;Four;Four vapeur
+3;89934;Bosch;HSG958DB1/D1;HSG958DB1;;Four;Four vapeur
+3;89935;Bosch;HSG958DB1/D2;HSG958DB1;;Four;Four vapeur
+3;89936;Bosch;HSG958DB1/D3;HSG958DB1;;Four;Four vapeur
+3;89937;Bosch;HSG958DB1/D6;HSG958DB1;;Four;Four vapeur
+3;89938;Bosch;HSG958DB1/D7;HSG958DB1;;Four;Four vapeur
+3;655804;Bosch;HSG958DB1/F2;HSG958DB1;;Four;Four vapeur
+3;655805;Bosch;HSG958DB1/G9;HSG958DB1;;Four;Four vapeur
+3;655806;Bosch;HSG958DB1/H1;HSG958DB1;;Four;Four vapeur
+3;655807;Bosch;HSG958DB1/H4;HSG958DB1;;Four;Four vapeur
+3;655808;Bosch;HSG958DB1/J7;HSG958DB1;;Four;Four vapeur
+3;655809;Bosch;HSG958DB1/J8;HSG958DB1;;Four;Four vapeur
+3;89939;Bosch;HSG958DB1A/B1;HSG958DB1A;;Four;Four vapeur
+3;89940;Bosch;HSG958DB1A/C5;HSG958DB1A;;Four;Four vapeur
+3;89941;Bosch;HSG958DB1A/D1;HSG958DB1A;;Four;Four vapeur
+3;89942;Bosch;HSG958DB1A/D3;HSG958DB1A;;Four;Four vapeur
+3;89943;Bosch;HSG958DB1A/D6;HSG958DB1A;;Four;Four vapeur
+3;89944;Bosch;HSG958DB1A/D7;HSG958DB1A;;Four;Four vapeur
+3;655810;Bosch;HSG958DB1A/F2;HSG958DB1A;;Four;Four vapeur
+3;655811;Bosch;HSG958DB1A/G9;HSG958DB1A;;Four;Four vapeur
+3;655812;Bosch;HSG958DB1A/H1;HSG958DB1A;;Four;Four vapeur
+3;655813;Bosch;HSG958DB1A/H4;HSG958DB1A;;Four;Four vapeur
+3;655814;Bosch;HSG958DB1A/J7;HSG958DB1A;;Four;Four vapeur
+3;655815;Bosch;HSG958DB1A/J8;HSG958DB1A;;Four;Four vapeur
+3;89945;Bosch;HSG958DB1S/B1;HSG958DB1S;;Four;Four vapeur
+3;89946;Bosch;HSG958DB1S/C5;HSG958DB1S;;Four;Four vapeur
+3;89947;Bosch;HSG958DB1S/D1;HSG958DB1S;;Four;Four vapeur
+3;89948;Bosch;HSG958DB1S/D3;HSG958DB1S;;Four;Four vapeur
+3;89949;Bosch;HSG958DB1S/D6;HSG958DB1S;;Four;Four vapeur
+3;89950;Bosch;HSG958DB1S/D7;HSG958DB1S;;Four;Four vapeur
+3;655816;Bosch;HSG958DB1S/F2;HSG958DB1S;;Four;Four vapeur
+3;655817;Bosch;HSG958DB1S/G9;HSG958DB1S;;Four;Four vapeur
+3;655818;Bosch;HSG958DB1S/H1;HSG958DB1S;;Four;Four vapeur
+3;655819;Bosch;HSG958DB1S/H4;HSG958DB1S;;Four;Four vapeur
+3;655820;Bosch;HSG958DB1S/J7;HSG958DB1S;;Four;Four vapeur
+3;655821;Bosch;HSG958DB1S/J8;HSG958DB1S;;Four;Four vapeur
+3;89951;Bosch;HSG958DB1W/B1;HSG958DB1W;;Four;Four vapeur
+3;89952;Bosch;HSG958DB1W/D1;HSG958DB1W;;Four;Four vapeur
+3;89953;Bosch;HSG958DB1W/D3;HSG958DB1W;;Four;Four vapeur
+3;89954;Bosch;HSG958DB1W/D6;HSG958DB1W;;Four;Four vapeur
+3;89955;Bosch;HSG958DB1W/D7;HSG958DB1W;;Four;Four vapeur
+3;89956;Bosch;HSG958DB1W/E2;HSG958DB1W;;Four;Four vapeur
+3;655822;Bosch;HSG958DB1W/F2;HSG958DB1W;;Four;Four vapeur
+3;655823;Bosch;HSG958DB1W/G9;HSG958DB1W;;Four;Four vapeur
+3;655824;Bosch;HSG958DB1W/H1;HSG958DB1W;;Four;Four vapeur
+3;655825;Bosch;HSG958DB1W/H4;HSG958DB1W;;Four;Four vapeur
+3;655826;Bosch;HSG958DB1W/J7;HSG958DB1W;;Four;Four vapeur
+3;655827;Bosch;HSG958DB1W/J8;HSG958DB1W;;Four;Four vapeur
+3;89957;Bosch;HSG958DD1/B1;HSG958DD1;;Four;Four vapeur
+3;89958;Bosch;HSG958DD1/C5;HSG958DD1;;Four;Four vapeur
+3;89959;Bosch;HSG958DD1/D1;HSG958DD1;;Four;Four vapeur
+3;89960;Bosch;HSG958DD1/D2;HSG958DD1;;Four;Four vapeur
+3;89961;Bosch;HSG958DD1/D3;HSG958DD1;;Four;Four vapeur
+3;89962;Bosch;HSG958DD1/D6;HSG958DD1;;Four;Four vapeur
+3;89963;Bosch;HSG958DD1/D7;HSG958DD1;;Four;Four vapeur
+3;655828;Bosch;HSG958DD1/F2;HSG958DD1;;Four;Four vapeur
+3;655829;Bosch;HSG958DD1/G9;HSG958DD1;;Four;Four vapeur
+3;655830;Bosch;HSG958DD1/H1;HSG958DD1;;Four;Four vapeur
+3;655831;Bosch;HSG958DD1/H4;HSG958DD1;;Four;Four vapeur
+3;655832;Bosch;HSG958DD1/J7;HSG958DD1;;Four;Four vapeur
+3;655833;Bosch;HSG958DD1/J8;HSG958DD1;;Four;Four vapeur
+3;89964;Bosch;HSG958ED1/01;HSG958ED1;;Four;Four vapeur
+3;89965;Bosch;HSG958ED1/B1;HSG958ED1;;Four;Four vapeur
+3;89966;Bosch;HSG958ED1/D1;HSG958ED1;;Four;Four vapeur
+3;89967;Bosch;HSG958ED1/D2;HSG958ED1;;Four;Four vapeur
+3;89968;Bosch;HSG958ED1/D3;HSG958ED1;;Four;Four vapeur
+3;89969;Bosch;HSG958ED1/D6;HSG958ED1;;Four;Four vapeur
+3;89970;Bosch;HSG958ED1/D7;HSG958ED1;;Four;Four vapeur
+3;655834;Bosch;HSG958ED1/F2;HSG958ED1;;Four;Four vapeur
+4;705902;Whirlpool;851167001300;ADG670/UD;;Lave-linge;Lave-vaisselle
+4;705903;Whirlpool;851181401300;ADG814/UD;;Lave-linge;Lave-vaisselle
+4;705904;Whirlpool;851182601300;ADG826;;Lave-linge;Lave-vaisselle
+4;705800;Hoover;32901917;HI 4A4S3PSA-80;HI 4A4S3PSA-80;Lave-linge;Lave-vaisselle
+4;705801;Haier;32002708;XF 6C4M1X;XF 6C4M1X;Lave-linge;Lave-vaisselle
+4;705802;Haier;32901972;XS 34C4S1SS;XS 34C4S1SS;Lave-linge;Lave-vaisselle
+4;705803;Haier;32901926;XS 4A4M4BB-80;XS 4A4M4BB-80;Lave-linge;Lave-vaisselle
+4;705804;Haier;32901941;XS 4C4S0SB;XS 4C4S0SB;Lave-linge;Lave-vaisselle
+5;726259;Bosch;KAN56V40SA/01;KAN56V40SA;Combiné SBS;Lave-linge;Réfrigérateur
+5;726260;Bosch;KAN56V40SA/02;KAN56V40SA;Combiné SBS;Lave-linge;Réfrigérateur
+6;662092;Balay;3SB093BC/01;3SB093BC;Sèche-linge;Réfrigérateur;Sèche-linge
+6;662093;Balay;3SB093XC/01;3SB093XC;Sèche-linge;Réfrigérateur;Sèche-linge
+6;784121;Balay;3SB093XC/02;3SB093XC;Sèche-linge;Réfrigérateur;Sèche-linge
+7;792759;Miele;TE717IWP;TE 717I WP;Sèche-linge;Lave-linge;Sèche-linge
+7;792757;Miele;TE300BWP;TS 300B WP;Sèche-linge;Lave-linge;Sèche-linge
+8;793437;Electrolux;91690073600;EW6HI69CO;EW6HI69CO;Lave-linge;Sèche-linge
+8;793491;Electrolux;91690079000;EW6HI81CB;EW6HI81CB;Lave-linge;Sèche-linge
+9;741661;Whirlpool;857895853000;6AKR958IX;Hotte;Four;Hotte
+11;762377;Siemens;HL54425NN/01;HL54425NN;Cuisinières électriques indépendants;Four;Cuisinière
+11;762381;Siemens;HL54425SC/01;HL54425SC;Cuisinières électriques indépendants;Four;Cuisinière
+10;526638;Whirlpool;858559801900;AMW598IX;;Four;Four vapeur
+10;528686;Whirlpool;858758201791;AMW582IX;Four Vapeur;Four;Four vapeur
+10;528687;Whirlpool;858758201900;AMW582IX;;Four;Four vapeur
+10;528688;Whirlpool;858758201901;AMW582IX;;Four;Four vapeur
+10;528689;Whirlpool;858758281791;AMW582IX;Four Vapeur;Four;Four vapeur
+10;528690;Whirlpool;858758281900;AMW582IX;Four à Catalyse;Four;Four vapeur
+10;528691;Whirlpool;858758281901;AMW582IX;;Four;Four vapeur
+10;528692;Whirlpool;858758301791;AMW583IX;Four Vapeur;Four;Four vapeur
+10;528693;Whirlpool;858758301792;AMW583IX;Four Vapeur;Four;Four vapeur
+10;528694;Whirlpool;858758301900;AMW583IX;;Four;Four vapeur
+10;528695;Whirlpool;858758901791;AMW589IX;;Four;Four vapeur
+10;528696;Whirlpool;858758901792;AMW589IX;;Four;Four vapeur
+10;528697;Whirlpool;858758910791;AMW589IX;;Four;Four vapeur
+10;528698;Whirlpool;858758910792;AMW589IX;;Four;Four vapeur
+10;528699;Whirlpool;858758938791;AMW589IX;;Four;Four vapeur
+10;528700;Whirlpool;858759001791;AMW590IX;;Four;Four vapeur
+10;528701;Whirlpool;858759010791;AMW590IX;;Four;Four vapeur
+10;528702;Whirlpool;858759010792;AMW590IX;;Four;Four vapeur
+10;528703;Whirlpool;858759015791;AMW590IX;;Four;Four vapeur
+10;528704;Whirlpool;858759038791;AMW590IX;;Four;Four vapeur
+10;528705;Whirlpool;858759061791;AMW590IX;;Four;Four vapeur
+10;528706;Whirlpool;858759101910;AMW591/IXL;;Four;Four vapeur
+10;528707;Whirlpool;858759229910;AMW592/IXL;;Four;Four vapeur
+10;528708;Whirlpool;858759229911;AMW592/IXL;;Four;Four vapeur
+10;528709;Whirlpool;858759601741;AMW596IXL;;Four;Four vapeur
+10;528710;Whirlpool;858759601910;AMW596IXL;;Four;Four vapeur
+10;528711;Whirlpool;858759601911;AMW596IXL;;Four;Four vapeur
+10;528712;Whirlpool;858759701741;AMW597/IXL;Four Vapeur;Four;Four vapeur
+10;528713;Whirlpool;858759701791;AMW597IX;Four Vapeur;Four;Four vapeur
+10;528714;Whirlpool;858759701792;AMW597IX;Four Vapeur;Four;Four vapeur
+10;528715;Whirlpool;858759701910;AMW597/IXL;;Four;Four vapeur
+10;528716;Whirlpool;858759701911;AMW597/IXL;;Four;Four vapeur
+10;528717;Whirlpool;858759710791;AMW597IX;Four Vapeur;Four;Four vapeur
+10;528718;Whirlpool;858759715791;AMW597IX;Four Vapeur;Four;Four vapeur
+10;528719;Whirlpool;858759761791;AMW597IX;Four Vapeur;Four;Four vapeur
+10;528720;Whirlpool;858759761792;AMW597IX;Four Vapeur;Four;Four vapeur
+10;528721;Whirlpool;858759801791;AMW598IX;Four Vapeur;Four;Four vapeur
+10;528722;Whirlpool;858759801792;AMW598IX;;Four;Four vapeur
+10;528723;Whirlpool;858759801900;AMW598IX;;Four;Four vapeur
+10;528724;Whirlpool;858759801901;AMW598IX;;Four;Four vapeur
+10;528725;Whirlpool;858759901741;AMW599IXL;Four Vapeur;Four;Four vapeur
+10;528726;Whirlpool;858759901792;AMW599IX;Four Vapeur;Four;Four vapeur
+10;528727;Whirlpool;858759901910;AMW599IXL;;Four;Four vapeur
+10;529006;Whirlpool;858788281910;AMW882/IXL;Four à Catalyse;Four;Four vapeur
+10;518691;Whirlpool;853826329291;MT263WH;;Four;Micro-ondes
+10;715130;Whirlpool;853826310291;MT263WH;;Four;Micro-ondes
