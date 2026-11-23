@@ -10,6 +10,7 @@ import hashlib
 from ..core.config import Config
 from ..core.constants import DatabaseConfig
 from ..core.logger import app_logger
+from ..utils.filtre_colonne import condition_filtre_colonne
 from ..utils.error_handler import (
     handle_db_query_errors,
     handle_database_errors,
@@ -578,12 +579,15 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                 conditions.append(search_condition['condition'])
                 params.extend(search_condition['params'])
 
-        # Filtres par colonne
+        # Filtres par colonne (jokers * ?, « | » = OU, « ! » = sauf : cf. filtre_colonne)
         if column_filters:
             for col_idx, filter_text in column_filters.items():
                 if col_idx < len(Config.DB_HEADERS) and filter_text.strip():
-                    conditions.append(f"a.[{Config.DB_HEADERS[col_idx]}] LIKE ?")
-                    params.append(f"%{filter_text}%")
+                    filtre = condition_filtre_colonne(
+                        f"a.[{Config.DB_HEADERS[col_idx]}]", filter_text)
+                    if filtre:
+                        conditions.append(filtre[0])
+                        params.extend(filtre[1])
 
         # Filtre pour les lignes incomplètes (champs type OU manufacturer vides)
         if incomplete_filter:
