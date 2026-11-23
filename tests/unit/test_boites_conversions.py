@@ -73,23 +73,6 @@ def test_seo_non_interactif_sans_boite(qapp, monkeypatch):
     assert "Plusieurs références" in seo.raison_refus
 
 
-# ─── Catégories ──────────────────────────────────────────────────────────────
-
-@pytest.mark.parametrize('valider', [True, False])
-def test_categories(qapp, valider):
-    import src.utils.ouverture_modale as om
-    from src.services.unified_dialog_service import SimpleDialogs
-    parent, recus = QWidget(), []
-    avant = set(om._ouverts)
-    SimpleDialogs.get_categories(parent, ["Four", "Hotte"], recus.append)
-    dlg, = set(om._ouverts) - avant
-    assert dlg.isModal() and dlg.textValue() == "Four\nHotte" and recus == []
-    dlg.setTextValue("Four\n\n  Lave-linge  \n")
-    dlg.accept() if valider else dlg.reject()
-    assert recus == ([["Four", "Lave-linge"]] if valider else [])
-    _vider(qapp)
-
-
 # ─── Configuration des exports : dossier inutilisable ────────────────────────
 
 def _dialogue_config(dossier):

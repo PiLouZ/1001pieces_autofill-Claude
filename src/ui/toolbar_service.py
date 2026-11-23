@@ -140,10 +140,6 @@ class ToolbarService:
         columns_action.triggered.connect(getattr(self.main_window, '_configure_columns', lambda: None))
         display_menu.addAction(columns_action)
 
-        categories_action = QAction("Catégories", self.main_window)
-        categories_action.triggered.connect(self.main_window._manage_categories)
-        display_menu.addAction(categories_action)
-
         display_menu.addSeparator()
 
         # Position de la barre de recherche pièce (haut/bas du tableau) — mémorisée

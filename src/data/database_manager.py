@@ -1491,13 +1491,6 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             raise DatabaseError(f"Erreur lors de la suppression des pièces dupliquées: {e}")
     
     @_with_query_lock
-    @handle_database_errors(title="Erreur récupération catégories")
-    def get_categories(self) -> List[str]:
-        """Récupérer toutes les catégories"""
-        self.cursor.execute("SELECT name FROM categories ORDER BY name")
-        return [row[0] for row in self.cursor.fetchall()]
-
-    @_with_query_lock
     @handle_database_errors(title="Erreur récupération valeurs colonne")
     def get_column_values(self, db_field: str) -> List[str]:
         """Récupérer les valeurs distinctes d'un champ de la table appareils.
@@ -1508,25 +1501,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         query = Config.get_query('autocomplete_field', field=db_field)
         self.cursor.execute(query)
         return [row[0] for row in self.cursor.fetchall() if row[0]]
-    
-    @_with_query_lock
-    @handle_database_errors(title="Erreur mise à jour catégories")
-    def update_categories(self, categories: List[str]) -> bool:
-        """Mettre à jour la liste des catégories"""
-        # Supprimer toutes les catégories existantes
-        self.cursor.execute("DELETE FROM categories")
 
-        # Ajouter les nouvelles catégories
-        for category in categories:
-            self.cursor.execute(
-                "INSERT INTO categories (name) VALUES (?)",
-                (category,)
-            )
-
-        self.conn.commit()
-        return True
-    
-    
     @_with_query_lock
     @handle_database_errors(title="Erreur récupération données export")
     def get_export_data(self, search_term: str,
