@@ -1,7 +1,7 @@
 # Cahier des charges — Règles de nomenclature des appareils (types justes)
 
 **Statut :** Questions ouvertes tranchées — rien n'est codé
-**Version :** 0.2 (2026-11-23)
+**Version :** 0.3 (2026-11-23) — lot 2 figé et codé
 **Contexte :** Le client veut que ses clients retrouvent leur appareil par une recherche, sous la bonne marque et le bon type. Les fabricants codent le type dans leurs références (BSH : `S…` = lave-vaisselle ; Electrolux : PNC `911…` = lave-vaisselle ; Neff : `C17M…` = four combiné micro-ondes). Ce document définit comment l'outil apprend, fait valider et applique ces **règles de nomenclature** pour corriger et compléter le type des appareils.
 
 ---
@@ -19,6 +19,7 @@
 | D7 | Règles trouvées par l'analyse des données **sans source web** : **validées d'office si pureté ≥ 98 % ET un 2e signal d'accord** (vote des pièces > 60 % ou 2e clé) ; sinon **une par une**. |
 | D8 | **Acceptation groupée** des propositions **fortes** d'une même règle : **oui, avec récapitulatif** (nombre d'appareils, comptage par type avant/après) et une entrée d'historique annulable. Les propositions simples restent ligne à ligne. |
 | D9 | Types **accessoires** (Accessoires, Porte, Tiroir à couverts, Filtre à eau, Kit d'évacuation, Panier à couverts, Filtre, Rails téléscopique, Kit de recyclage) : **exclus des règles** — aucune règle ne propose ni ne retire ces types ; chantier séparé. |
+| D10 | Lot 2 : liste **figée famille par famille** le 2026-11-23 (§ 4.1) — **6 104 appareils**, élargie au-delà de l'estimation (ancienne génération BSH, AEG KMX/CM/NKM/NKO, Electrolux EVY/EVL/EVM/EVK, Bosch HMG8601/8621/8701/8721) ; Whirlpool `AMW` **reste Micro-ondes** (vendu comme micro-ondes) ; `types_autorises` (§ 3) reporté au **lot 3**. |
 
 ---
 
@@ -80,6 +81,24 @@ Aujourd'hui la liste des types est lue en base (`SELECT DISTINCT type`, `Config`
 
 ### 4.1 Périmètre (vérifié sur fiches fabricants, voir § 9.2)
 
+> **Liste figée le 2026-11-23 (lot 2)** : `data/corrections/nomenclature_lot2.csv`, **6 104 appareils** (Four −5 517, Micro-ondes −587), relue famille par famille avec le client. Elle remplace l'estimation plus bas, gardée pour mémoire (voir « Écarts »).
+
+| Fam. | Règle retenue | Appareils | Source / décision |
+|---|---|---|---|
+| 1 | Bosch `CMG` (toutes formes) ; `HMG` récent `HMG###@@#(@)` / `HMG####@#(@)` ; + `HMG8601/8621/8701/8721` en Four | 1 471 | [CMG633BS1](https://media3.bosch-home.com/Documents/specsheet/fr-CH/CMG633BS1.pdf) ; les 4 anciennes HMG8 : décision client (leurs 4 homonymes en Micro-ondes et les ~510 autres HMG8xxx restent Micro-ondes) |
+| 2 | Siemens `CM`/`HM` + [6-9] + 2 chiffres + `@?@#(@)` ; + 18 `CM485`/`CM585` (Micro-ondes) | 2 309 | [CM585AGS0B « microwave oven with hot air, 60 x 45 »](https://siemens-home.bsh-group.com/uk/en/mkt-product/cooking-and-baking/ovens/compact-ovens/CM585AGS0B) |
+| 3 | Neff `C??M` (727 Four + 30 Micro-ondes : `C57M70`, `C1AMG84`/`C1CMG84`) | 757 | [C1AMG84N0B « compact oven with microwave »](https://neff-home.com/uk/productlist/ovens-compact-ovens/ovens/single-microwave-oven/C1AMG84N0B) |
+| 4 | AEG `KMK`/`KME`/`KMS`/`KM8` (170) + `KMX` (6) + `CM`/`CME`/`CMK` (34) + `NKM`/`NKO` (17) | 227 | [KMX365060M](https://aeg.co.uk/kitchen/cooking/ovens/compact-oven/kmx365060m), [notice CM7600B « Four à micro-ondes combiné »](https://www.aeg.be/services/eml/asset/da2e91ee-db9a-4041-8751-2dec8086d846/E4RM3Q/250315JEZF/PDF/250315JEZF.pdf), [NKM7N721T](https://www.carrefour.fr/p/four-micro-onde-encastrable-aeg-nkm7n721t-compact-7333394105574) ; `KMF`/`KMR`/`KM4`/`KM7`/`KM9800E` laissés (sans source) |
+| 5 | Gaggenau `BM*` | 231 | conforme |
+| 6 | Electrolux `EVY` (64 Four + 43 Micro-ondes) + `EVL`/`EVM`/`EVK` forme `EV?#@…` CombiQuick (49 Micro-ondes) | 156 | [EVY7800AOX « four compact deux-en-un »](https://www.gigantti.fi/document/dv_doc_D180001002465827/EVY7800AOX/electrolux-kompaktiuuni-evy7800aox.PDF), [EVLBE08GX](https://www.electrolux.co.uk/kitchen/cooking/ovens/compact-oven/evlbe08gx/) |
+| 7 | Ancienne génération BSH : Bosch `HBC8[3-6][KEP]`, Siemens `HB8[3-6][KEP]`, Neff `B67#4` | 953 | [HBC84K553A « compact oven with microwave »](https://www.bosch-home.co.uk/customer-service/HBC84K553A/01), [HBC84E653B](https://bosch-home.co.uk/customer-service/HBC84E653B/01) ; 656 des 953 ont un libellé d'origine qui le dit |
+
+**Écarts avec l'estimation** : gabarit Siemens `CM###@@@#` trop étroit (ratait `CM676G0S1`, 621 appareils) → `CM###@?@#` ; anciennes Siemens `HM` cuisinières = **775** (pas 487), non touchées ; AEG 170 (pas 168 : 2 `KM8100001M` en Four) ; Miele `H … BM` : **aucun** appareil en base ; Whirlpool `AMW 508` et voisins (chaleur pulsée) : **restent Micro-ondes** (Darty « micro-ondes multi-cuissons », vendu comme micro-ondes ; impossible à séparer par la référence).
+
+**Vu au passage, pour le lot 3** : 767 Gaggenau `BS2`/`BSP`/`BS4` en « Four », dont une partie libellée « COMBIVAP » (four vapeur).
+
+Estimation initiale :
+
 | Marque | Règle | Aujourd'hui | Volume |
 |---|---|---|---|
 | Bosch | `CMG…` ; `HMG` **forme récente** `HMG###@@#` | Four | ~1 300 |
@@ -94,10 +113,11 @@ Aujourd'hui la liste des types est lue en base (`SELECT DISTINCT type`, `Config`
 
 ### 4.2 Effets de bord à traiter dans le même lot
 
-- **Site** : le type doit exister côté site **avant** le premier export qui l'utilise (action client).
-- **Appellations** (`src/utils/appellations_appareils.py`) : « four micro-ondes » est un synonyme actif de **Micro-ondes** → le désactiver, sinon un micro-ondes simple serait présenté comme le nouveau type. Ajouter l'entrée du nouveau type (genre masculin ; variante proposée « four micro-ondes combiné »).
+- **Site** : le type doit exister côté site **avant** le premier export qui l'utilise (action client — **fait**, confirmé le 2026-11-23).
+- **Appellations** (`src/utils/appellations_appareils.py`) : « four micro-ondes » est un synonyme actif de **Micro-ondes** → le désactiver, sinon un micro-ondes simple serait présenté comme le nouveau type. Ajouter l'entrée du nouveau type (genre masculin ; variante proposée « four micro-ondes combiné »). **Piège (lot 2)** : la config enregistrée (`data/export_config.json`, `synonymes_appareils.appareils`) fait foi sur les défauts → **migration ponctuelle** notée dans la config (`migrations`), jouée une seule fois : un réglage refait ensuite par l'utilisateur tient.
 - **SEO** (`src/utils/seo_generator.py`) : `_segment_templates_for` prend la clé la plus longue **contenue** dans le type ; « four combiné micro-ondes » tomberait sur le segment **« micro-ondes »** (« Micro-ondes Bosch : … »). Ajouter un segment dédié, et l'entrée `TYPE_NORMALIZATION` correspondante.
-- **Titres** (`titre_produit_generator.py`) : vérifier `SEUIL_TYPES_PROCHES` (80 %) et le retrait des types avec le nouveau libellé (plus long).
+- **Titres** (`titre_produit_generator.py`) : vérifier `SEUIL_TYPES_PROCHES` (80 %) et le retrait des types avec le nouveau libellé (plus long). **Vérifié (lot 2)** : aucun code à changer ; le seuil ne joue que sur les fiches mêlant Four et combinés, le libellé long fait retirer une marque avant un type.
+- **Autres tests par sous-chaîne** (lot 2) : `lecteur.py` (plus long début = type connu) et `coupe_titre.py` (termes du plus long au plus court) reconnaissent le nouveau libellé ; les filtres de colonne « contient four » le montrent, comme « Four vapeur ».
 - **Guide** : section Types + ligne « Nouveautés » sous « En préparation ».
 
 ---
@@ -258,7 +278,8 @@ Exécution : `scripts/corriger_types_nomenclature.py` — simulation par défaut
 - Electrolux `EW9D…` : introuvable en ligne.
 - Hoover : le `W` signifie lave-linge (`HW`, `H3W`) — **ne pas** étendre la règle Candy au groupe.
 - Beko `CSE…`/`FSE…` : cuisinières ([CSE 67301 GW](https://www.electromenager-compare.com/cuisiniere-BEKCSE67301GW-BEKO-CSE-67301-GW.htm)) — la règle « Four » de Beko est trop large.
-- Miele `H … BM`, Electrolux `EVY` : combinés micro-ondes probables, non confirmés.
+- ~~Miele `H … BM`, Electrolux `EVY`~~ : **tranché au lot 2** — Miele : aucun appareil en base ; `EVY` → Four combiné micro-ondes (§ 4.1, fam. 6).
+- Whirlpool `AMW 508` et voisins à chaleur pulsée (« micro-ondes combiné » chez Darty) : **restent Micro-ondes** (décision lot 2) ; AEG `KMF`/`KMR`/`KM4`/`KM7`/`KM9800E` : sans source, laissés tels quels.
 - Whirlpool `AKR` : **pas seulement des hottes** — 646 en Hotte, mais 133 en « Four » dont 117 libellés « Plaque Email Gaz / Plaque mixte » (`AKR 212` classé cuisinière en ligne). Pas de règle `AKR` sans source par numéro.
 - Whirlpool `AMW` : série imbriquée — `AMW 5xx` jusqu'à 578 et 584-588 = micro-ondes, 582-583 et 589-599 = fours vapeur compacts. Une règle devra lister les numéros, pas un préfixe.
 
@@ -269,8 +290,8 @@ Exécution : `scripts/corriger_types_nomenclature.py` — simulation par défaut
 | Lot | Contenu | Visible ? |
 |---|---|---|
 | 1 | Corrections sûres § 9.1 via `EventDrivenSaveService`, historique, liste relue avant exécution | données |
-| 2 | Type « Four combiné micro-ondes » : liste `types_autorises`, appellations, segment SEO, normalisation, reclassement § 4.1 | oui (+ Guide) |
-| 3 | Tables § 5, moteur § 6 sans écran, catalogue § 9.2, tests | non |
+| 2 | Type « Four combiné micro-ondes » : appellations (+ migration de la config), segment SEO, normalisation, reclassement § 4.1 (6 104) — `types_autorises` reporté au lot 3 (D10) | oui (+ Guide) |
+| 3 | Liste fermée `types_autorises` (§ 3), tables § 5, moteur § 6 sans écran, catalogue § 9.2, tests | non |
 | 4 | Écran Règles § 8.1 + revue § 8.2 | oui (+ Guide) |
 | 5 | Typage à l'import § 8.3 | oui (+ Guide) |
 | à part | Ménage marques : retirer « SMEG » collé dans 1 331 réf. ; vérifier Concord/Concorde | données |
@@ -282,7 +303,7 @@ Le lot 2 dépend de la création du type sur le site (action client).
 ## 11. Critères d'acceptation et zéro régression
 
 - Avant/après chaque lot : nombre d'appareils par type, comparé ; tout écart non prévu = arrêt.
-- Lot 2 : les exports d'un échantillon de fiches hors du nouveau type sont **identiques** octet pour octet (métas, titres, CSV).
+- Lot 2 : les exports d'un échantillon de fiches hors du nouveau type sont **identiques** octet pour octet (métas, titres, CSV). **Mesure retenue** : toutes les pièces (6 442), en deux contrôles — nouveau code sur ancienne base (seules les métas des Micro-ondes citant « four micro-ondes » peuvent changer), puis nouveau code sur base reclassée (seules les fiches liées à un appareil reclassé, en propre ou par équivalente, peuvent changer).
 - Tests unitaires du moteur sur les cas pièges : `HM633GBS1` (combiné) vs ancienne `HM…` (cuisinière) ; `AKZ9S8270NB` (vapeur) vs `AKZ513IX` (four) ; `AWE8230ZEN` (lave-linge malgré le Z) ; `GO4W264` (Candy, lavante) vs `H3W 69TME` (Hoover, lave-linge).
 - Test de charge : découverte complète < 30 s sur 720 000 appareils (mesuré 15 s en script).
 - Rejouer les tests avec le style global (piège eventFilter) et `compileall`.
