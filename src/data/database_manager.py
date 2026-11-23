@@ -638,6 +638,18 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             search_term, column_filters,
             sort_column, sort_order, incomplete_filter, from_position, direction)
 
+    def find_type_propose_position(self, search_term: Optional[str],
+                                   column_filters: Optional[Dict[int, str]],
+                                   sort_column: Optional[int], sort_order: Optional[str],
+                                   incomplete_filter: bool,
+                                   from_position: int, direction: str) -> Optional[int]:
+        """Position de la prochaine ligne dont le type est proposé par une règle
+        de nomenclature (lot 4), voir _find_position_par_condition."""
+        return self._find_position_par_condition(
+            "EXISTS (SELECT 1 FROM propositions_type p WHERE p.appareil_id = a.id)",
+            search_term, column_filters,
+            sort_column, sort_order, incomplete_filter, from_position, direction)
+
     def _find_position_par_condition(self, condition: str, search_term: Optional[str],
                                      column_filters: Optional[Dict[int, str]],
                                      sort_column: Optional[int], sort_order: Optional[str],

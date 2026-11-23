@@ -108,6 +108,7 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
 <ul>
   <li><b>Lignes à traiter ▲ ▼</b> : passe d'une ligne incomplète (Type ou Fabricant manquant) à la suivante.</li>
   <li><b>▲ Auto-complétés à vérifier (N) | Tout valider ▼</b> : visible quand des valeurs auto-complétées attendent une vérification (voir plus bas). Les flèches passent d'une ligne auto-complétée à la suivante.</li>
+  <li><b>▲ Types proposés (N) ▼</b> : visible quand une règle de nomenclature propose un autre type pour des appareils (voir <b>Règles de nomenclature</b>). Les flèches passent d'un type proposé au suivant.</li>
   <li>À droite : l'icône <b>disquette</b> (sauvegarde) et la <b>pastille</b> (connexion à la base) sont vertes quand tout va bien, orange pendant une sauvegarde ou s'il reste des changements non enregistrés. Survolez-les pour lire l'état. Tout à droite, la <b>version</b> de l'application.</li>
 </ul>
 
@@ -146,6 +147,20 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
   <li><b>Refuser</b> une ligne vide les champs auto-complétés de l'appareil, et l'import ne les réécrira plus (sauf si le fichier lui-même porte la valeur).</li>
   <li>Bouton vert <b>« Tout valider »</b> : valide tout d'un coup, après une confirmation qui rappelle la confiance des sources. Une validation en masse ne s'annule pas.</li>
   <li>Dans le tableau : <b>clic sur la coche</b> d'une case auto-complétée (vérifie toute la ligne : Type et Fabricant), ou <b>clic droit → Marquer comme vérifié</b> sur les lignes sélectionnées. Corriger une valeur en italique la vérifie aussi.</li>
+</ul>
+
+<h3>Règles de nomenclature</h3>
+<p>Les fabricants codent le type dans leurs références (Bosch <code>S…</code> = lave-vaisselle, Gaggenau <code>BS…</code> = four vapeur…). Une <b>règle de nomenclature</b> dit : « pour cette marque (ou ce groupe de marques), une référence de ce motif est un… ». Une règle validée <b>propose</b> le type ; rien n'est écrit sans votre accord.</p>
+<ul>
+  <li><b>Données → Règles de nomenclature…</b> : la liste des règles, filtrable par marque ou groupe, motif (mêmes jokers que les filtres de colonne), type, statut (proposée, validée, rejetée), source. <b>Changeraient des appareils</b> ne garde que les règles qui contredisent au moins un type en base ; <b>Pureté ≥ 98 %</b>, celles dont 98 % des appareils ont déjà le type de la règle.</li>
+  <li>La <b>fiche</b> d'une règle (à droite) donne ses mesures (appareils couverts, d'accord), sa source, une note et des exemples, <b>désaccords d'abord</b>. Un bandeau jaune signale une règle trouvée <b>sous une zone grise</b> : son préfixe mélange plusieurs types, une erreur systématique peut s'y cacher (comme les Whirlpool AKP longtemps typés « Four vapeur ») — vérifiez une source avant de la valider.</li>
+  <li><b>Valider</b>, <b>Rejeter</b>, <b>Remettre en proposée</b> : sur une règle ou sur plusieurs règles sélectionnées (avec un récapitulatif). Les types proposés se recalculent aussitôt, en arrière-plan : la fenêtre reste utilisable.</li>
+  <li><b>Chercher de nouvelles règles</b> : l'outil cherche dans les données les préfixes qui donnent presque toujours le même type. Les règles trouvées arrivent en statut <b>proposée</b> : elles ne proposent aucun type tant que vous ne les avez pas validées. Un motif déjà tranché par une règle validée ou rejetée n'est pas reproposé.</li>
+  <li><b>Revoir les types proposés</b> (ou le bouton vert d'eau <b>Types proposés (N)</b> sous le tableau) : la fenêtre de revue, regroupée par règle, comme celle des suggestions (✓ / ✗ / ·, raccourcis V, R, U, Espace). Le panneau de droite montre la règle, sa source et les signaux : deuxième référence d'accord, vote des pièces, libellé d'origine.</li>
+  <li><b>Accepter en groupe</b> (ligne de groupe, sélection) n'est possible que pour les propositions <b>fortes</b> et pour celles d'une règle <b>validée sur une source web</b>. Les autres s'acceptent une par une ; un bandeau le rappelle. Refuser en groupe est toujours possible.</li>
+  <li>Avant d'écrire, un <b>récapitulatif</b> donne le nombre d'appareils et le comptage par type avant / après. Chaque règle donne une entrée dans l'historique (comme une modification de Type à la main). Un type <b>refusé</b> n'est plus jamais proposé pour cet appareil.</li>
+  <li><b>Annuler</b> : onglet <b>Acceptations</b> de la fenêtre des règles, <b>Annuler cette acceptation</b>. Le type d'avant revient sur les appareils encore au type accepté ; un appareil modifié depuis est laissé tel quel.</li>
+  <li>Dans le tableau, la cellule Type d'un appareil concerné est teintée vert d'eau ; sa bulle dit le type proposé et la règle. <b>Clic droit → Accepter / Refuser le type proposé</b>. Raccourcis des flèches : <b>⇧⌥⌘ Page préc.</b> / <b>⇧⌥⌘ Page suiv.</b></li>
 </ul>
 
 <hr/>
@@ -285,6 +300,7 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
 <h2>Nouveautés depuis la version 3.78</h2>
 <h3>En préparation</h3>
 <ul>
+  <li><b>Règles de nomenclature</b> : <b>Données → Règles de nomenclature…</b> liste les règles qui déduisent le type d'un appareil de sa référence (marque ou groupe, motif, type, statut, source), avec leurs exemples et une alerte pour celles trouvées sous une zone grise. Valider ou rejeter une règle recalcule en arrière-plan les <b>types proposés</b> ; <b>Chercher de nouvelles règles</b> en découvre dans les données (en statut « proposée »). Les types proposés se revoient dans une fenêtre dédiée ou dans le tableau (cellule vert d'eau, flèches ▲ ▼, clic droit) : accepter (en groupe pour les fortes et les règles sourcées, avec récapitulatif avant / après), refuser (jamais reproposé), annuler une acceptation.</li>
   <li><b>Nouveau type « Four combiné micro-ondes »</b> : 6 104 appareils (Bosch CMG / HMG, Siemens CM / HM, Neff C??M, AEG KMK, Gaggenau BM, Electrolux EVY…) quittent « Four » ou « Micro-ondes » pour ce type, déjà créé sur le site. Les métas des micro-ondes ne disent plus « four micro-ondes » (appellation désactivée dans l'onglet Appareils, réactivable) ; celles du nouveau type commencent par « Four combiné micro-ondes … ».</li>
   <li><b>Filtres de colonne plus fins</b> : jokers <code>*</code> (n'importe quoi) et <code>?</code> (un caractère), <code>|</code> pour « ou », <code>!</code> pour « sauf ». Exemple : <code>WOI4S* | WOI5S*</code> ou <code>WOI?S*</code>. Sans joker, rien ne change (« contient »). Un « _ » ou un « % » tapé est désormais cherché tel quel. Le bouton <b>?</b>, à gauche du ✕ des filtres, rappelle cette syntaxe.</li>
   <li><b>Menu « Catégories » retiré</b> : l'entrée <b>Affichage → Catégories</b> enregistrait une liste que rien n'utilisait ; elle disparaît, avec sa table. La table vide <code>pieces_old</code>, reste d'une ancienne version, est aussi retirée de la base au prochain démarrage.</li>

@@ -11,6 +11,13 @@ docs/cdc_regles_nomenclature.md § 3, 5-7, lot 3).
   l'application passera par la revue (lot 4) et la sauvegarde événementielle ;
 - découvre des règles candidates (§ 6.3), rangées en statut « proposée ».
 
+Lot 4 (écran Règles, § 8.1) : statut et note d'une règle, exemples
+d'appareils (désaccords d'abord), écriture séparée du calcul
+(`ecrire_propositions`, `enregistrer_decouvertes`) pour calculer en
+arrière-plan et écrire sur le fil principal ; la découverte ne repropose pas
+un motif déjà tranché. L'acceptation et le refus des propositions sont dans
+`RevuePropositionsService`.
+
 Le cœur est en fonctions pures (`src/utils/nomenclature/`) ; ce service ne
 fait que lire la base, assembler et écrire les deux tables du moteur.
 """
@@ -40,6 +47,39 @@ CHEMIN_CATALOGUE = Path(__file__).resolve().parents[2] / 'data' / 'regles_nomenc
 ENTETES_CATALOGUE = ('portee', 'cible', 'cle', 'motif', 'type_resultat', 'statut', 'origine',
                      'source_url', 'note')
 CHAMP_REFUS = 'type'   # refus_completions : un type refusé n'est jamais reproposé
+# Note posée par la découverte sur une règle trouvée sous une zone grise (§ 6.3)
+PREFIXE_NOTE_ZONE_GRISE = "sous la zone grise "
+# D7 : pureté à partir de laquelle une règle découverte peut être validée d'office
+PURETE_D7 = 0.98
+
+
+def zone_grise_de(regle: dict) -> str:
+    """« AK* » si la règle a été trouvée sous une zone grise, sinon ''."""
+    note = (regle.get('note') or '').strip()
+    if not note.startswith(PREFIXE_NOTE_ZONE_GRISE):
+        return ''
+    reste = note[len(PREFIXE_NOTE_ZONE_GRISE):].split()
+    return reste[0] if reste else ''
+
+
+def purete(regle: dict) -> Optional[float]:
+    """Part des appareils couverts déjà au type de la règle (None : jamais mesurée)."""
+    couverture, accord = regle.get('couverture'), regle.get('accord')
+    if not couverture or accord is None:
+        return None
+    return accord / couverture
+
+
+def pure_d7(regle: dict) -> bool:
+    """Pureté ≥ 98 % (D7) — le 2e signal se lit sur la fiche de la règle."""
+    p = purete(regle)
+    return p is not None and p >= PURETE_D7
+
+
+def libelle_regle(regle: dict) -> str:
+    """« Gaggenau BS* → Four vapeur » (« groupe Whirlpool … » pour un groupe)."""
+    portee = "groupe " if regle.get('portee') == PORTEE_GROUPE else ""
+    return f"{portee}{regle.get('cible', '')} {regle.get('motif', '')} → {regle.get('type_resultat', '')}"
 
 
 def _maintenant() -> str:
@@ -89,6 +129,7 @@ class BilanPropositions:
     types_hors_liste: Counter = field(default_factory=Counter)
     erreur: str = ''
     ecrit: bool = False
+    calcule_le: str = ''
 
     def par_regle(self) -> Counter:
         return Counter((p['regle_id'], p['type_actuel'], p['type_propose'])
@@ -99,15 +140,61 @@ class BilanPropositions:
 
 
 @dataclass
+class ExemplesRegle:
+    """Appareils couverts par une règle (fiche de l'écran Règles)."""
+    couverture: int = 0
+    accord: int = 0
+    # (id, marque, ref_modele, commercial_ref, type en base, libellé d'origine)
+    desaccords: List[tuple] = field(default_factory=list)
+    accords: List[tuple] = field(default_factory=list)
+    # Règle de groupe : marques qui ont leur propre règle sur ce motif (§ 6.2)
+    masquees: List[str] = field(default_factory=list)
+    erreur: str = ''
+
+
+@dataclass
 class BilanDecouverte:
     candidates: List[RegleCandidate] = field(default_factory=list)
     zones_grises: List[ZoneGrise] = field(default_factory=list)
     nouvelles: List[RegleCandidate] = field(default_factory=list)   # pas encore en base
+    deja_tranchees: int = 0   # motif réglé par une règle validée/rejetée (marque ou groupe)
     ajoutees: int = 0
 
 
+class _ReglesIndexees:
+    """Règles candidates d'une (marque, clé), prêtes pour les mesures.
+
+    Les préfixes purs (« AKZ* ») sont rangés par leur texte : une clé ne
+    consulte que ses propres débuts (≤ 1 recherche par caractère) au lieu de
+    tester chaque règle. Après une découverte (≈ 7 400 règles proposées), le
+    test règle par règle faisait passer le calcul de 3 s à plus de 100 s ; le
+    résultat est identique (mêmes règles, même condition `s_applique`)."""
+
+    __slots__ = ('_prefixes', '_autres', '_longueur_max')
+
+    def __init__(self, regles: Iterable[Regle]):
+        from ..utils.filtre_colonne import FORME_PREFIXE
+        self._prefixes: Dict[str, List[Regle]] = {}
+        self._autres: List[Regle] = []
+        for r in regles:
+            if r.forme == FORME_PREFIXE:
+                self._prefixes.setdefault(r.motif[:-1], []).append(r)
+            else:
+                self._autres.append(r)
+        self._longueur_max = max((len(k) for k in self._prefixes), default=0)
+
+    def qui_s_appliquent(self, valeur: str) -> List[Regle]:
+        if not valeur:
+            return []
+        trouvees = []
+        for longueur in range(1, min(len(valeur), self._longueur_max) + 1):
+            trouvees.extend(self._prefixes.get(valeur[:longueur], ()))
+        trouvees.extend(r for r in self._autres if r.s_applique(valeur))
+        return trouvees
+
+
 class RegleNomenclatureService(BaseService):
-    """Moteur des règles de nomenclature (lot 3 : sans écran)."""
+    """Moteur des règles de nomenclature (lot 3), et ce que l'écran Règles en lit (lot 4)."""
 
     def __init__(self, db_manager, parent_window=None, types_autorises=None, configuration=None):
         super().__init__(parent_window)
@@ -227,7 +314,7 @@ class RegleNomenclatureService(BaseService):
         index = IndexRegles(regles, self.groupe_de)
         couverture: Counter = Counter()
         accord: Counter = Counter()
-        candidates_cache: Dict[Tuple[str, str], List[Regle]] = {}
+        candidates_cache: Dict[Tuple[str, str], '_ReglesIndexees'] = {}
         brutes = []   # (id, type actuel, other_ref, résolution)
         for ident, type_app, marque, ref_modele, ref_com, libelle in \
                 self.db_manager.lire_appareils_nomenclature():
@@ -244,11 +331,11 @@ class RegleNomenclatureService(BaseService):
                     continue
                 cache = (cle_marque(marque), cle)
                 if cache not in candidates_cache:
-                    candidates_cache[cache] = index.candidates(marque, cle, validees=False)
-                for r in candidates_cache[cache]:
-                    if r.s_applique(valeur):
-                        couverture[r.id] += 1
-                        accord[r.id] += r.type_resultat == type_app
+                    candidates_cache[cache] = _ReglesIndexees(
+                        index.candidates(marque, cle, validees=False))
+                for r in candidates_cache[cache].qui_s_appliquent(valeur):
+                    couverture[r.id] += 1
+                    accord[r.id] += r.type_resultat == type_app
             resolution = index.resoudre(marque, valeurs['nom'], valeurs['code'])
             if resolution.conflit:
                 bilan.conflits.append((ident, resolution.regle_nom, resolution.regle_code))
@@ -284,17 +371,42 @@ class RegleNomenclatureService(BaseService):
                                            resolution.deux_cles_d_accord, vote, libelle_ok),
                 'signaux': json.dumps(signaux, ensure_ascii=False), 'cree_le': horodatage}
 
+        bilan.calcule_le = horodatage
         if ecrire:
-            from ..data._db_mixins.nomenclature import COLONNES_PROPOSITION
-            ecrites = self.db_manager.remplacer_propositions_type(
-                tuple(p[c] for c in COLONNES_PROPOSITION) for p in bilan.propositions.values())
-            mesures_ok = self.db_manager.enregistrer_mesures_regles(bilan.mesures, horodatage)
-            bilan.ecrit = ecrites >= 0 and mesures_ok
-            if not bilan.ecrit:
-                bilan.erreur = "écriture des propositions ou des mesures échouée (voir le journal)"
+            self.ecrire_propositions(bilan)
         app_logger.info(f"Règles de nomenclature : {len(bilan.propositions)} proposition(s), "
                         f"{len(bilan.conflits)} conflit(s), {bilan.couverts} appareil(s) couvert(s)")
         return bilan
+
+    def ecrire_propositions(self, bilan: BilanPropositions) -> bool:
+        """Ranger un calcul : remplace `propositions_type` et les mesures des règles.
+
+        Le calcul a pu se faire en arrière-plan (lot 4) sur un instantané : une
+        proposition dont l'appareil a changé de type depuis, ou qui a été refusée
+        entre-temps, est écartée (elle serait périmée)."""
+        from ..data._db_mixins.nomenclature import COLONNES_PROPOSITION
+        propositions = list(bilan.propositions.values())
+        if propositions:
+            actuels = self.db_manager.lire_types_appareils(p['appareil_id'] for p in propositions)
+            refus = self.db_manager.lire_refus_du_champ(CHAMP_REFUS) or set()
+            propositions = [
+                p for p in propositions
+                if p['appareil_id'] in actuels
+                and (actuels[p['appareil_id']] or '').strip() == (p['type_actuel'] or '')
+                and (p['appareil_id'], p['type_propose'].lower()) not in refus]
+            perimees = len(bilan.propositions) - len(propositions)
+            if perimees:
+                app_logger.info(f"Règles de nomenclature : {perimees} proposition(s) périmée(s) "
+                                f"écartée(s) à l'écriture")
+                bilan.propositions = {p['appareil_id']: p for p in propositions}
+        ecrites = self.db_manager.remplacer_propositions_type(
+            tuple(p[c] for c in COLONNES_PROPOSITION) for p in propositions)
+        mesures_ok = self.db_manager.enregistrer_mesures_regles(
+            bilan.mesures, bilan.calcule_le or _maintenant())
+        bilan.ecrit = ecrites >= 0 and mesures_ok
+        if not bilan.ecrit:
+            bilan.erreur = "écriture des propositions ou des mesures échouée (voir le journal)"
+        return bilan.ecrit
 
     # ── Découverte (§ 6.3) ──────────────────────────────────────────────────
 
@@ -306,17 +418,105 @@ class RegleNomenclatureService(BaseService):
                      self.db_manager.lire_appareils_nomenclature()]
         candidates, zones = decouvrir(appareils, self.groupe_de)
         bilan = BilanDecouverte(candidates=candidates, zones_grises=zones)
-        connues = {(r.portee, cle_marque(r.cible), r.cle, r.motif) for r in self.regles()}
+        regles = self.regles()
+        connues = {(r.portee, cle_marque(r.cible), r.cle, r.motif) for r in regles}
+        # Motifs déjà tranchés (règle validée ou rejetée) pour une marque ou son
+        # groupe : la découverte n'y revient pas — elle reproposerait l'erreur
+        # majoritaire qu'une règle validée corrige (Whirlpool AKR3* → Four, lot 4)
+        tranches = {(r.portee, cle_marque(r.cible), r.cle, r.motif) for r in regles
+                    if r.statut != STATUT_PROPOSEE}
+
+        def deja_tranchee(c) -> bool:
+            if (c.portee, cle_marque(c.cible), c.cle, c.motif) in tranches:
+                return True
+            groupe = self.groupe_de(c.cible) if c.portee != PORTEE_GROUPE else ''
+            return bool(groupe) and (PORTEE_GROUPE, cle_marque(groupe), c.cle, c.motif) in tranches
+
+        bilan.deja_tranchees = sum(1 for c in candidates if deja_tranchee(c))
         bilan.nouvelles = [c for c in candidates
                            if (c.portee, cle_marque(c.cible), c.cle, c.motif) not in connues
+                           and not deja_tranchee(c)
                            and est_type_autorise(c.type_resultat, self.types_autorises)]
-        if ecrire and bilan.nouvelles:
-            horodatage = _maintenant()
-            enregistrement = self.enregistrer_regles(
-                {'portee': c.portee, 'cible': c.cible, 'cle': c.cle, 'motif': c.motif,
-                 'type_resultat': c.type_resultat, 'statut': STATUT_PROPOSEE,
-                 'origine': 'decouverte', 'couverture': c.couverture, 'accord': c.accord,
-                 'note': f"sous la zone grise {c.zone_grise}*" if c.zone_grise else None,
-                 'calcule_le': horodatage} for c in bilan.nouvelles)
-            bilan.ajoutees = enregistrement.ajoutees
+        if ecrire:
+            self.enregistrer_decouvertes(bilan)
         return bilan
+
+    def enregistrer_decouvertes(self, bilan: BilanDecouverte) -> int:
+        """Ajouter les nouvelles candidates en statut « proposée » (origine
+        « découverte ») ; une règle entrée en base entre-temps n'est pas écrasée."""
+        if not bilan.nouvelles:
+            return 0
+        horodatage = _maintenant()
+        enregistrement = self.enregistrer_regles(
+            {'portee': c.portee, 'cible': c.cible, 'cle': c.cle, 'motif': c.motif,
+             'type_resultat': c.type_resultat, 'statut': STATUT_PROPOSEE,
+             'origine': 'decouverte', 'couverture': c.couverture, 'accord': c.accord,
+             'note': f"{PREFIXE_NOTE_ZONE_GRISE}{c.zone_grise}*" if c.zone_grise else None,
+             'calcule_le': horodatage} for c in bilan.nouvelles)
+        bilan.ajoutees = enregistrement.ajoutees
+        return bilan.ajoutees
+
+    # ── Écran Règles (lot 4, § 8.1) ─────────────────────────────────────────
+
+    def changer_statut(self, regle_id: int, statut: str) -> bool:
+        """Valider, rejeter ou remettre en « proposée » une règle. Les
+        propositions ne changent qu'au prochain calcul (l'écran le relance)."""
+        if statut not in STATUTS:
+            raise ValueError(f"statut « {statut} » inconnu")
+        ok = self.db_manager.changer_statut_regle(regle_id, statut, _maintenant())
+        if ok:
+            app_logger.info(f"Règle de nomenclature {regle_id} : statut « {statut} »")
+        return ok
+
+    def enregistrer_note(self, regle_id: int, note: str, zone_grise: str = '') -> bool:
+        """Note libre ; la mention « sous la zone grise X* » posée par la
+        découverte est gardée en tête (l'écran s'en sert pour l'alerte)."""
+        note = (note or '').strip()
+        if zone_grise and not note.startswith(PREFIXE_NOTE_ZONE_GRISE):
+            note = f"{PREFIXE_NOTE_ZONE_GRISE}{zone_grise} — {note}" if note \
+                else f"{PREFIXE_NOTE_ZONE_GRISE}{zone_grise}"
+        return self.db_manager.enregistrer_note_regle(regle_id, note)
+
+    def exemples(self, regle: dict, limite: int = 60) -> 'ExemplesRegle':
+        """Appareils couverts par une règle (tous statuts), désaccords en tête.
+
+        Lecture limitée aux marques visées (la marque, ou celles du groupe qui
+        n'ont pas leur propre règle sur ce motif) : pas de relecture de la base."""
+        exemples = ExemplesRegle()
+        try:
+            compilee = Regle.depuis_ligne(regle)
+        except MotifRegleInvalide as e:
+            exemples.erreur = str(e)
+            return exemples
+        index = IndexRegles(self.regles(), self.groupe_de)
+        cible = cle_marque(compilee.cible)
+        if compilee.portee == PORTEE_GROUPE:
+            marques = [m for m in self.db_manager.lister_marques_appareils()
+                       if cle_marque(self.groupe_de(m)) == cible]
+        else:
+            marques = [m for m in self.db_manager.lister_marques_appareils()
+                       if cle_marque(m) == cible]
+        accords, desaccords = [], []
+        masquees = set()
+        for ident, type_app, marque, ref_modele, ref_com, libelle in \
+                self.db_manager.lire_appareils_des_marques(marques):
+            if (type_app or '') in TypesAppareils.ACCESSOIRES:
+                continue
+            valeur = (cle_nom(ref_modele, ref_com) if compilee.cle == 'nom'
+                      else cle_code(ref_modele, ref_com))
+            if not compilee.s_applique(valeur):
+                continue
+            if compilee.portee == PORTEE_GROUPE and not any(
+                    r is compilee or r.id == compilee.id
+                    for r in index.candidates(marque, compilee.cle, validees=False)):
+                masquees.add(marque or '')
+                continue
+            ligne = (ident, marque or '', ref_modele or '', ref_com or '', type_app or '',
+                     libelle or '')
+            (accords if (type_app or '') == compilee.type_resultat else desaccords).append(ligne)
+        exemples.couverture = len(accords) + len(desaccords)
+        exemples.accord = len(accords)
+        exemples.desaccords = desaccords[:limite]
+        exemples.accords = accords[:max(0, limite - len(exemples.desaccords))]
+        exemples.masquees = sorted(masquees)
+        return exemples

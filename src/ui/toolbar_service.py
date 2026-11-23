@@ -218,6 +218,13 @@ class ToolbarService:
             getattr(self.main_window, '_open_export_fiches_reprises', lambda: None))
         data_menu.addAction(everyparts_action)
 
+        regles_action = QAction("Règles de nomenclature…", self.main_window)
+        regles_action.setToolTip("Règles qui déduisent le type d'un appareil de sa référence, "
+                                 "et revue des types qu'elles proposent")
+        regles_action.triggered.connect(
+            getattr(self.main_window, '_open_regles_nomenclature', lambda: None))
+        data_menu.addAction(regles_action)
+
         history_action = QAction("Historique des modifications…", self.main_window)
         history_action.setToolTip("Consulter l'historique persistant des modifications")
         history_action.triggered.connect(getattr(self.main_window, '_open_history_view', lambda: None))

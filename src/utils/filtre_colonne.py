@@ -86,6 +86,24 @@ def condition_filtre_colonne(colonne_sql: str, texte: str) -> Optional[Tuple[str
     return ' AND '.join(morceaux), params
 
 
+def _motif_correspond(valeur: str, motif: str) -> bool:
+    """Un motif saisi, comme le LIKE produit par motif_vers_like (sans casse)."""
+    if '*' in motif or '?' in motif:
+        regex = re.escape(motif).replace(r'\*', '.*').replace(r'\?', '.')
+        return re.fullmatch(regex, valeur, re.IGNORECASE | re.DOTALL) is not None
+    return motif.lower() in valeur.lower()
+
+
+def correspond_au_filtre(valeur: str, texte: str) -> bool:
+    """Même sens que condition_filtre_colonne, appliqué en Python à une valeur
+    (listes déjà en mémoire, comme l'écran des règles de nomenclature)."""
+    inclus, exclus = analyser_filtre(texte)
+    valeur = valeur or ''
+    if inclus and not any(_motif_correspond(valeur, m) for m in inclus):
+        return False
+    return not any(_motif_correspond(valeur, m) for m in exclus)
+
+
 # ── Motifs des règles de nomenclature (CDC docs/cdc_regles_nomenclature.md § 6.1) ──
 #
 # Mêmes jokers que les filtres (« ? » = un caractère, « * » = n'importe quoi),

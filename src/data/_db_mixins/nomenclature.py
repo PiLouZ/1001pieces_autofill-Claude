@@ -13,6 +13,9 @@ DatabaseManager uniquement.
   entier par le moteur. Aucune écriture de type ici : l'application passera
   par la revue (lot 4) et la sauvegarde événementielle.
 
+Lot 4 : `lots_acceptation_type` + `acceptations_type` (acceptations annulables, § 5.3)
+et les lectures de la revue et de l'écran Règles.
+
 Les suppressions en cascade sont doublées de déclencheurs : elles valent même
 si `Config.FOREIGN_KEYS` est désactivé. La table `appareils` n'est pas touchée.
 
@@ -93,6 +96,35 @@ class DatabaseNomenclatureMixin:
                     DELETE FROM propositions_type WHERE regle_id = OLD.id;
                 END
             """)
+            # Lot 4 : acceptations de propositions, par lot (une décision de
+            # l'écran = un lot), pour pouvoir les annuler (CDC § 5.3, D8)
+            self.cursor.execute("""
+                CREATE TABLE IF NOT EXISTS lots_acceptation_type (
+                    id          INTEGER PRIMARY KEY,
+                    regle_id    INTEGER,
+                    libelle     TEXT NOT NULL,
+                    accepte_le  TEXT NOT NULL,
+                    nb          INTEGER NOT NULL,
+                    annule_le   TEXT
+                )
+            """)
+            self.cursor.execute("""
+                CREATE TABLE IF NOT EXISTS acceptations_type (
+                    lot_id      INTEGER NOT NULL REFERENCES lots_acceptation_type(id)
+                                ON DELETE CASCADE,
+                    appareil_id INTEGER NOT NULL,
+                    type_avant  TEXT,
+                    type_apres  TEXT NOT NULL,
+                    PRIMARY KEY (lot_id, appareil_id)
+                )
+            """)
+            self.cursor.execute("""
+                CREATE TRIGGER IF NOT EXISTS trg_acceptations_appareil_supprime
+                AFTER DELETE ON appareils
+                BEGIN
+                    DELETE FROM acceptations_type WHERE appareil_id = OLD.id;
+                END
+            """)
         except Exception as e:
             app_logger.error(f"Erreur création tables des règles de nomenclature : {e}")
 
@@ -149,7 +181,159 @@ class DatabaseNomenclatureMixin:
             app_logger.error(f"Mesures des règles de nomenclature non enregistrées : {e}")
             return False
 
+    @with_query_lock
+    def changer_statut_regle(self, regle_id: int, statut: str, horodatage: Optional[str]) -> bool:
+        """Statut d'une règle (écran Règles, lot 4) ; `valide_le` suit le statut
+        (posé à la validation, effacé sinon)."""
+        try:
+            self.cursor.execute(
+                "UPDATE regles_nomenclature SET statut = ?, valide_le = ? WHERE id = ?",
+                (statut, horodatage if statut == 'validee' else None, regle_id))
+            self.conn.commit()
+            return self.cursor.rowcount == 1
+        except Exception as e:
+            self.conn.rollback()
+            app_logger.error(f"Statut de la règle {regle_id} non enregistré : {e}")
+            return False
+
+    @with_query_lock
+    def enregistrer_note_regle(self, regle_id: int, note: Optional[str]) -> bool:
+        try:
+            self.cursor.execute("UPDATE regles_nomenclature SET note = ? WHERE id = ?",
+                                (note or None, regle_id))
+            self.conn.commit()
+            return self.cursor.rowcount == 1
+        except Exception as e:
+            self.conn.rollback()
+            app_logger.error(f"Note de la règle {regle_id} non enregistrée : {e}")
+            return False
+
     # ── Propositions ────────────────────────────────────────────────────────
+
+    @with_query_lock
+    def lire_propositions_detaillees(self) -> Optional[List[dict]]:
+        """Propositions jointes à l'appareil et à leur règle (revue, lot 4) ;
+        None si la lecture a échoué."""
+        colonnes = ('appareil_id', 'type_actuel', 'type_propose', 'regle_id', 'force', 'signaux',
+                    'type_en_base', 'manufacturer', 'ref_modele', 'commercial_ref', 'other_ref',
+                    'portee', 'cible', 'motif', 'origine', 'source_url')
+        try:
+            self.cursor.execute("""
+                SELECT p.appareil_id, p.type_actuel, p.type_propose, p.regle_id, p.force,
+                       p.signaux, a.type, a.manufacturer, a.ref_modele, a.commercial_ref,
+                       a.other_ref, r.portee, r.cible, r.motif, r.origine, r.source_url
+                FROM propositions_type p
+                JOIN appareils a ON a.id = p.appareil_id
+                LEFT JOIN regles_nomenclature r ON r.id = p.regle_id
+                ORDER BY p.regle_id, p.appareil_id
+            """)
+            return [dict(zip(colonnes, r)) for r in self.cursor.fetchall()]
+        except Exception as e:
+            app_logger.error(f"Lecture détaillée des propositions de type échouée : {e}")
+            return None
+
+    @with_query_lock
+    def supprimer_propositions_type(self, appareil_ids: Iterable[int]) -> int:
+        """Retirer les propositions des appareils donnés (acceptées ou refusées)."""
+        ids = list(dict.fromkeys(appareil_ids))
+        retirees = 0
+        try:
+            for debut in range(0, len(ids), _PAQUET):
+                lot = ids[debut:debut + _PAQUET]
+                self.cursor.execute("DELETE FROM propositions_type WHERE appareil_id IN "
+                                    f"({','.join('?' * len(lot))})", lot)
+                retirees += self.cursor.rowcount
+            self.conn.commit()
+            return retirees
+        except Exception as e:
+            self.conn.rollback()
+            app_logger.error(f"Retrait des propositions de type échoué : {e}")
+            return 0
+
+    @with_query_lock
+    def lire_types_appareils(self, appareil_ids: Iterable[int]) -> Dict[int, Optional[str]]:
+        """{id: type} des appareils présents parmi ceux donnés."""
+        ids = list(dict.fromkeys(appareil_ids))
+        types: Dict[int, Optional[str]] = {}
+        for debut in range(0, len(ids), _PAQUET):
+            lot = ids[debut:debut + _PAQUET]
+            self.cursor.execute(f"SELECT id, type FROM appareils WHERE id IN "
+                                f"({','.join('?' * len(lot))})", lot)
+            types.update(self.cursor.fetchall())
+        return types
+
+    @with_query_lock
+    def lister_marques_appareils(self) -> List[str]:
+        """Marques distinctes (telles qu'écrites en base)."""
+        self.cursor.execute("SELECT DISTINCT manufacturer FROM appareils "
+                            "WHERE manufacturer IS NOT NULL AND manufacturer <> ''")
+        return [r[0] for r in self.cursor.fetchall()]
+
+    @with_query_lock
+    def lire_appareils_des_marques(self, marques: Iterable[str]) -> List[tuple]:
+        """Comme lire_appareils_nomenclature, limité aux marques données (écrites
+        comme en base) : exemples d'une règle sans relire toute la base."""
+        marques = list(dict.fromkeys(marques))
+        lignes: List[tuple] = []
+        for debut in range(0, len(marques), _PAQUET):
+            lot = marques[debut:debut + _PAQUET]
+            self.cursor.execute(
+                "SELECT id, type, manufacturer, ref_modele, commercial_ref, other_ref "
+                f"FROM appareils WHERE manufacturer IN ({','.join('?' * len(lot))})", lot)
+            lignes.extend(self.cursor.fetchall())
+        return lignes
+
+    # ── Acceptations (lot 4, annulables) ────────────────────────────────────
+
+    @with_query_lock
+    def enregistrer_lot_acceptation(self, regle_id: Optional[int], libelle: str,
+                                    horodatage: str, lignes: List[Tuple[int, str, str]]) -> Optional[int]:
+        """Un lot d'acceptations : [(appareil_id, type_avant, type_apres)].
+        Renvoie l'id du lot, ou None en cas d'échec (journalisé)."""
+        try:
+            self.cursor.execute(
+                "INSERT INTO lots_acceptation_type (regle_id, libelle, accepte_le, nb) "
+                "VALUES (?, ?, ?, ?)", (regle_id, libelle, horodatage, len(lignes)))
+            lot_id = self.cursor.lastrowid
+            self.cursor.executemany(
+                "INSERT INTO acceptations_type (lot_id, appareil_id, type_avant, type_apres) "
+                "VALUES (?, ?, ?, ?)", [(lot_id, a, av, ap) for a, av, ap in lignes])
+            self.conn.commit()
+            return lot_id
+        except Exception as e:
+            self.conn.rollback()
+            app_logger.error(f"Lot d'acceptation non enregistré : {e}")
+            return None
+
+    @with_query_lock
+    def lister_lots_acceptation(self, limite: int = 50) -> List[dict]:
+        colonnes = ('id', 'regle_id', 'libelle', 'accepte_le', 'nb', 'annule_le')
+        try:
+            self.cursor.execute(f"SELECT {', '.join(colonnes)} FROM lots_acceptation_type "
+                                "ORDER BY id DESC LIMIT ?", (limite,))
+            return [dict(zip(colonnes, r)) for r in self.cursor.fetchall()]
+        except Exception as e:
+            app_logger.error(f"Lecture des lots d'acceptation échouée : {e}")
+            return []
+
+    @with_query_lock
+    def lire_acceptations(self, lot_id: int) -> List[Tuple[int, Optional[str], str]]:
+        """[(appareil_id, type_avant, type_apres)] d'un lot."""
+        self.cursor.execute("SELECT appareil_id, type_avant, type_apres FROM acceptations_type "
+                            "WHERE lot_id = ? ORDER BY appareil_id", (lot_id,))
+        return [tuple(r) for r in self.cursor.fetchall()]
+
+    @with_query_lock
+    def marquer_lot_annule(self, lot_id: int, horodatage: str) -> bool:
+        try:
+            self.cursor.execute("UPDATE lots_acceptation_type SET annule_le = ? WHERE id = ?",
+                                (horodatage, lot_id))
+            self.conn.commit()
+            return True
+        except Exception as e:
+            self.conn.rollback()
+            app_logger.error(f"Annulation du lot {lot_id} non enregistrée : {e}")
+            return False
 
     @with_query_lock
     def remplacer_propositions_type(self, propositions: Iterable[tuple]) -> int:

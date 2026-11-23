@@ -166,6 +166,11 @@ class TableController:
         self._a_verifier_epuise = {'up': False, 'down': False}
         self.a_verifier_up_btn = None
         self.a_verifier_down_btn = None
+        # Et pour les types proposés par les règles de nomenclature (lot 4),
+        # autour de « Types proposés (N) » (set_type_propose_nav_buttons)
+        self._type_propose_epuise = {'up': False, 'down': False}
+        self.type_propose_up_btn = None
+        self.type_propose_down_btn = None
         
         # Variables de tri
         self.current_sort_column = -1
@@ -863,6 +868,7 @@ class TableController:
         # rechargements de page qu'il déclenche lui-même en cours de route.
         self._empty_cells_search_exhausted = {'up': False, 'down': False}
         self._a_verifier_epuise = {'up': False, 'down': False}
+        self._type_propose_epuise = {'up': False, 'down': False}
 
         # Cacher les bannières (supersession + équivalence) si aucune recherche active
         if not search_term:
@@ -1450,6 +1456,7 @@ class TableController:
         if not getattr(self, '_incomplete_scan_in_progress', False):
             self._update_empty_cell_buttons_state()
             self._update_a_verifier_buttons_state()
+            self._update_type_propose_buttons_state()
 
         # Synchroniser avec NavigationService si disponible
         if self.navigation_service:
@@ -1897,6 +1904,34 @@ class TableController:
         self._a_verifier_epuise = {'up': False, 'down': False}
         self._update_a_verifier_buttons_state()
 
+    def set_type_propose_nav_buttons(self, up_btn, down_btn):
+        """Brancher les flèches « type proposé précédent/suivant », créées dans
+        la barre d'état autour de « Types proposés (N) » (lot 4)."""
+        self.type_propose_up_btn = up_btn
+        self.type_propose_down_btn = down_btn
+        up_btn.clicked.connect(lambda: self._sauter_vers('type_propose', 'up'))
+        down_btn.clicked.connect(lambda: self._sauter_vers('type_propose', 'down'))
+        self._update_type_propose_buttons_state()
+
+    def on_propositions_type_changed(self):
+        """La liste des types proposés a été relue (calcul, acceptation, refus) :
+        oublier l'épuisement mémorisé et réévaluer les flèches."""
+        self._type_propose_epuise = {'up': False, 'down': False}
+        self._update_type_propose_buttons_state()
+
+    def _update_type_propose_buttons_state(self):
+        """Même règle que les flèches « à vérifier » : la liste est en mémoire
+        (modèle), pas de comptage SQL à chaque page."""
+        if getattr(self, 'type_propose_up_btn', None) is None:
+            return
+        model = getattr(self, 'model', None)
+        actif = (model is not None and hasattr(model, 'a_des_propositions_type')
+                 and model.a_des_propositions_type()
+                 and not self._current_incomplete_filter())
+        epuise = getattr(self, '_type_propose_epuise', {'up': False, 'down': False})
+        self.type_propose_up_btn.setEnabled(actif and not epuise['up'])
+        self.type_propose_down_btn.setEnabled(actif and not epuise['down'])
+
     def _update_a_verifier_buttons_state(self):
         """Grise/dégrise les flèches « à vérifier ». Pas de requête de comptage à
         chaque page : la liste des auto-complétés est déjà en mémoire (modèle).
@@ -1972,6 +2007,14 @@ class TableController:
             'ligne_page': 'find_a_verifier_row',
             'position_sql': 'find_a_verifier_position',
             'libelle': 'ligne à vérifier',
+        },
+        'type_propose': {
+            'boutons': ('type_propose_up_btn', 'type_propose_down_btn'),
+            'epuisement': '_type_propose_epuise',
+            'reevaluer': '_update_type_propose_buttons_state',
+            'ligne_page': 'find_type_propose_row',
+            'position_sql': 'find_type_propose_position',
+            'libelle': 'type proposé',
         },
     }
 
