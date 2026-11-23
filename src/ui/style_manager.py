@@ -388,6 +388,20 @@ class StyleManager:
         "QPushButton:hover { background-color: #f8d7da; border-color: #f1aeb5; }"
         "QPushButton:pressed { background-color: #f1aeb5; border-color: #ea868f; }"
     )
+    # Bouton « ? » d'aide des filtres de colonne, voisin du RAZ (survol bleu)
+    AIDE_FILTRES_BUTTON = (
+        "QPushButton { background-color: #f8f9fa; color: #0d6efd;"
+        " border: 1px solid #ced4da; border-radius: 3px;"
+        " padding: 0px; }"
+        "QPushButton:hover { background-color: #e7f1ff; border-color: #86b7fe; }"
+        "QPushButton:pressed { background-color: #cfe2ff; border-color: #6ea8fe; }"
+    )
+    # Fenêtre surgissante de l'aide des filtres de colonne
+    POPUP_AIDE_FILTRES = (
+        "QFrame#aideFiltres { background: #ffffff; border: 1px solid #ced4da;"
+        " border-radius: 6px; }"
+        "QFrame#aideFiltres QLabel { color: #212529; font-size: 12px; }"
+    )
 
     # Boutons de l'action FINALE d'une fenêtre (Importer, Confirmer l'import,
     # Appliquer le nettoyage) et de son « Annuler » : même hauteur, texte 12 px.

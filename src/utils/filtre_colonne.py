@@ -86,12 +86,25 @@ def condition_filtre_colonne(colonne_sql: str, texte: str) -> Optional[Tuple[str
     return ' AND '.join(morceaux), params
 
 
-# Texte de la bulle d'aide des champs de filtre (une seule source)
+# Aide des champs de filtre : bulle au survol d'un champ et fenêtre du bouton « ? »
+# (une seule source)
+_EXEMPLES_AIDE = [
+    ("WOI4S", "contient WOI4S"),
+    ("WOI*", "commence par WOI"),
+    ("*S", "finit par S"),
+    ("WOI?S*", "<code>?</code> = un seul caractère (WOI4S…, WOI5S…)"),
+    ("WOI4S* | WOI5S*", "l'un <b>ou</b> l'autre"),
+    ("WOI* !WOI9*", "<b>sauf</b> ceux qui commencent par WOI9"),
+]
+
 AIDE_FILTRE_COLONNE = (
-    "<b>Filtre de colonne</b><br>"
-    "<code>WOI4S</code> : contient WOI4S<br>"
-    "<code>WOI*</code> : commence par WOI &nbsp;·&nbsp; <code>*S</code> : finit par S<br>"
-    "<code>WOI?S*</code> : <code>?</code> = un seul caractère<br>"
-    "<code>WOI4S* | WOI5S*</code> : l'un OU l'autre<br>"
-    "<code>WOI* !WOI9*</code> : sauf ceux qui commencent par WOI9"
+    "<b>Recherche dans les filtres de colonne</b>"
+    "<table cellspacing='0' cellpadding='3' style='margin-top:6px'>"
+    + "".join(f"<tr><td><code><b>{saisie}</b></code></td><td>&nbsp;{sens}</td></tr>"
+              for saisie, sens in _EXEMPLES_AIDE)
+    + "</table>"
+    "<p style='margin-top:6px'>Sans <code>*</code> ni <code>?</code> : « contient ».<br>"
+    "Avec : le motif décrit la valeur entière<br>"
+    "(<code>WOI*S</code> = commence par WOI <b>et</b> finit par S).<br>"
+    "Majuscules et minuscules confondues.</p>"
 )
