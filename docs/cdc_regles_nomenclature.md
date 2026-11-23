@@ -1,7 +1,7 @@
 # Cahier des charges — Règles de nomenclature des appareils (types justes)
 
-**Statut :** Proposé — à valider, rien n'est codé
-**Version :** 0.1 (2026-11-23)
+**Statut :** Questions ouvertes tranchées — rien n'est codé
+**Version :** 0.2 (2026-11-23)
 **Contexte :** Le client veut que ses clients retrouvent leur appareil par une recherche, sous la bonne marque et le bon type. Les fabricants codent le type dans leurs références (BSH : `S…` = lave-vaisselle ; Electrolux : PNC `911…` = lave-vaisselle ; Neff : `C17M…` = four combiné micro-ondes). Ce document définit comment l'outil apprend, fait valider et applique ces **règles de nomenclature** pour corriger et compléter le type des appareils.
 
 ---
@@ -12,9 +12,13 @@
 |---|---|
 | D1 | **Pas d'attributs.** La base du site n'en a pas : chaque appareil a **un seul type**, choisi dans une liste fermée. |
 | D2 | Les combinés restent des **types à part entière** (« Four vapeur » reste un type). |
-| D3 | Création d'un **nouveau type « Four combiné micro-ondes »** (nom à confirmer, voir § 12), sur le modèle de « Four vapeur ». |
+| D3 | Création d'un **nouveau type « Four combiné micro-ondes »** (nom confirmé le 2026-11-23, voir D6), sur le modèle de « Four vapeur ». |
 | D4 | Toute correction passe par une **validation humaine** (une règle validée = des centaines d'appareils) ; aucune correction silencieuse. |
 | D5 | En cas de doute, on cherche des réponses **hors de l'application** (fiches fabricants, notices) et on garde la source. |
+| D6 | Libellé exact du nouveau type : **« Four combiné micro-ondes »** (à créer à l'identique côté site). |
+| D7 | Règles trouvées par l'analyse des données **sans source web** : **validées d'office si pureté ≥ 98 % ET un 2e signal d'accord** (vote des pièces > 60 % ou 2e clé) ; sinon **une par une**. |
+| D8 | **Acceptation groupée** des propositions **fortes** d'une même règle : **oui, avec récapitulatif** (nombre d'appareils, comptage par type avant/après) et une entrée d'historique annulable. Les propositions simples restent ligne à ligne. |
+| D9 | Types **accessoires** (Accessoires, Porte, Tiroir à couverts, Filtre à eau, Kit d'évacuation, Panier à couverts, Filtre, Rails téléscopique, Kit de recyclage) : **exclus des règles** — aucune règle ne propose ni ne retire ces types ; chantier séparé. |
 
 ---
 
@@ -149,7 +153,7 @@ CREATE TABLE propositions_type (
 ### 6.1 Normalisation et syntaxe des motifs
 
 - Clé `nom` : réf. commerciale (sinon réf. modèle) en majuscules, sans espaces ni ponctuation, si elle contient une lettre. Clé `code` : réf. modèle (sinon commerciale) entièrement numérique, ≥ 6 chiffres.
-- Syntaxe : celle des jokers de filtre de colonne (`src/utils/filtre_colonne.py`, PR #169 — **pas encore mergée** : à réutiliser si elle l'est au lot 3, sinon module propre) — `?` = un caractère, `*` = n'importe quoi ; ajouts : `#` = un chiffre, `@` = une lettre. Motif **ancré au début**.
+- Syntaxe : celle des jokers de filtre de colonne (`src/utils/filtre_colonne.py`, PR #169 **mergée sur main** le 2026-11-23 : on la **réutilise**, pas de second module) — `?` = un caractère, `*` = n'importe quoi ; ajouts propres aux règles : `#` = un chiffre, `@` = une lettre. Motif **ancré au début** (`|` et `!` du filtre non utilisés dans un motif de règle : une règle = un motif).
   - préfixe : `AKZ*` ; position : `EW??F*` (5e car. = F) ; gabarit : `HSG###@@#`.
 
 ### 6.2 Résolution (pour un appareil)
@@ -192,7 +196,7 @@ Le libellé d'origine (`other_ref`) n'est **jamais** un signal seul (cas « Four
 ### 8.2 Revue des propositions
 
 - Réutiliser le circuit « à vérifier » existant (navigation ▲▼ `TableController._CRITERES_NAV`, PR #150) avec un critère « type proposé ».
-- Accepter / refuser une ligne, ou **toutes les lignes d'une règle** (forte seulement).
+- Accepter / refuser une ligne, ou **toutes les lignes fortes d'une règle** (D8) : récapitulatif avant application (nombre, comptage par type avant/après), une entrée d'historique annulable.
 
 ### 8.3 Import
 
@@ -278,9 +282,9 @@ Le lot 2 dépend de la création du type sur le site (action client).
 
 ---
 
-## 12. Questions ouvertes
+## 12. Questions ouvertes — tranchées le 2026-11-23
 
-1. Nom exact du nouveau type : « Four combiné micro-ondes » (proposé, terme Neff/Gaggenau) ou autre libellé déjà prévu côté site ?
-2. Règles § 9.2 issues de la seule découverte (sans source web) : validées d'office ou une par une ?
-3. Acceptation groupée des propositions « fortes » d'une règle : autorisée ?
-4. Les ~115 lignes typées accessoire (Porte, Panier, Rails, Filtre, Accessoires) : hors sujet ici, à traiter à part ?
+1. Nom exact du nouveau type → **« Four combiné micro-ondes »** (D6).
+2. Règles § 9.2 issues de la seule découverte → **d'office si ≥ 98 % + 2e signal, sinon une par une** (D7). Conséquence sur le catalogue § 9.2 : Liebherr `GK*` (96,9 %) et Bauknecht `EMV/EMZ/EMC` (96 %) passent **une par une** ; les autres (100 %, 99 %, 98 %) sont validées d'office si le vote des pièces concorde au calcul du lot 3.
+3. Acceptation groupée des fortes → **oui, avec récapitulatif** (D8) ; à intégrer au § 8.2.
+4. Lignes accessoires (recompte : 100 lignes + 117 « Kit de recyclage ») → **exclues des règles, chantier à part** (D9) ; la découverte (§ 6.3) les ignore comme appareils sources et comme types résultats.
