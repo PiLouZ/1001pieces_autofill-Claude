@@ -94,3 +94,37 @@ def test_apercu_parts(dialogue):
     onglet.part_spin.setValue(50)
     termes = {c.terme for c, _ in dict(onglet.apercu_type('lave-linge'))['Méta description']}
     assert termes == {'lave-linge', 'machine à laver'}
+
+
+def test_migration_four_combine_survit_a_l_enregistrement(qapp, tmp_path, monkeypatch):
+    """Config d'avant le lot 2 : la migration désactive « four micro-ondes » ;
+    l'utilisateur le réactive et enregistre : son choix tient au rechargement
+    (la migration notée dans la config ne rejoue pas)."""
+    import json
+    from src.services import export_config_service as module
+    from src.ui.export_config_dialog import ExportConfigDialog
+    chemin = tmp_path / 'export_config.json'
+    chemin.write_text(json.dumps({'synonymes_appareils': {'appareils': [
+        {'type': 'four', 'genre': 'm', 'variantes': []},
+        {'type': 'micro-ondes', 'genre': 'm', 'variantes': [
+            {'terme': 'four micro-ondes', 'genre': 'm', 'nature': 'synonyme', 'actif': True}]},
+    ]}}), encoding='utf-8')
+    monkeypatch.setattr(module.ExportConfigService, '_resolve_config_path',
+                        staticmethod(lambda: str(chemin)))
+    ini = str(tmp_path / 'reglages.ini')
+    monkeypatch.setattr(ExportConfigDialog, '_reglages',
+                        staticmethod(lambda: QSettings(ini, QSettings.IniFormat)))
+    d = ExportConfigDialog(module.ExportConfigService())
+    try:
+        onglet = d.appareils_tab
+        assert [a['type'] for a in onglet._appareils] == ['four', 'micro-ondes',
+                                                          'four combiné micro-ondes']
+        onglet.types_table.selectRow(_ligne_type(onglet, 'micro-ondes'))
+        assert onglet.variantes_table.item(0, 3).checkState() == Qt.Unchecked
+        onglet.variantes_table.item(0, 3).setCheckState(Qt.Checked)
+        assert d.export_config_service.save_config(d._collect_config())
+        relu = module.ExportConfigService().get_config()['synonymes_appareils']
+        micro = next(a for a in relu['appareils'] if a['type'] == 'micro-ondes')
+        assert micro['variantes'][0]['actif'] is True
+    finally:
+        d.deleteLater()

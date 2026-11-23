@@ -99,7 +99,8 @@ class SEOGenerator:
     # à côté (sur un verrou, un joint…) et ressemblait à un conseil de diagnostic,
     # que le SAV ne fournit pas (décision client 2026-09-24).
     # Clés = sortie de _normalize_type(). Matching par clé la plus longue contenue
-    # (via _segment_templates_for) pour gérer "lave-linge top", "four micro-ondes".
+    # (via _segment_templates_for) pour gérer "lave-linge top", "four micro-ondes",
+    # "four combiné micro-ondes" (segment dédié, plus long que "micro-ondes").
     # Fallback systématique sur le pool générique si le type n'a pas d'entrée.
     SEGMENT_DESCRIPTION_TEMPLATES = {
         "lave-linge": [
@@ -133,6 +134,12 @@ class SEOGenerator:
         "micro-ondes": [
             "Micro-ondes {fabricants} : {description} {reference} — commande avant 15h, expédition le jour même",
             "Pièce détachée {type_appareil} {fabricants} : {description} {reference}, Chronopost J+1 avant 13h",
+        ],
+        # Clé plus longue que « micro-ondes » et « four », qu'elle contient : sans elle,
+        # le four combiné tombait sur le segment micro-ondes (« Micro-ondes Bosch : … »)
+        "four combiné micro-ondes": [
+            "Four combiné micro-ondes {fabricants} : {description} {reference} — Chronopost J+1 avant 13h",
+            "Pièce détachée {type_appareil} {fabricants} : {description} {reference}, commande avant 15h, expédition le jour même",
         ],
     }
 
@@ -185,6 +192,9 @@ class SEOGenerator:
         "micro ondes": "micro-ondes",
         "four micro ondes": "four micro-ondes",
         "four micro-ondes": "four micro-ondes",
+        "four combine micro-ondes": "four combiné micro-ondes",
+        "four combine micro ondes": "four combiné micro-ondes",
+        "four combiné micro ondes": "four combiné micro-ondes",
         "refrigerateur": "réfrigérateur",
         "congelateur": "congélateur",
         "lave-vaisselle posable": "lave-vaisselle",

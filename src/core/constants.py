@@ -178,3 +178,13 @@ class Paths:
     def get_database_path() -> Path:
         """Obtenir le chemin de la base de données"""
         return Paths.get_data_dir() / DatabaseConfig.DB_NAME
+
+
+class TypesAppareils:
+    """Libellés de types d'appareils fixés par décision client.
+
+    Le libellé doit être identique, au caractère près, au type créé sur le site
+    (sinon l'export crée une catégorie orpheline)."""
+
+    # Règles de nomenclature, lot 2 (décision D6 du 2026-11-23)
+    FOUR_COMBINE_MICRO_ONDES = "Four combiné micro-ondes"

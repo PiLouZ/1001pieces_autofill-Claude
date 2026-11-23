@@ -40,6 +40,7 @@ class AppareilsConfigTab(QWidget):
         super().__init__(parent)
         self._dialog = dialog
         self._appareils = []
+        self._migrations = []
         self._courant = -1
         self._chargement = False
         self._build_ui()
@@ -197,6 +198,8 @@ class AppareilsConfigTab(QWidget):
         for cle, check in self.champ_checks.items():
             check.setChecked(bool(config.get('champs', {}).get(cle, False)))
         self._appareils = copy.deepcopy(config.get('appareils', []))
+        # Migrations déjà jouées : reportées telles quelles à l'enregistrement
+        self._migrations = list(config.get('migrations', []))
         self._courant = -1
         self._remplir_types()
         self._chargement = False
@@ -212,6 +215,7 @@ class AppareilsConfigTab(QWidget):
             'part_principal': self.part_spin.value(),
             'champs': {cle: check.isChecked() for cle, check in self.champ_checks.items()},
             'appareils': copy.deepcopy(self._appareils),
+            'migrations': list(self._migrations),
         }
 
     # ─── Types d'appareils ───────────────────────────────────────────────────
