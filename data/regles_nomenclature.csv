@@ -1,0 +1,62 @@
+portee;cible;cle;motif;type_resultat;statut;origine;source_url;note
+marque;Electrolux;nom;EW?H*;Sèche-linge;validee;web;https://www.electromenager-compare.com/seche-linge-ELEEW9H3803D-ELECTROLUX-EW9H3803D.htm;D7 d'office : 100 %, pièces 100 %, 2e clé 100 %
+marque;Electrolux;nom;EW?F*;Lave-linge;validee;decouverte;;D7 d'office : 100 %, pièces 100 %, 2e clé 100 %
+marque;Electrolux;nom;EW?T*;Lave-linge;validee;decouverte;;D7 d'office : 100 %, pièces 100 %, 2e clé 100 %
+marque;Electrolux;nom;EW?D*;Sèche-linge;validee;decouverte;;"validée par le client (lot 3) : 456/458 ; EW9D…VCP introuvables en ligne"
+marque;Candy;nom;GO#W*;Lavante-séchante;validee;web;https://www.electromenager-compare.com/lave-linge-CANGO4W264-CANDY-GO4W264.htm;W dans la série = lavante-séchante (Candy seulement, pas Hoover)
+marque;Candy;nom;CO#W*;Lavante-séchante;validee;web;https://www.electromenager-compare.com/lave-linge-CANGO4W264-CANDY-GO4W264.htm;W dans la série = lavante-séchante (Candy seulement, pas Hoover)
+marque;Candy;nom;GVW*;Lavante-séchante;validee;web;https://www.electromenager-compare.com/lave-linge-CANGO4W264-CANDY-GO4W264.htm;W dans la série = lavante-séchante (Candy seulement, pas Hoover)
+marque;Candy;nom;GVSW*;Lavante-séchante;validee;web;https://www.electromenager-compare.com/lave-linge-CANGO4W264-CANDY-GO4W264.htm;W dans la série = lavante-séchante (Candy seulement, pas Hoover)
+marque;Candy;nom;CSW*;Lavante-séchante;validee;web;https://www.electromenager-compare.com/lave-linge-CANGO4W264-CANDY-GO4W264.htm;W dans la série = lavante-séchante (Candy seulement, pas Hoover)
+marque;Candy;nom;GOW*;Lavante-séchante;validee;web;https://www.electromenager-compare.com/lave-linge-CANGO4W264-CANDY-GO4W264.htm;W dans la série = lavante-séchante (Candy seulement, pas Hoover)
+marque;Bosch;nom;HBC??D*;Four vapeur;validee;decouverte;;validée par le client (lot 3) : 95,6 %, libellé 125/129 (D = Dampf)
+marque;Bosch;nom;CMG*;Four combiné micro-ondes;validee;web;https://media3.bosch-home.com/Documents/specsheet/fr-CH/CMG633BS1.pdf;lot 2, famille 1
+marque;Bosch;nom;HMG###@@#;Four combiné micro-ondes;validee;web;https://media3.bosch-home.com/Documents/specsheet/fr-BE/HMG8764C1.pdf;lot 2, famille 1 : forme récente seulement (anciennes HMG = micro-ondes)
+marque;Bosch;nom;HMG###@@#@;Four combiné micro-ondes;validee;web;https://media3.bosch-home.com/Documents/specsheet/fr-BE/HMG8764C1.pdf;lot 2, famille 1 : forme récente seulement (anciennes HMG = micro-ondes)
+marque;Bosch;nom;HMG####@#;Four combiné micro-ondes;validee;web;https://media3.bosch-home.com/Documents/specsheet/fr-BE/HMG8764C1.pdf;lot 2, famille 1 : forme récente seulement (anciennes HMG = micro-ondes)
+marque;Bosch;nom;HMG####@#@;Four combiné micro-ondes;validee;web;https://media3.bosch-home.com/Documents/specsheet/fr-BE/HMG8764C1.pdf;lot 2, famille 1 : forme récente seulement (anciennes HMG = micro-ondes)
+marque;Bosch;nom;HBC8[3-6][KEP]*;Four combiné micro-ondes;validee;web;https://www.bosch-home.co.uk/customer-service/HBC84K553A/01;lot 2, famille 7 (ancienne génération)
+marque;Siemens;nom;CI??W*;Cave à vin;validee;decouverte;;validée par le client (lot 3) : 100 %
+marque;Siemens;nom;CM[4-9]##@?@#;Four combiné micro-ondes;validee;web;https://siemens-home.bsh-group.com/uk/en/mkt-product/cooking-and-baking/ovens/compact-ovens/CM585AGS0B;lot 2, famille 2 : gabarit obligatoire (775 anciennes HM = cuisinières)
+marque;Siemens;nom;CM[4-9]##@?@#@;Four combiné micro-ondes;validee;web;https://siemens-home.bsh-group.com/uk/en/mkt-product/cooking-and-baking/ovens/compact-ovens/CM585AGS0B;lot 2, famille 2 : gabarit obligatoire (775 anciennes HM = cuisinières)
+marque;Siemens;nom;HM[6-9]##@?@#;Four combiné micro-ondes;validee;web;https://siemens-home.bsh-group.com/uk/en/mkt-product/cooking-and-baking/ovens/compact-ovens/CM585AGS0B;lot 2, famille 2 : gabarit obligatoire (775 anciennes HM = cuisinières)
+marque;Siemens;nom;HM[6-9]##@?@#@;Four combiné micro-ondes;validee;web;https://siemens-home.bsh-group.com/uk/en/mkt-product/cooking-and-baking/ovens/compact-ovens/CM585AGS0B;lot 2, famille 2 : gabarit obligatoire (775 anciennes HM = cuisinières)
+marque;Siemens;nom;HB8[3-6][KEP]*;Four combiné micro-ondes;validee;web;https://bosch-home.co.uk/customer-service/HBC84E653B/01;lot 2, famille 7 (ancienne génération)
+marque;Neff;nom;C??M*;Four combiné micro-ondes;validee;web;https://neff-home.com/uk/productlist/ovens-compact-ovens/ovens/single-microwave-oven/C1AMG84N0B;lot 2, famille 3
+marque;Neff;nom;C??W*;Micro-ondes;validee;decouverte;;D7 d'office : 100 %, pièces 32/32
+marque;Neff;nom;B67#4*;Four combiné micro-ondes;validee;web;https://www.bosch-home.co.uk/customer-service/HBC84K553A/01;lot 2, famille 7 (ancienne génération)
+marque;AEG;nom;KMK*;Four combiné micro-ondes;validee;web;https://www.aeg.co.uk/kitchen/cooking/ovens/compact-oven/kmk968000t;lot 2, famille 4
+marque;AEG;nom;KME*;Four combiné micro-ondes;validee;web;https://www.aeg.co.uk/kitchen/cooking/ovens/compact-oven/kmk968000t;lot 2, famille 4
+marque;AEG;nom;KMS*;Four combiné micro-ondes;validee;web;https://www.aeg.co.uk/kitchen/cooking/ovens/compact-oven/kmk968000t;lot 2, famille 4
+marque;AEG;nom;KM8*;Four combiné micro-ondes;validee;web;https://www.aeg.co.uk/kitchen/cooking/ovens/compact-oven/kmk968000t;lot 2, famille 4
+marque;AEG;nom;KMX*;Four combiné micro-ondes;validee;web;https://aeg.co.uk/kitchen/cooking/ovens/compact-oven/kmx365060m;lot 2, famille 4
+marque;AEG;nom;CM*;Four combiné micro-ondes;validee;web;https://www.aeg.be/services/eml/asset/da2e91ee-db9a-4041-8751-2dec8086d846/E4RM3Q/250315JEZF/PDF/250315JEZF.pdf;lot 2, famille 4
+marque;AEG;nom;NKM*;Four combiné micro-ondes;validee;web;https://www.carrefour.fr/p/four-micro-onde-encastrable-aeg-nkm7n721t-compact-7333394105574;lot 2, famille 4
+marque;AEG;nom;NKO*;Four combiné micro-ondes;validee;web;https://www.carrefour.fr/p/four-micro-onde-encastrable-aeg-nkm7n721t-compact-7333394105574;lot 2, famille 4
+marque;AEG;nom;KMF*;Four combiné micro-ondes;validee;web;https://manuals.online/aeg/microwave-oven/kmf761080m/user-manual/wyhx;lot 3 : notice commune avec KME761080M (« microwave combi-oven »)
+marque;Gaggenau;nom;BM*;Four combiné micro-ondes;validee;web;https://media3.gaggenau.com/Documents/specsheet/fr-FR/BMP251130.pdf;lot 2, famille 5
+marque;Gaggenau;nom;BS*;Four vapeur;validee;web;https://www.gaggenau.com/gb/products-list/ovens/200-series/combi-steam-ovens;"lot 3 : BSP série 200 et BS4 série 400 = combi-vapeur ; BS2 libellés « Combivap »"
+marque;Electrolux;nom;EVY*;Four combiné micro-ondes;validee;web;https://www.gigantti.fi/document/dv_doc_D180001002465827/EVY7800AOX/electrolux-kompaktiuuni-evy7800aox.PDF;lot 2, famille 6
+marque;Electrolux;nom;EV[LMK]#@#*;Four combiné micro-ondes;validee;web;https://www.electrolux.co.uk/kitchen/cooking/ovens/compact-oven/evlbe08gx/;lot 2, famille 6 (CombiQuick)
+marque;Electrolux;nom;EV[LMK]@@#*;Four combiné micro-ondes;validee;web;https://www.electrolux.co.uk/kitchen/cooking/ovens/compact-oven/evlbe08gx/;lot 2, famille 6 (CombiQuick)
+marque;Liebherr;nom;G*;Congélateur;validee;decouverte;;"validée par le client (lot 3) ; exceptions par règles plus précises"
+marque;Liebherr;nom;GK*;Réfrigérateur;validee;decouverte;;validée par le client (lot 3) : 339/350
+marque;Liebherr;nom;GKN[12]*;Congélateur;validee;decouverte;;exception (lot 3) : GKN 190/230 libellés « Congélateur NoFrost »
+marque;Liebherr;nom;GDC*;Réfrigérateur;validee;decouverte;;exception (lot 3) : armoires à boissons
+marque;De Dietrich;nom;DOV*;Four vapeur;validee;decouverte;;validée par le client (lot 3) : 100 %, libellé 51/52
+marque;Hotpoint-Ariston;nom;AQD*;Lavante-séchante;validee;decouverte;;validée par le client (lot 3) : 100 %, libellé 164/164
+marque;Hotpoint-Ariston;nom;AQM*;Lavante-séchante;validee;decouverte;;validée par le client (lot 3) : 100 %, libellé 164/164
+marque;Hotpoint-Ariston;nom;AQC*;Sèche-linge;validee;decouverte;;D7 d'office : 100 %, pièces 100 %, 2e clé 100 %
+marque;Whirlpool;nom;AKP*;Four;validee;web;https://www.darty.com/nav/achat/encastrable/four_classique/four_encastrable/whirlpool_akz_430_ix_inox.html;lot 1, famille 1 : fours multifonction sans vapeur
+marque;Whirlpool;nom;AKZ*;Four;validee;web;https://www.darty.com/nav/achat/encastrable/four_classique/four_encastrable/whirlpool_akz_430_ix_inox.html;lot 1, famille 1 : fours multifonction sans vapeur
+marque;Whirlpool;nom;AKZ#S*;Four vapeur;validee;web;https://www.but.fr/produits/8003437836220/Four-encastrable-vapeur-WHIRLPOOL-AKZ9S8270NB-73L.html;lot 1, famille 2 : S après le chiffre = vapeur
+marque;Ignis;nom;AKP*;Four;validee;web;https://www.darty.com/nav/achat/encastrable/four_classique/four_encastrable/whirlpool_akz_430_ix_inox.html;lot 1, famille 1 : fours multifonction sans vapeur
+marque;Ignis;nom;AKZ*;Four;validee;web;https://www.darty.com/nav/achat/encastrable/four_classique/four_encastrable/whirlpool_akz_430_ix_inox.html;lot 1, famille 1 : fours multifonction sans vapeur
+marque;Ignis;nom;AKZ#S*;Four vapeur;validee;web;https://www.but.fr/produits/8003437836220/Four-encastrable-vapeur-WHIRLPOOL-AKZ9S8270NB-73L.html;lot 1, famille 2 : S après le chiffre = vapeur
+groupe;Whirlpool;nom;AKR[4-9]*;Hotte;validee;decouverte;;"validée par le client (lot 3) : 615 hottes à 100 % ; AKR0/AKR2 mélangés, sans règle"
+groupe;Whirlpool;nom;AKR3*;Plaque;validee;web;https://www.electromenager-compare.com/table-de-cuisson-WHIAKR317IX-WHIRLPOOL-AKR-317IX.htm;lot 3 : tables gaz, libellés « Plaque Email Gaz »
+groupe;Whirlpool;nom;AGB*;Lave-vaisselle;validee;decouverte;;validée par le client (lot 3) : code usine 851 = lave-vaisselle
+marque;Beko;nom;FSE[56]*;Cuisinière;validee;web;https://www.beko.fr/sites/default/files/Art_FicheProduit_FSE68300GACS.pdf;lot 3 : cuisinières pose libre
+marque;Beko;nom;CSE[56]*;Cuisinière;validee;web;https://www.beko.fr/sites/default/files/Art_FicheProduit_FSE68300GACS.pdf;lot 3 : cuisinières pose libre
+marque;Beko;nom;CSE3*;Réfrigérateur;validee;decouverte;;lot 3 : combinés réfrigérateur-congélateur
+marque;Beko;nom;FSE2*;Congélateur;validee;decouverte;;lot 3 : congélateurs

@@ -116,6 +116,8 @@ class DatabaseSetupMixin:
         self._setup_refus_completions_table()
         # Reprise des fiches du site : produits, provenance, origines, décisions
         self._setup_fiches_site_tables()
+        # Règles de nomenclature et propositions de type (lot 3)
+        self._setup_nomenclature_tables()
 
         self.conn.commit()
 

@@ -188,3 +188,19 @@ class TypesAppareils:
 
     # Règles de nomenclature, lot 2 (décision D6 du 2026-11-23)
     FOUR_COMBINE_MICRO_ONDES = "Four combiné micro-ondes"
+
+    # Règles de nomenclature (décision D9) : types accessoires, exclus des règles
+    # — aucune règle ne les propose ni ne les retire.
+    ACCESSOIRES = frozenset({
+        "Accessoires", "Porte", "Tiroir à couverts", "Filtre à eau", "Kit d'évacuation",
+        "Panier à couverts", "Filtre", "Rails téléscopique", "Kit de recyclage",
+    })
+
+    # Règles de nomenclature (CDC § 7) : familles de types « voisins », que les
+    # pièces partagées ne départagent pas ; une proposition entre deux types
+    # d'une même famille reste « simple » (revue ligne à ligne).
+    FAMILLES_VOISINES = (
+        frozenset({"Réfrigérateur", "Congélateur", "Cave à vin"}),
+        frozenset({"Four", "Four vapeur", FOUR_COMBINE_MICRO_ONDES, "Cuisinière", "Micro-ondes"}),
+        frozenset({"Lave-linge", "Sèche-linge", "Lavante-séchante"}),
+    )
