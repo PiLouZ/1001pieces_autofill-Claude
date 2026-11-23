@@ -30,6 +30,7 @@ from ..utils.qt_imports import (
 from ..core.config import Config
 from ..core.logger import app_logger
 from ..core.constants import UIConfig
+from ..utils.filtre_colonne import AIDE_FILTRE_COLONNE
 from ..utils.error_handler import (
     handle_table_operations_errors, handle_async_worker_errors,
     handle_database_operation_errors, handle_ui_operation_errors
@@ -295,6 +296,7 @@ class TableController:
                 filter_combo = ComboFiltreColonne(
                     lambda col=i: self._valeurs_filtre_colonne(col))
                 filter_combo.lineEdit().setPlaceholderText(f"{header}...")
+                filter_combo.setToolTip(AIDE_FILTRE_COLONNE)
                 filter_combo.setStyleSheet("""
                     QComboBox {
                         margin: 0 2px;
@@ -318,6 +320,7 @@ class TableController:
                 # Champs texte avec même style que les dropdowns
                 filter_input = QLineEdit()
                 filter_input.setPlaceholderText(f"{header}...")
+                filter_input.setToolTip(AIDE_FILTRE_COLONNE)
                 filter_input.textChanged.connect(lambda text, col=i: self._apply_column_filter(col, text))
                 filter_input.setStyleSheet("""
                     QLineEdit {
