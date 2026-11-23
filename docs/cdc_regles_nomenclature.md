@@ -209,21 +209,26 @@ Le libellé d'origine (`other_ref`) n'est **jamais** un signal seul (cas « Four
 
 ### 9.1 Corrections sûres (lot 1)
 
-| Appareils | Type actuel → nouveau | Justification |
-|---|---|---|
-| `AKP*`, `AKZ*` sauf `AKZ#S*`, groupe Whirlpool (1 891) | Four vapeur → **Four** | fours multifonction pyrolyse/catalyse ([Darty AKZ 430](https://www.darty.com/nav/achat/encastrable/four_classique/four_encastrable/whirlpool_akz_430_ix_inox.html), [Auchan AKZ513](https://www.auchan.fr/whirlpool-four-akz513ix-65-l-multifonction-chaleur-pulsee-nettoyage-pyrolyse-a/pr-C1470077)) |
-| Whirlpool `AKZ#S*` | Four → **Four vapeur** | [BUT AKZ9S8270NB](https://www.but.fr/produits/8003437836220/Four-encastrable-vapeur-WHIRLPOOL-AKZ9S8270NB-73L.html) |
-| Bosch `HSG###@@#` (457) | Four → **Four vapeur** | [fiche HSG636BB1](https://media3.bosch-home.com/Documents/specsheet/fr-BE/HSG636BB1.pdf), [HSG836NC1](https://media3.bosch-home.com/Documents/specsheet/fr-BE/HSG836NC1.pdf) |
-| Haier `XS…`, `XF…` ; Hoover `HI 4A4S…` ; Whirlpool `ADG670/UD`, `ADG814/UD`, `ADG826` | Lave-linge → **Lave-vaisselle** | pièces 85-94 % lave-vaisselle + nomenclature |
-| Bosch `KAN56V40SA` | Lave-linge → **Réfrigérateur** | libellé « Combiné SBS », pièces 99 % |
-| Balay `3SB093BC`, `3SB093XC` | Réfrigérateur → **Sèche-linge** | libellé + pièces |
-| Miele `TE 717I WP`, `TS 300B WP` | Lave-linge → **Sèche-linge** | libellé + pièces |
-| Electrolux `EW6HI69CO`, `EW6HI81CB` | Lave-linge → **Sèche-linge** | `EW?H` = sèche-linge ([Auchan EW6HI4936AB](https://www.auchan.fr/electrolux-seche-linge-pompe-a-chaleur-ew6hi4936ab/pr-9f25e7f6-ddbd-4f71-bad6-1b4d025a1bbb)) |
-| Whirlpool `6AKR958IX` | Four → **Hotte** | `AKR` = hottes, libellé « Hotte » |
-| Whirlpool `AMW583IX`, `MT263WH` | Four → **Micro-ondes** | pièces 80-100 % |
-| Siemens `HL54425NN`, `HL54425SC` | Four → **Cuisinière** | libellé « Cuisinières électriques » |
+Liste **figée le 2026-11-23**, relue famille par famille avec le client : **2 512 appareils**, versionnée dans `data/corrections/nomenclature_lot1.csv` (PR du lot 1, branche `claude/nomenclature-lot1`).
 
-La liste exacte (identifiants) est figée au début du lot 1 par une requête relue avec le client.
+| Fam. | Appareils | Type actuel → nouveau | Lignes | Justification |
+|---|---|---|---|---|
+| 1 | `AKP*`, `AKZ*` (dont `AKZM`, `AKPM`) sauf `AKZ#S*`, Whirlpool + Ignis | Four vapeur → **Four** | 1 891 | fours multifonction pyrolyse/catalyse ([Darty AKZ 430](https://www.darty.com/nav/achat/encastrable/four_classique/four_encastrable/whirlpool_akz_430_ix_inox.html), [Auchan AKZ513](https://www.auchan.fr/whirlpool-four-akz513ix-65-l-multifonction-chaleur-pulsee-nettoyage-pyrolyse-a/pr-C1470077), [Que Choisir AKZM8480IX](https://www.quechoisir.org/comparatif-four-encastrable-n407/whirlpool-akzm8480ix-p188528/)) ; le `S` final (`AKZ9 6230 S`) = coloris |
+| 2 | Whirlpool `AKZ#S*` | Four → **Four vapeur** | 5 | [BUT AKZ9S8270NB](https://www.but.fr/produits/8003437836220/Four-encastrable-vapeur-WHIRLPOOL-AKZ9S8270NB-73L.html) |
+| 3 | Bosch `HSG` + 3-4 chiffres + 1-2 lettres + chiffre (+ lettre de marché) | Four → **Four vapeur** | **550** (v0.1 : 457) | [fiche HSG636BB1](https://media3.bosch-home.com/Documents/specsheet/fr-BE/HSG636BB1.pdf), [HSG7361B1 rangé « fours vapeur » par Bosch](https://www.bosch-home.com/ch/fr/product/cuisine-et-cuisson/appareils-de-cuisson-a-la-vapeur/fours-vapeur/HSG7361B1), [HSG656XB6A](https://www.bosch-home.com.au/en/mkt-product/HSG656XB6A) ; anciennes `HSG` + 6 chiffres (cuisinières) non touchées |
+| 4 | Haier `XS…`/`XF…` (4), Hoover `HI 4A4S…` (1), Whirlpool `ADG670/UD`, `ADG814/UD`, `ADG826` (3, codes `851…`) | Lave-linge → **Lave-vaisselle** | 8 | pièces 80-88 %, [Haier XS 4A4M4BB](https://www.haier-europe.com/fr_CH/lave-vaisselle/32901923/xs-4a4m4bb/) |
+| 5 | Bosch `KAN56V40SA` | Lave-linge → **Réfrigérateur** | 2 | libellé « Combiné SBS », pièces 99 % |
+| 6 | Balay `3SB093BC`, `3SB093XC` | Réfrigérateur → **Sèche-linge** | 3 | libellé ; 77 autres `3SB` en sèche-linge |
+| 7 | Miele `TE 717I WP`, `TS 300B WP` | Lave-linge → **Sèche-linge** | 2 | libellé + pièces |
+| 8 | Electrolux `EW6HI69CO`, `EW6HI81CB` | Lave-linge → **Sèche-linge** | 2 | `EW?H` = sèche-linge ([Auchan EW6HI4936AB](https://www.auchan.fr/electrolux-seche-linge-pompe-a-chaleur-ew6hi4936ab/pr-9f25e7f6-ddbd-4f71-bad6-1b4d025a1bbb)) |
+| 9 | Whirlpool `6AKR958IX` | Four → **Hotte** | 1 | libellé « Hotte », pièces 100 % (**pas** de règle `AKR` = hotte, voir § 9.3) |
+| 10 | Whirlpool `AMW` en « Four » (582, 583, 589-599, 882) | Four → **Four vapeur** | 44 | décision client : AMW 583 = four vapeur ([catalogue Whirlpool 2012](https://www.yumpu.com/fr/document/view/16747760/appareils-encastrables-2012-whirlpool), [Dampfgarer](https://www.alternate.at/Whirlpool/AMW-583-IX-Dampfgarer/html/product/1417241)) ; confirmés aussi [582](https://www.whirlpool.com.hk/chinese/../media/wysiwyg/Downloads/Factsheet/AMW582-IX.pdf), [591](https://www.electromenager-compare.com/four-WHIAMW591IXL-WHIRLPOOL-AMW-591IXL.htm), [592](https://www.electromenager-compare.com/four-WHIAMW592IXL-WHIRLPOOL-AMW-592IXL.htm), [597](https://www.manualslib.com/manual/3132273/Whirlpool-Amw-597.html) ; 589, 590, 596, 598, 599, 882 sans source, inclus par décision client |
+| 10 | Whirlpool `MT263WH` | Four → **Micro-ondes** | 2 | pièces 95 % |
+| 11 | Siemens `HL54425NN/01`, `HL54425SC/01` | Four → **Cuisinière** | 2 | libellé « Cuisinières électriques » ; 8 autres `HL54425` déjà en cuisinière |
+
+Comptage attendu (base du 2026-11-23) : Four +1 287, Four vapeur −1 292, Lave-linge −14, Lave-vaisselle +8, Sèche-linge +7, Cuisinière +2, Micro-ondes +2, Hotte +1, Réfrigérateur −1.
+
+Exécution : `scripts/corriger_types_nomenclature.py` — simulation par défaut ; un appareil dont le type a changé depuis la liste est ignoré, jamais écrasé ; sauvegarde avant écriture ; une ligne d'historique par appareil (« [Type] 'a' → 'b' », provenance « règles de nomenclature, lot1 ») ; `--annuler` pour le retour arrière.
 
 ### 9.2 Règles par position confirmées (lot 3, statut `validee` d'emblée si le client l'accepte)
 
@@ -254,6 +259,8 @@ La liste exacte (identifiants) est figée au début du lot 1 par une requête re
 - Hoover : le `W` signifie lave-linge (`HW`, `H3W`) — **ne pas** étendre la règle Candy au groupe.
 - Beko `CSE…`/`FSE…` : cuisinières ([CSE 67301 GW](https://www.electromenager-compare.com/cuisiniere-BEKCSE67301GW-BEKO-CSE-67301-GW.htm)) — la règle « Four » de Beko est trop large.
 - Miele `H … BM`, Electrolux `EVY` : combinés micro-ondes probables, non confirmés.
+- Whirlpool `AKR` : **pas seulement des hottes** — 646 en Hotte, mais 133 en « Four » dont 117 libellés « Plaque Email Gaz / Plaque mixte » (`AKR 212` classé cuisinière en ligne). Pas de règle `AKR` sans source par numéro.
+- Whirlpool `AMW` : série imbriquée — `AMW 5xx` jusqu'à 578 et 584-588 = micro-ondes, 582-583 et 589-599 = fours vapeur compacts. Une règle devra lister les numéros, pas un préfixe.
 
 ---
 
