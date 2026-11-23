@@ -11,7 +11,7 @@ import copy
 import pytest
 
 from src.utils.appellations_appareils import (
-    Appellations, CONFIG_PAR_DEFAUT, FEMININ, SOUS_TYPE, nettoyer_config,
+    Appellations, CONFIG_PAR_DEFAUT, FEMININ, MIGRATIONS, SOUS_TYPE, nettoyer_config,
 )
 from src.utils.seo_generator import SEOGenerator
 from src.utils.titre_produit_generator import TitreProduitGenerator
@@ -117,6 +117,7 @@ def test_config_nettoyee():
             {"type": "lave-linge"},                    # type en double
             {"type": ""},
         ],
+        "migrations": list(MIGRATIONS),                # config déjà migrée
     })
     assert config["part_principal"] == 100
     assert config["champs"] == {"meta_title": True, "meta_description": True}
@@ -128,7 +129,8 @@ def test_config_nettoyee():
 
 def test_liste_utilisateur_fait_foi():
     """Un type retiré par l'utilisateur ne revient pas."""
-    config = nettoyer_config({"appareils": [{"type": "four", "variantes": []}]})
+    config = nettoyer_config({"appareils": [{"type": "four", "variantes": []}],
+                              "migrations": list(MIGRATIONS)})
     assert [a["type"] for a in config["appareils"]] == ["four"]
 
 

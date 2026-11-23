@@ -62,11 +62,14 @@ APPAREILS_PAR_DEFAUT: List[Dict] = [
     _a("cuisinière", FEMININ, _v("gazinière", FEMININ, SOUS_TYPE)),
     _a("congélateur", MASCULIN, _v("congélo", MASCULIN)),
     _a("hotte", FEMININ, _v("hotte aspirante", FEMININ), _v("hotte de cuisine", FEMININ)),
-    _a("micro-ondes", MASCULIN, _v("four micro-ondes", MASCULIN)),
+    # « four micro-ondes » désigne d'abord le four combiné micro-ondes (lot 2 des
+    # règles de nomenclature, 2026-11-23) : désactivé pour le micro-ondes simple
+    _a("micro-ondes", MASCULIN, _v("four micro-ondes", MASCULIN, actif=False)),
     _a("lavante-séchante", FEMININ, _v("lave-linge séchant", MASCULIN),
        _v("machine à laver séchante", FEMININ)),
     _a("aspirateur", MASCULIN),
     _a("four vapeur", MASCULIN, _v("four à vapeur", MASCULIN)),
+    _a("four combiné micro-ondes", MASCULIN, _v("four micro-ondes combiné", MASCULIN)),
     _a("chauffage", MASCULIN, _v("appareil de chauffage", MASCULIN),
        _v("radiateur", MASCULIN, SOUS_TYPE), _v("sèche-serviette", MASCULIN, SOUS_TYPE),
        _v("accumulateur", MASCULIN, SOUS_TYPE)),
@@ -89,6 +92,12 @@ APPAREILS_PAR_DEFAUT: List[Dict] = [
     _a("bouilloire", FEMININ),
 ]
 
+# Migrations ponctuelles d'une config ENREGISTRÉE (sa liste d'appareils fait foi :
+# changer les défauts ci-dessus ne l'atteint pas). Chacune ne joue qu'une fois : son
+# nom est noté dans la config, un réglage refait ensuite par l'utilisateur tient.
+MIGRATION_FOUR_COMBINE = "2026-11-23 four combiné micro-ondes"
+MIGRATIONS = (MIGRATION_FOUR_COMBINE,)
+
 CONFIG_PAR_DEFAUT: Dict[str, Any] = {
     "actif": True,
     # Part du terme principal (type en base) dans les tirages, en %
@@ -96,6 +105,8 @@ CONFIG_PAR_DEFAUT: Dict[str, Any] = {
     # Méta title : toujours le terme principal (le mot-clé qui pèse le plus)
     "champs": {"meta_title": False, "meta_description": True},
     "appareils": APPAREILS_PAR_DEFAUT,
+    # Les défauts intègrent déjà toutes les migrations
+    "migrations": list(MIGRATIONS),
 }
 
 
@@ -168,7 +179,30 @@ def nettoyer_config(brute: Any) -> Dict[str, Any]:
                               "genre": FEMININ if a.get("genre") == FEMININ else MASCULIN,
                               "variantes": variantes})
         config["appareils"] = appareils
+        faites = brute.get("migrations")
+        faites = [str(m) for m in faites] if isinstance(faites, list) else []
+        if MIGRATION_FOUR_COMBINE not in faites:
+            _migrer_four_combine(appareils)
+        config["migrations"] = sorted(set(faites) | set(MIGRATIONS))
     return config
+
+
+def _migrer_four_combine(appareils: List[Dict]) -> None:
+    """Type « Four combiné micro-ondes » (lot 2 des règles de nomenclature) :
+    « four micro-ondes » désactivé pour le micro-ondes, entrée du nouveau type
+    ajoutée après « four vapeur » (à défaut après « micro-ondes », sinon en fin)."""
+    for a in appareils:
+        if a["type"] == "micro-ondes":
+            for v in a["variantes"]:
+                if v["terme"].casefold() == "four micro-ondes":
+                    v["actif"] = False
+    nouveau = next(a for a in APPAREILS_PAR_DEFAUT if a["type"] == "four combiné micro-ondes")
+    if any(a["type"] == nouveau["type"] for a in appareils):
+        return
+    types = [a["type"] for a in appareils]
+    rang = next((types.index(t) + 1 for t in ("four vapeur", "micro-ondes") if t in types),
+                len(appareils))
+    appareils.insert(rang, copy.deepcopy(nouveau))
 
 
 class Appellations:
