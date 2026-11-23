@@ -14,6 +14,7 @@ from ..utils.qt_imports import (
     QPushButton,
     QToolButton,
     QLabel,
+    QFrame,
     Qt,
     QTimer,
     QThread,
@@ -30,6 +31,7 @@ from ..utils.qt_imports import (
 from ..core.config import Config
 from ..core.logger import app_logger
 from ..core.constants import UIConfig
+from ..utils.filtre_colonne import AIDE_FILTRE_COLONNE
 from ..utils.error_handler import (
     handle_table_operations_errors, handle_async_worker_errors,
     handle_database_operation_errors, handle_ui_operation_errors
@@ -295,6 +297,7 @@ class TableController:
                 filter_combo = ComboFiltreColonne(
                     lambda col=i: self._valeurs_filtre_colonne(col))
                 filter_combo.lineEdit().setPlaceholderText(f"{header}...")
+                filter_combo.setToolTip(AIDE_FILTRE_COLONNE)
                 filter_combo.setStyleSheet("""
                     QComboBox {
                         margin: 0 2px;
@@ -318,6 +321,7 @@ class TableController:
                 # Champs texte avec même style que les dropdowns
                 filter_input = QLineEdit()
                 filter_input.setPlaceholderText(f"{header}...")
+                filter_input.setToolTip(AIDE_FILTRE_COLONNE)
                 filter_input.textChanged.connect(lambda text, col=i: self._apply_column_filter(col, text))
                 filter_input.setStyleSheet("""
                     QLineEdit {
@@ -350,6 +354,17 @@ class TableController:
         raz_btn.clicked.connect(self._clear_all_column_filters)
         self.raz_btn = raz_btn
 
+        # Bouton « ? » : la syntaxe des filtres (* ? | !) d'un clic, sans attendre
+        # la bulle d'aide au survol d'un champ (peu visible)
+        aide_btn = QPushButton()
+        aide_btn.setIcon(_qta_f.icon('fa5s.question', color='#0d6efd'))
+        aide_btn.setIconSize(QSize(10, 10))
+        aide_btn.setFixedSize(28, _filter_btn_h)
+        aide_btn.setToolTip("Comment chercher dans les filtres (* ? | !)")
+        aide_btn.setStyleSheet(StyleManager.AIDE_FILTRES_BUTTON)
+        aide_btn.clicked.connect(self._afficher_aide_filtres)
+        self.aide_filtres_btn = aide_btn
+
         # Zone au-dessus de la colonne figée « Pièces » (+ ascenseur + cadre) : le
         # bouton RAZ y est CENTRÉ sur la colonne. Avant, il était placé juste avant
         # cette zone (31 px à gauche du centre, au-dessus d'« Autre référence ») et
@@ -357,8 +372,11 @@ class TableController:
         self.filter_trailing_spacer = QWidget()
         _zone = QHBoxLayout(self.filter_trailing_spacer)
         _zone.setContentsMargins(0, 0, 0, 0)
-        _zone.setSpacing(0)
-        _zone.addWidget(raz_btn, 0, Qt.AlignCenter)
+        _zone.setSpacing(2)
+        _zone.addStretch(1)
+        _zone.addWidget(aide_btn, 0, Qt.AlignVCenter)
+        _zone.addWidget(raz_btn, 0, Qt.AlignVCenter)
+        _zone.addStretch(1)
         self._raz_zone_layout = _zone
         self.filter_trailing_spacer.setFixedWidth(52)
         filter_layout.addWidget(self.filter_trailing_spacer)
@@ -718,6 +736,8 @@ class TableController:
                         if w is not None]
             if hauteurs:
                 self.raz_btn.setFixedHeight(min(hauteurs))
+                if getattr(self, 'aide_filtres_btn', None) is not None:
+                    self.aide_filtres_btn.setFixedHeight(min(hauteurs))
 
     def set_row_height(self, height: int):
         """Appliquer une hauteur de ligne au tableau ET à sa colonne figée.
@@ -1497,6 +1517,40 @@ class TableController:
         return -1
     
     @handle_ui_operation_errors(return_value=None, log_prefix="Erreur RAZ filtres colonne")
+    def _afficher_aide_filtres(self, checked=False):
+        """Fenêtre surgissante de la syntaxe des filtres, sous le bouton « ? ».
+
+        Qt.Popup : se ferme au clic n'importe où ailleurs ou sur Échap.
+        Calée sur le bord droit du bouton (il est au bord droit de la fenêtre)
+        et remontée au-dessus s'il n'y a pas la place dessous.
+        """
+        btn = getattr(self, 'aide_filtres_btn', None)
+        if btn is None:
+            return
+        popup = QFrame(btn.window(), Qt.Popup | Qt.FramelessWindowHint)
+        popup.setObjectName("aideFiltres")
+        popup.setAttribute(Qt.WA_DeleteOnClose)
+        popup.setStyleSheet(StyleManager.POPUP_AIDE_FILTRES)
+        contenu = QVBoxLayout(popup)
+        contenu.setContentsMargins(12, 10, 12, 10)
+        texte = QLabel(AIDE_FILTRE_COLONNE)
+        texte.setTextFormat(Qt.RichText)
+        contenu.addWidget(texte)
+        popup.adjustSize()
+
+        bas_droite = btn.mapToGlobal(QPoint(btn.width(), btn.height() + 2))
+        x = bas_droite.x() - popup.width()
+        y = bas_droite.y()
+        ecran = btn.screen().availableGeometry() if hasattr(btn, 'screen') else None
+        if ecran is not None:
+            if y + popup.height() > ecran.bottom():
+                y = btn.mapToGlobal(QPoint(0, 0)).y() - popup.height() - 2
+            x = max(ecran.left(), x)
+            y = max(ecran.top(), y)
+        popup.move(x, y)
+        popup.show()
+        self._popup_aide_filtres = popup
+
     def _clear_all_column_filters(self, checked=False):
         """Vider tous les filtres par colonne et recharger les données"""
         # Bloquer les signaux pour éviter N rechargements consécutifs
