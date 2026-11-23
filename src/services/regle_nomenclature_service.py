@@ -130,6 +130,9 @@ class BilanPropositions:
     erreur: str = ''
     ecrit: bool = False
     calcule_le: str = ''
+    # Calcul restreint à ces appareils (typage à l'import, lot 5) : None = toute la base.
+    # Les mesures des règles n'y sont pas tenues (elles valent pour toute la base).
+    appareil_ids: Optional[Tuple[int, ...]] = None
 
     def par_regle(self) -> Counter:
         return Counter((p['regle_id'], p['type_actuel'], p['type_propose'])
@@ -301,11 +304,22 @@ class RegleNomenclatureService(BaseService):
 
     # ── Propositions (§ 6.2, § 7) ───────────────────────────────────────────
 
-    def calculer_propositions(self, ecrire: bool = False) -> BilanPropositions:
+    def calculer_propositions(self, ecrire: bool = False,
+                              appareil_ids: Optional[Iterable[int]] = None) -> BilanPropositions:
         """Résoudre chaque appareil par les règles validées et préparer les
         propositions ; avec `ecrire`, remplacer `propositions_type` et les
-        mesures des règles. Aucun type d'appareil n'est modifié."""
+        mesures des règles. Aucun type d'appareil n'est modifié.
+
+        Args:
+            appareil_ids: ne calculer que ces appareils (typage à l'import, lot 5) ;
+                l'écriture ne remplace alors que leurs propositions, sans toucher
+                aux autres ni aux mesures des règles.
+        """
         bilan = BilanPropositions()
+        if appareil_ids is not None:
+            bilan.appareil_ids = tuple(dict.fromkeys(appareil_ids))
+            if not bilan.appareil_ids:
+                return bilan
         refus = self.db_manager.lire_refus_du_champ(CHAMP_REFUS)
         if refus is None:
             bilan.erreur = "refus illisibles : aucune proposition calculée"
@@ -316,8 +330,9 @@ class RegleNomenclatureService(BaseService):
         accord: Counter = Counter()
         candidates_cache: Dict[Tuple[str, str], '_ReglesIndexees'] = {}
         brutes = []   # (id, type actuel, other_ref, résolution)
-        for ident, type_app, marque, ref_modele, ref_com, libelle in \
-                self.db_manager.lire_appareils_nomenclature():
+        lecture = (self.db_manager.lire_appareils_nomenclature() if bilan.appareil_ids is None
+                   else self.db_manager.lire_appareils_nomenclature(bilan.appareil_ids))
+        for ident, type_app, marque, ref_modele, ref_com, libelle in lecture:
             bilan.appareils += 1
             type_app = (type_app or '').strip()
             if type_app and not est_type_autorise(type_app, self.types_autorises):
@@ -327,7 +342,7 @@ class RegleNomenclatureService(BaseService):
             valeurs = {'nom': cle_nom(ref_modele, ref_com), 'code': cle_code(ref_modele, ref_com)}
             # Mesures : toutes les règles (tous statuts) qui visent l'appareil
             for cle, valeur in valeurs.items():
-                if not valeur:
+                if not valeur or bilan.appareil_ids is not None:
                     continue
                 cache = (cle_marque(marque), cle)
                 if cache not in candidates_cache:
@@ -349,7 +364,9 @@ class RegleNomenclatureService(BaseService):
                 bilan.refusees += 1
                 continue
             brutes.append((ident, type_app, libelle or '', resolution))
-        bilan.mesures = {r.id: (couverture[r.id], accord[r.id]) for r in regles if r.id is not None}
+        if bilan.appareil_ids is None:
+            bilan.mesures = {r.id: (couverture[r.id], accord[r.id]) for r in regles
+                             if r.id is not None}
 
         votes = self.db_manager.types_par_piece_partagee([b[0] for b in brutes]) if brutes else {}
         horodatage = _maintenant()
@@ -399,10 +416,16 @@ class RegleNomenclatureService(BaseService):
                 app_logger.info(f"Règles de nomenclature : {perimees} proposition(s) périmée(s) "
                                 f"écartée(s) à l'écriture")
                 bilan.propositions = {p['appareil_id']: p for p in propositions}
-        ecrites = self.db_manager.remplacer_propositions_type(
-            tuple(p[c] for c in COLONNES_PROPOSITION) for p in propositions)
-        mesures_ok = self.db_manager.enregistrer_mesures_regles(
-            bilan.mesures, bilan.calcule_le or _maintenant())
+        lignes = (tuple(p[c] for c in COLONNES_PROPOSITION) for p in propositions)
+        if bilan.appareil_ids is not None:
+            # Calcul restreint (import) : seules ces propositions, mesures inchangées
+            ecrites = self.db_manager.remplacer_propositions_des_appareils(
+                bilan.appareil_ids, lignes)
+            mesures_ok = True
+        else:
+            ecrites = self.db_manager.remplacer_propositions_type(lignes)
+            mesures_ok = self.db_manager.enregistrer_mesures_regles(
+                bilan.mesures, bilan.calcule_le or _maintenant())
         bilan.ecrit = ecrites >= 0 and mesures_ok
         if not bilan.ecrit:
             bilan.erreur = "écriture des propositions ou des mesures échouée (voir le journal)"
