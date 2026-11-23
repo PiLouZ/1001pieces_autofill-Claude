@@ -1,7 +1,7 @@
 # Cahier des charges — Règles de nomenclature des appareils (types justes)
 
-**Statut :** lots 1 et 2 appliqués ; lot 3 (moteur sans écran) codé
-**Version :** 0.4 (2026-11-23) — lot 3 : liste fermée, tables, moteur, catalogue
+**Statut :** lots 1 et 2 appliqués ; lot 3 (moteur sans écran) mergé, tables remplies en production ; lot 4 (écran Règles + revue) codé
+**Version :** 0.5 (2026-11-23) — lot 4 : écran Règles, revue des propositions, acceptations annulables
 **Contexte :** Le client veut que ses clients retrouvent leur appareil par une recherche, sous la bonne marque et le bon type. Les fabricants codent le type dans leurs références (BSH : `S…` = lave-vaisselle ; Electrolux : PNC `911…` = lave-vaisselle ; Neff : `C17M…` = four combiné micro-ondes). Ce document définit comment l'outil apprend, fait valider et applique ces **règles de nomenclature** pour corriger et compléter le type des appareils.
 
 ---
@@ -21,6 +21,10 @@
 | D9 | Types **accessoires** (Accessoires, Porte, Tiroir à couverts, Filtre à eau, Kit d'évacuation, Panier à couverts, Filtre, Rails téléscopique, Kit de recyclage) : **exclus des règles** — aucune règle ne propose ni ne retire ces types ; chantier séparé. |
 | D10 | Lot 2 : liste **figée famille par famille** le 2026-11-23 (§ 4.1) — **6 104 appareils**, élargie au-delà de l'estimation (ancienne génération BSH, AEG KMX/CM/NKM/NKO, Electrolux EVY/EVL/EVM/EVK, Bosch HMG8601/8621/8701/8721) ; Whirlpool `AMW` **reste Micro-ondes** (vendu comme micro-ondes) ; `types_autorises` (§ 3) reporté au **lot 3**. |
 | D11 | Lot 3 : `types_autorises` dans **`data/types_autorises.json`, versionné** (`data/export_config.json` est propre à chaque poste, gitignoré) : la changer = une PR, après création du type sur le site. |
+| D13 | Lot 4 : **acceptation groupée** permise pour les propositions **fortes** (D8) **et pour les simples d'une règle validée sur source web** (origine `web` + `source_url`) — cas Gaggenau `BS*` : 767 simples (Four → Four vapeur, types voisins) que l'on n'accepte pas une par une. Les autres simples restent une par une ; le refus groupé est toujours permis. |
+| D14 | Lot 4 : l'écran est dans le menu **Données** (« Règles de nomenclature… ») : il n'existe pas de menu Gestion. |
+| D15 | Lot 4 : « Chercher de nouvelles règles » **enregistre toutes les candidates** en statut `proposee` (≈ 7 400 sur la base réelle) ; l'écran filtre alors par défaut sur « changeraient des appareils » (≈ 610). Les autres serviront au typage à l'import (lot 5). |
+| D16 | Lot 4 : **D7 ne s'applique pas tout seul** : l'écran signale les règles de pureté ≥ 98 % (filtre et mention « D7 » sur la fiche, le 2e signal se lit dans les exemples) ; on les valide par sélection multiple, après un récapitulatif (D4). |
 | D12 | Lot 3, catalogue § 9.2 tranché famille par famille : Gaggenau **`BS*` → Four vapeur** (BSP série 200 et BS4 série 400 = combi-vapeur) ; Bauknecht `EM*` = **zone grise** ; Liebherr `G*` Congélateur, `GK*` Réfrigérateur + exceptions `GKN[12]*` Congélateur, `GDC*` Réfrigérateur ; **pas de règle** `HMG8601/8621/8701/8721` (décision ponctuelle du lot 2) ; Whirlpool `AKR[4-9]*` Hotte, `AKR3*` Plaque, `AGB*` Lave-vaisselle ; Beko `FSE[56]*`/`CSE[56]*` Cuisinière, `CSE3*` Réfrigérateur, `FSE2*` Congélateur ; AEG `KMF*` → Four combiné micro-ondes ; Electrolux `EW?D*` Sèche-linge ; validées une par une : Candy, Bosch `HBC??D*`, Siemens `CI??W*`, De Dietrich `DOV*`, Hotpoint `AQD*`/`AQM*`. |
 
 ---
@@ -167,6 +171,21 @@ CREATE TABLE propositions_type (
 - Les **corrections acceptées** passent par `EventDrivenSaveService` et laissent une ligne dans `modifications_history` (`action_type` dédié, `old_value` / `new_value`) : retour arrière possible.
 - Les **groupes** réutilisent `groupes_marques` de `src/utils/rapprochement_fiche/configuration.py` (pas de seconde liste).
 - Schéma existant inchangé : `appareils` n'est pas modifiée.
+### 5.3 Acceptations annulables (lot 4)
+
+```sql
+CREATE TABLE lots_acceptation_type (
+    id INTEGER PRIMARY KEY, regle_id INTEGER, libelle TEXT NOT NULL,
+    accepte_le TEXT NOT NULL, nb INTEGER NOT NULL, annule_le TEXT);
+CREATE TABLE acceptations_type (
+    lot_id INTEGER NOT NULL REFERENCES lots_acceptation_type(id) ON DELETE CASCADE,
+    appareil_id INTEGER NOT NULL, type_avant TEXT, type_apres TEXT NOT NULL,
+    PRIMARY KEY (lot_id, appareil_id));
+```
+
+- L'historique n'a pas d'« annuler » (Cmd+Z ne vaut que pour les lignes affichées) : une acceptation garde donc ses appareils, **un lot par règle**. L'annulation (onglet Acceptations de l'écran) relit le lot et remet le type d'avant par `CorrectionTypesService` (sens `annuler`) : seul un appareil encore au type accepté revient ; un appareil modifié depuis est laissé tel quel.
+- Déclencheur : un appareil supprimé quitte ses lots.
+
 - **Codé au lot 3** (`src/data/_db_mixins/nomenclature.py`) tel quel, avec des `CHECK` sur portée, clé, forme, statut, origine et force ; les cascades sont doublées de déclencheurs (elles valent même sans `Config.FOREIGN_KEYS`). Vérifié contre la base réelle (copie par l'API backup, 720 433 appareils) : aucune table de ce nom, aucun conflit. Les refus réutilisent `refus_completions` tel quel : un type refusé n'est plus proposé ni par une règle, ni par l'auto-complétion de l'import (même sens). `propositions_type` est **recalculée en entier** à chaque calcul (une transaction).
 
 ---
@@ -183,7 +202,7 @@ CREATE TABLE propositions_type (
 ### 6.2 Résolution (pour un appareil)
 
 1. Règles **validées** seulement (les proposées servent à la revue, jamais au typage).
-2. Portée **marque** avant **groupe** ; la règle de groupe ne s'applique que si la marque n'a aucune règle sur ce motif (quel qu'en soit le statut : une règle de marque **rejetée** retire la marque de la règle de groupe).
+2. Portée **marque** avant **groupe** ; la règle de groupe ne s'applique que si la marque n'a aucune règle **décidée** sur ce motif (validée, ou **rejetée** : une règle de marque rejetée retire la marque de la règle de groupe). **Correction du lot 4** : une règle seulement **proposée** ne décide rien (D4) et ne masque plus la règle de groupe. Constat sur la base réelle : la découverte proposait « Whirlpool `AKR3*` → Four » (l'erreur majoritaire) et sa seule présence retirait Whirlpool de la règle validée « groupe Whirlpool `AKR3*` → Plaque » — les 115 propositions fortes disparaissaient.
 3. La plus spécifique gagne : gabarit > position > préfixe ; à égalité, motif le plus long.
 4. Si les deux clés (`nom`, `code`) donnent un résultat, ils doivent concorder ; sinon → « à vérifier », pas de proposition.
 
@@ -195,6 +214,8 @@ CREATE TABLE propositions_type (
 - **Zone grise** : préfixe partagé sans type > 85 % → aucune règle à son niveau ni de position tant qu'une source web (§ 9) n'a pas tranché. **Précision du lot 3** : la descente continue en dessous (sinon « AK » mélangé interdirait « AKP » pur), mais une règle trouvée sous une zone grise le dit dans sa note (« sous la zone grise AK* »), pour la revue.
 - Longueurs minimales retenues : préfixe `nom` ≥ 2 caractères pour une marque, ≥ 3 pour un groupe ; clé `code` ≥ 4 chiffres. Entre 85 et 95 % : recherche d'un caractère, au plus 3 positions après le préfixe, qui départage au moins deux types et couvre ≥ 90 % du préfixe.
 - **Mesuré au lot 3** sur la base réelle : 7 420 règles candidates, 3 386 zones grises, **3,3 s** (test de charge synthétique 720 000 appareils : ~3 s, garde-fou < 30 s).
+- **Lot 4** : la découverte ne repropose pas un motif déjà **tranché** (règle validée ou rejetée, de la marque ou de son groupe) : 17 candidates écartées sur la base réelle, dont `AKR3*` → Four. Les nouvelles règles sont enregistrées en `proposee` ; la note « sous la zone grise X* » est gardée en tête quand on édite la note. Une règle de groupe **doublée** par la même règle de marque (≈ 1 500 cas) ne couvre que les autres marques du groupe : la fiche le dit.
+- **Mesures après une découverte** : avec ≈ 7 400 règles, le test règle par règle des mesures faisait passer le calcul des propositions de 3 s à **126 s** ; les préfixes purs sont désormais cherchés par les débuts de la clé (`_ReglesIndexees`) : **5 à 7 s**, mesures et propositions identiques (vérifié sur 7 464 règles).
 
 ---
 
@@ -212,17 +233,23 @@ Le libellé d'origine (`other_ref`) n'est **jamais** un signal seul (cas « Four
 
 ## 8. Parcours utilisateur
 
-### 8.1 Écran « Règles de nomenclature » (menu Gestion)
+### 8.1 Écran « Règles de nomenclature » (menu Données, D14)
 
 - Liste filtrable : marque/groupe, motif, type, statut, couverture, accord, source.
 - Fiche d'une règle : exemples d'appareils concernés (dont ceux en désaccord), lien source, bouton **Valider / Rejeter**, champ note.
 - Bouton « Chercher de nouvelles règles » : lance la découverte (§ 6.3) en arrière-plan (comme les comptages du gestionnaire de pièces, PR #166), résultat en statut `proposee`.
 - Dialogues en `show()` + callbacks (pas d'`exec_()`), styles via StyleManager, icônes qtawesome.
+- **Codé au lot 4** (`src/ui/regles_nomenclature_dialog.py`) : filtre de motif = syntaxe des filtres de colonne (`filtre_colonne.correspond_au_filtre`, même sens que le SQL) ; cases « changeraient des appareils » et « pureté ≥ 98 % (D7) » ; colonnes couverture, accord, désaccords, proposés, source (lien), zone grise (⚠ + bandeau sur la fiche) ; exemples lus pour les seules marques visées (0,1 à 0,3 s) ; Valider / Rejeter / Remettre en proposée, sur plusieurs règles avec récapitulatif (D16). Calculs en arrière-plan (`src/ui/calcul_nomenclature.py`) : QThread sur une connexion **en lecture seule** qui réutilise les lectures du mixin ; l'écriture se fait ensuite sur le fil principal et **écarte les propositions périmées** (type changé ou refus posé pendant le calcul). Mesuré : découverte 3,3 à 5 s, plus long blocage de l'interface 0,16 s ; une découverte enchaîne un recalcul (les mesures de la découverte ne tiennent pas compte du masquage § 6.2).
 
 ### 8.2 Revue des propositions
 
 - Réutiliser le circuit « à vérifier » existant (navigation ▲▼ `TableController._CRITERES_NAV`, PR #150) avec un critère « type proposé ».
 - Accepter / refuser une ligne, ou **toutes les lignes fortes d'une règle** (D8) : récapitulatif avant application (nombre, comptage par type avant/après), une entrée d'historique annulable.
+- **Codé au lot 4** :
+  - fenêtre « Types proposés » (`src/ui/propositions_type_dialog.py`, gabarit `FenetreRevue` des suggestions) : regroupée par règle (celles qui ont des fortes d'abord), puces Fortes / Simples / Validation groupée, détail des signaux ; une validation sur plusieurs lignes ne retient que les **groupables** (D8 + D13), un bandeau dit combien restent en attente ; « Appliquer » (et la fermeture) passent par le récapitulatif ;
+  - tableau : critère `type_propose` de `TableController._CRITERES_NAV` (flèches ▲▼ autour du bouton « Types proposés (N) », ⇧⌥⌘ Page préc./suiv.), cellule Type teintée vert d'eau et bulle, clic droit « Accepter / Refuser le type proposé » (plusieurs lignes : les seules groupables, après récapitulatif) ;
+  - écriture : `RevuePropositionsService` → `CorrectionTypesService` → `EventDrivenSaveService.enregistrer_champs_appareils` ; historique au format d'une modification de Type, provenance « règles de nomenclature, Gaggenau BS* → Four vapeur » (la même pour tout un lot) ; refus dans `refus_completions` (champ `type`), jamais reproposés ; la page affichée est relue.
+  - mesuré sur copie de la base réelle : revue de 983 propositions ouverte en 0,1 s ; récapitulatif Gaggenau (767 : Four 95 417 → 94 650, Four vapeur 3 443 → 4 210) 0,07 s ; acceptation des 767 puis annulation 0,07 s chacune, comptage conforme.
 
 ### 8.3 Import
 
@@ -313,7 +340,7 @@ Retiré du catalogue initial : Bauknecht `EMV`/`EMZ`/`EMC` (zone grise, § 9.3) 
 | 1 | Corrections sûres § 9.1 via `EventDrivenSaveService`, historique, liste relue avant exécution | données |
 | 2 | Type « Four combiné micro-ondes » : appellations (+ migration de la config), segment SEO, normalisation, reclassement § 4.1 (6 104) — `types_autorises` reporté au lot 3 (D10) | oui (+ Guide) |
 | 3 | Liste fermée `types_autorises` (§ 3), tables § 5, moteur § 6 sans écran, catalogue § 9.2, tests — **codé** (`RegleNomenclatureService`, `src/utils/nomenclature/`, `scripts/regles_nomenclature.py`) | non |
-| 4 | Écran Règles § 8.1 + revue § 8.2 | oui (+ Guide) |
+| 4 | Écran Règles § 8.1 + revue § 8.2 — **codé** (`ReglesNomenclatureDialog`, `PropositionsTypeDialog`, `RevuePropositionsService`, `CalculNomenclature`, tables § 5.3) | oui (+ Guide) |
 | 5 | Typage à l'import § 8.3 | oui (+ Guide) |
 | à part | Ménage marques : retirer « SMEG » collé dans 1 331 réf. ; vérifier Concord/Concorde | données |
 
@@ -329,6 +356,7 @@ Le lot 2 dépend de la création du type sur le site (action client).
 - Test de charge : découverte complète < 30 s sur 720 000 appareils (mesuré 15 s en script ; **lot 3 : 3,3 s** sur la base réelle, ~3 s en test synthétique).
 - Lot 3 : appliqué aux listes figées des lots 1 et 2, le catalogue ne propose **aucun** autre type que celui déjà posé (test automatique) ; aucune sortie d'export ne change (banc d'exports du lot 2, ancien code contre nouveau, même base).
 - Rejouer les tests avec le style global (piège eventFilter) et `compileall`.
+- Lot 4 : fenêtres ouvertes avec le style global (écran, revue, vraie fenêtre principale), revue ligne à ligne et groupée, récapitulatif, annulation (appareil modifié depuis laissé tel quel), refus jamais reproposé après recalcul, règle proposée sans effet sur une règle validée ; banc d'exports A/B (code de `main` contre code du lot 4, même copie de la base) identique.
 
 ---
 

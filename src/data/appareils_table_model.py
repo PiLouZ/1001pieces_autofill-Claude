@@ -27,6 +27,9 @@ _CHAMP_PAR_COLONNE = {0: 'type', 1: 'manufacturer'}
 # Auto-complétions à vérifier : fond lavande, distinct du jaune des suggestions
 # et assez soutenu pour ne pas se confondre avec la teinte d'une ligne sur deux.
 _AUTOCOMPLETE_BG = QColor('#DDE2F7')
+# Type proposé par une règle de nomenclature (lot 4) : fond vert d'eau, distinct
+# du jaune des suggestions et du lavande des auto-complétés
+_TYPE_PROPOSE_BG = QColor('#D7F2EC')
 
 
 class AppareillsTableModel(QAbstractTableModel):
@@ -65,6 +68,9 @@ class AppareillsTableModel(QAbstractTableModel):
         # italique : {db_id: {champ: (source, accord, total)}}. Indexé par db_id,
         # donc indépendant de la page chargée — alimenté par set_autocompletes().
         self._autocompletes = {}
+        # Types proposés par les règles de nomenclature (lot 4), pas encore
+        # écrits : {db_id: {'type', 'regle', 'force'}} — set_propositions_type().
+        self._propositions_type = {}
 
     # ── API Qt obligatoire ───────────────────────────────────────────────────
 
@@ -124,6 +130,8 @@ class AppareillsTableModel(QAbstractTableModel):
             # Auto-complétion à vérifier : teinte lavande sur la cellule concernée.
             if self.autocompletion_de(record[0], col):
                 return QBrush(_AUTOCOMPLETE_BG)
+            if col == 0 and record[0] in self._propositions_type:
+                return QBrush(_TYPE_PROPOSE_BG)
             # Highlight de recherche : délégué au service (Phase 3+)
             return None
 
@@ -149,6 +157,12 @@ class AppareillsTableModel(QAbstractTableModel):
                     return (f"Auto-complété d'après {source or '?'} ({confiance}) — à vérifier : "
                             f"cliquez sur la coche (ou clic droit « Marquer comme vérifié »), "
                             f"ou corrigez la valeur")
+                if col == 0:
+                    proposition = self._propositions_type.get(record[0])
+                    if proposition:
+                        return (f"Type proposé : {proposition['type']}\n"
+                                f"Règle {proposition['regle']} ({proposition['force']})\n"
+                                f"Clic droit pour l'accepter ou le refuser")
 
         return None
 
@@ -316,6 +330,33 @@ class AppareillsTableModel(QAbstractTableModel):
                         return r, col
             r += step
         return None
+
+    def find_type_propose_row(self, start_row: int, direction: str) -> Optional[Tuple[int, int]]:
+        """Pendant de find_a_verifier_row pour les types proposés par une règle
+        de nomenclature : (ligne, colonne Type) ou None si rien sur cette page."""
+        step = 1 if direction == 'down' else -1
+        r = start_row + step
+        while 0 <= r < len(self._records):
+            if self._records[r][0] in self._propositions_type:
+                return r, 0
+            r += step
+        return None
+
+    def a_des_propositions_type(self) -> bool:
+        return bool(self._propositions_type)
+
+    def set_propositions_type(self, par_appareil):
+        """Remplace les types proposés ({db_id: {'type', 'regle', 'force'}}) et
+        rafraîchit les cellules Type concernées (anciennes ET nouvelles)."""
+        affected = set(self._propositions_type) | set(par_appareil)
+        self._propositions_type = {k: dict(v) for k, v in par_appareil.items()}
+        self._emit_data_changed_for_db_ids(affected)
+
+    def proposition_type_de(self, db_id):
+        return self._propositions_type.get(db_id)
+
+    def ids_types_proposes(self, db_ids):
+        return [i for i in db_ids if i in self._propositions_type]
 
     def a_des_autocompletes(self) -> bool:
         """Au moins un appareil auto-complété à vérifier, toutes pages confondues."""

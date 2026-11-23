@@ -4,8 +4,12 @@ Règles de nomenclature compilées et résolution d'un appareil (CDC § 6.2).
 Résolution, pour un appareil :
 1. règles **validées** seulement (les proposées servent à la revue) ;
 2. portée **marque** avant **groupe** ; une règle de groupe ne s'applique pas à
-   une marque qui a sa propre règle sur le même motif, quel qu'en soit le
-   statut (une règle de marque rejetée retire la marque de la règle de groupe) ;
+   une marque qui a sa propre règle **décidée** sur le même motif (validée, ou
+   rejetée : une règle de marque rejetée retire la marque de la règle de
+   groupe). Une règle seulement proposée ne décide rien (D4) : elle ne masque
+   pas la règle de groupe (lot 4 — la découverte proposait « Whirlpool AKR3* →
+   Four », l'erreur majoritaire, qui retirait Whirlpool de la règle validée
+   « groupe Whirlpool AKR3* → Plaque ») ;
 3. la plus spécifique gagne : gabarit > position > préfixe, puis le motif le
    plus long (« GK* » l'emporte sur « G* » : une exception s'écrit par une
    règle plus précise, jamais par une exclusion) ;
@@ -110,7 +114,7 @@ class IndexRegles:
         for r in regles:
             cible = cle_marque(r.cible)
             self._toutes.setdefault((r.portee, cible, r.cle), []).append(r)
-            if r.portee == PORTEE_MARQUE:
+            if r.portee == PORTEE_MARQUE and r.statut != STATUT_PROPOSEE:
                 self._motifs_marque.setdefault((cible, r.cle), set()).add(r.motif)
         for liste in self._toutes.values():
             liste.sort(key=lambda r: (r.specificite, r.motif), reverse=True)

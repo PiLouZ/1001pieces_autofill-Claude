@@ -239,8 +239,8 @@ class CorrectionTypesService(BaseService):
                 c.appareil_id, (c.ref_modele, c.ref_commerciale))
             appareil = f"{ref} - {commerciale}" if commerciale else ref
             lignes.append((horodatage, ACTION_HISTORIQUE,
-                           f"[{CHAMP_HISTORIQUE}]  '{c.type_avant}' → '{c.type_apres}'",
-                           details, appareil, CHAMP_HISTORIQUE, c.type_avant, c.type_apres))
+                           f"[{CHAMP_HISTORIQUE}]  '{c.type_avant or ''}' → '{c.type_apres or ''}'",
+                           details, appareil, CHAMP_HISTORIQUE, c.type_avant or '', c.type_apres or ''))
         try:
             ok = bool(self.db.ajouter_historique_modifications(lignes))
         except Exception as e:

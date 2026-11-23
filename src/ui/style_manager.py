@@ -262,6 +262,20 @@ class StyleManager:
         "QPushButton:hover { background-color: #e0a800; }"
     )
 
+    # « Types proposés (N) » (règles de nomenclature, lot 4) : même géométrie, en
+    # vert d'eau foncé — la teinte claire des cellules Type concernées.
+    TYPES_PROPOSES_BTN = (
+        "QPushButton { background-color: #138a72; color: white; font-weight: bold;"
+        " border: 2px solid #138a72; border-radius: 4px; padding: 3px 9px; font-size: 11px; }"
+        "QPushButton:hover { background-color: #0f6e5b; border-color: #0f6e5b; }"
+    )
+
+    # Bandeau d'alerte d'une règle trouvée sous une zone grise (écran Règles)
+    BANDEAU_ZONE_GRISE = (
+        "QLabel { background: #fff3cd; color: #664d03; border: 1px solid #ffe69c;"
+        " border-radius: 4px; padding: 6px 8px; }"
+    )
+
     # Flèches ▲/▼ qui encadrent « Lignes à traiter » : même bordure 2px et même
     # rayon que les boutons du cluster → même hauteur, alignées sans retouche.
     HEALTH_NAV_BTN = (

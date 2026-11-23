@@ -756,6 +756,12 @@ class MainWindow(QMainWindow):
         self.autocompletes_groupe.setVisible(False)
         self.statusbar.insertWidget(2, self.autocompletes_groupe)
         self._rafraichir_bouton_autocompletes()
+
+        # « ▲ Types proposés (N) ▼ » : règles de nomenclature (lot 4), masqué tant que N = 0
+        from .revue_nomenclature import RevueNomenclature
+        self.revue_nomenclature = RevueNomenclature(self)
+        self.statusbar.insertWidget(3, self.revue_nomenclature.creer_groupe_barre_etat())
+        self.revue_nomenclature.rafraichir()
         
         self.save_indicator = StatusLabel('fa5s.save', Config.get_message('save_success'), color='green',
                                           icone_seule=True)
@@ -2589,6 +2595,12 @@ class MainWindow(QMainWindow):
             dialog.ouvrir_sur(genre, profil)
         dialog.show()
 
+    def _open_regles_nomenclature(self):
+        """Menu Données → « Règles de nomenclature… » (lot 4, non bloquant)."""
+        revue = getattr(self, 'revue_nomenclature', None)
+        if revue is not None:
+            revue.ouvrir_regles()
+
     def _open_history_view(self):
         """Ouvrir le dialogue de consultation de l'historique persistant."""
         from .history_view_dialog import HistoryViewDialog
@@ -3164,6 +3176,11 @@ class MainWindow(QMainWindow):
                 verifier_action.triggered.connect(
                     lambda checked=False, ids=a_verifier: self._marquer_lignes_verifiees(ids))
                 context_menu.addAction(verifier_action)
+
+        # — Types proposés par les règles de nomenclature (lot 4) ———————————
+        revue = getattr(self, 'revue_nomenclature', None)
+        if revue is not None and hasattr(mdl, 'get_db_id'):
+            revue.ajouter_au_menu(context_menu, [mdl.get_db_id(r) for r in selected_rows])
 
         context_menu.addSeparator()
 
