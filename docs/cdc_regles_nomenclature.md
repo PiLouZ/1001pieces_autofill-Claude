@@ -81,7 +81,7 @@ Aujourd'hui la liste des types est lue en base (`SELECT DISTINCT type`, `Config`
 
 ### 4.1 Périmètre (vérifié sur fiches fabricants, voir § 9.2)
 
-> **Liste figée le 2026-11-23 (lot 2)** : `data/corrections/nomenclature_lot2.csv`, **6 104 appareils** (Four −5 517, Micro-ondes −587), relue famille par famille avec le client. Elle remplace l'estimation plus bas, gardée pour mémoire (voir « Écarts »).
+> **Liste figée le 2026-11-23 (lot 2)** : `data/corrections/nomenclature_lot2.csv`, **6 104 appareils** (Four −5 517, Micro-ondes −587), relue famille par famille avec le client ; **appliquée en production le 2026-11-23 à 13 h 40** (6 104/6 104 conformes, sauvegarde `data/backups/appareils_20261123_134022_nomenclature_lot2.db`). Elle remplace l'estimation plus bas, gardée pour mémoire (voir « Écarts »).
 
 | Fam. | Règle retenue | Appareils | Source / décision |
 |---|---|---|---|
