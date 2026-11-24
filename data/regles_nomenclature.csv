@@ -60,3 +60,21 @@ marque;Beko;nom;FSE[56]*;Cuisinière;validee;web;https://www.beko.fr/sites/defau
 marque;Beko;nom;CSE[56]*;Cuisinière;validee;web;https://www.beko.fr/sites/default/files/Art_FicheProduit_FSE68300GACS.pdf;lot 3 : cuisinières pose libre
 marque;Beko;nom;CSE3*;Réfrigérateur;validee;decouverte;;lot 3 : combinés réfrigérateur-congélateur
 marque;Beko;nom;FSE2*;Congélateur;validee;decouverte;;lot 3 : congélateurs
+marque;Hoover;nom;HWC*;Cave à vin;validee;web;https://manualmachine.com/hoover/hwc2335/1286073-user-manual;doutes § 9.3 (2026-11-24) : notice HWC 2335 / 2336DL « Cave à vin », Icecat « wine coolers »
+marque;AEG;nom;KM9800E*;Four combiné micro-ondes;validee;web;https://www.manualslib.com/manual/1597482/Aeg-Km9800e.html;doutes § 9.3 (2026-11-24) : four compact avec générateur micro-ondes et grille
+marque;AEG;nom;KM71*;Four combiné micro-ondes;validee;web;https://www.ersatzteile-24.com/AEG/AEG_KM7100000M/94427109300.html;"doutes § 9.3 (2026-11-24) : plateau verre + résistance 1650 W, PNC 944 27 (comme KM9800E) ; KM4400 / KMR721 (PNC 944 066) restent micro-ondes"
+marque;Bauknecht;nom;EMV*;Four;validee;web;https://www.ersatzteile-24.com/BAUKNECHT/BAUKNECHT_EMVD7263IN/855644122001.html;doutes § 9.3 (2026-11-24) : ex-zone grise EM*, « Four vapeur » = pollution (même modèle Four / Four vapeur selon le coloris, pièces de four, « Backofen » chez les vendeurs de pièces)
+marque;Bauknecht;nom;EMC#*;Four;validee;web;https://www.ersatzteile-24.com/BAUKNECHT/BAUKNECHT_EMC7253IN2_855646322500/855646322502.html;"doutes § 9.3 (2026-11-24) : ex-zone grise EM* ; EMCC / EMCH (micro-ondes) non couverts"
+marque;Bauknecht;nom;EMCK*;Four;validee;web;https://www.ersatzteile-24.com/BAUKNECHT/BAUKNECHT_EMVD7263IN/855644122001.html;doutes § 9.3 (2026-11-24) : ex-zone grise EM*
+marque;Bauknecht;nom;EMCE*;Four;validee;web;https://www.ersatzteile-24.com/BAUKNECHT/BAUKNECHT_EMVD7263IN/855644122001.html;doutes § 9.3 (2026-11-24) : ex-zone grise EM*
+marque;Bauknecht;nom;EME#*;Four;validee;web;https://www.ersatzteile-24.com/BAUKNECHT/BAUKNECHT_EMVD7263IN/855644122001.html;"doutes § 9.3 (2026-11-24) : ex-zone grise EM* ; EMEK (micro-ondes) non couvert"
+marque;Bauknecht;nom;EMI*;Four;validee;web;https://www.ersatzteile-24.com/BAUKNECHT/BAUKNECHT_EMVD7263IN/855644122001.html;doutes § 9.3 (2026-11-24) : ex-zone grise EM*
+marque;Bauknecht;nom;EMZ*;Four;validee;web;https://www.ersatzteilshop.de/ersatzteile-fuer/bauknecht/emzd-5263-in-855622022000.html;"doutes § 9.3 (2026-11-24) : ex-zone grise EM* ; EMZD5266 /IN en Four, /WS en Four vapeur"
+groupe;Whirlpool;nom;AKR0[01]*;Plaque;validee;decouverte;;doutes § 9.3 (2026-11-24) : AKR007 à AKR014 tous en Plaque
+groupe;Whirlpool;nom;AKR02[0-8]*;Plaque;validee;decouverte;;doutes § 9.3 (2026-11-24) : AKR027 / AKR028 en Plaque
+groupe;Whirlpool;nom;AKR029*;Hotte;validee;decouverte;;doutes § 9.3 (2026-11-24) : AKR029 tous en Hotte
+groupe;Whirlpool;nom;AKR03*;Hotte;validee;web;https://www.appliancesdirect.co.uk/p/akr030ix/whirlpool-akr030ix-60cm-chimney-hood;"doutes § 9.3 (2026-11-24) : AKR030 à AKR039, libellés « HOTTE » ; AKR04 / AKR2 (« Four ») sans règle, sources contradictoires"
+groupe;Whirlpool;nom;AMW58[239]*;Four vapeur;validee;web;https://www.yumpu.com/fr/document/view/16747760/appareils-encastrables-2012-whirlpool;doutes § 9.3 (2026-11-24) : série AMW par numéros (lot 1, famille 10)
+groupe;Whirlpool;nom;AMW59*;Four vapeur;validee;web;https://www.electromenager-compare.com/four-WHIAMW591IXL-WHIRLPOOL-AMW-591IXL.htm;doutes § 9.3 (2026-11-24) : série AMW par numéros (lot 1, famille 10)
+groupe;Whirlpool;nom;AMW882*;Four vapeur;validee;decouverte;;doutes § 9.3 (2026-11-24) : décision client du lot 1 (famille 10), sans source
+groupe;Whirlpool;nom;AMW*;Micro-ondes;validee;decouverte;;"doutes § 9.3 (2026-11-24) : 1 655 micro-ondes à 100 % ; exceptions four vapeur par règles plus précises"
