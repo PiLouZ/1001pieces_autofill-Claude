@@ -140,12 +140,58 @@ def test_catalogue_versionne_valide():
         assert ligne['statut'] == 'validee'
     cles = [(l['portee'], l['cible'], l['cle'], l['motif']) for l in lignes]
     assert len(cles) == len(set(cles))
-    # Décisions du lot 3 : pas de règle HMG8601… (homonymes laissés en Micro-ondes),
-    # Bauknecht EM* en zone grise
+    # Décision du lot 3 : pas de règle HMG8601… (homonymes laissés en Micro-ondes).
+    # La zone grise Bauknecht EM* est levée par les doutes du § 9.3 (2026-11-24)
     motifs = {(l['cible'], l['motif']) for l in lignes}
     assert not any(m.startswith('HMG8') for _, m in motifs)
-    assert not any(c == 'Bauknecht' for c, _ in motifs)
+    assert not any(m.startswith('KMR') or m.startswith('KM4') for c, m in motifs if c == 'AEG')
 
+
+
+# ── Doutes du § 9.3 tranchés (2026-11-24) ───────────────────────────────────
+
+def test_doutes_hoover_hwc_cave_a_vin():
+    index = _catalogue_index()
+    assert _resoudre(index, 'Hoover', '', 'HWC 2336 DL').type == 'Cave à vin'
+    assert _resoudre(index, 'Hoover', '', 'HWCA 2335').type == 'Cave à vin'
+    # Le W de Hoover reste « lave-linge » : aucune règle HW*
+    assert _resoudre(index, 'Hoover', '31006834', 'H3W 69TME').type == ''
+
+
+def test_doutes_aeg_km_combine_mais_pas_les_micro_ondes():
+    index = _catalogue_index()
+    combine = TypesAppareils.FOUR_COMBINE_MICRO_ONDES
+    assert _resoudre(index, 'AEG', '94427026400', 'KM9800E-M').type == combine
+    assert _resoudre(index, 'AEG', '94427109300', 'KM7100000M').type == combine
+    assert _resoudre(index, 'AEG', '94406648600', 'KMR721000B').type == ''
+    assert _resoudre(index, 'AEG', '94406605500', 'KM4400001M').type == ''
+
+
+def test_doutes_bauknecht_em_four_sans_toucher_les_micro_ondes():
+    index = _catalogue_index()
+    for nom in ('EMV6261/IN', 'EMVD7263/IN', 'EMC7253/IN', 'EMCK7145/IN', 'EMCE7263',
+                'EME7463', 'EMIE6163IN', 'EMZD5266/WS'):
+        assert _resoudre(index, 'Bauknecht', '', nom).type == 'Four', nom
+    for nom in ('EMCCD8145', 'EMCHD8145', 'EMWD3', 'EMEK9', 'EMPK7'):
+        assert _resoudre(index, 'Bauknecht', '', nom).type == '', nom
+
+
+def test_doutes_whirlpool_akr0_par_numero_et_akr2_sans_regle():
+    index = _catalogue_index()
+    assert _resoudre(index, 'Whirlpool', '857800701000', 'AKR007/IX').type == 'Plaque'
+    assert _resoudre(index, 'Whirlpool', '857802801000', 'AKR028/IX').type == 'Plaque'
+    assert _resoudre(index, 'Whirlpool', '857802901000', 'AKR029IX').type == 'Hotte'
+    assert _resoudre(index, 'Ignis', '857803001000', 'AKR030IX').type == 'Hotte'
+    assert _resoudre(index, 'Whirlpool', '857804778000', 'AKR047WH').type == ''
+    assert _resoudre(index, 'Whirlpool', '857821610000', 'AKR216/AV').type == ''
+
+
+def test_doutes_whirlpool_amw_par_numeros():
+    index = _catalogue_index()
+    for nom in ('AMW 582 IX', 'AMW583IX', 'AMW 589', 'AMW 591 IXL', 'AMW 599', 'AMW 882'):
+        assert _resoudre(index, 'Whirlpool', '', nom).type == 'Four vapeur', nom
+    for nom in ('AMW 508', 'AMW 578', 'AMW 584', 'AMW 588', 'AMW 730', 'AMWR48'):
+        assert _resoudre(index, 'Whirlpool', '', nom).type == 'Micro-ondes', nom
 
 # ── Résolution : cas pièges du § 11 ─────────────────────────────────────────
 

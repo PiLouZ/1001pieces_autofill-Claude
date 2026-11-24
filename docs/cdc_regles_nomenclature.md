@@ -1,7 +1,7 @@
 # Cahier des charges — Règles de nomenclature des appareils (types justes)
 
-**Statut :** lots 1 et 2 appliqués ; lot 3 (moteur sans écran) mergé, tables remplies en production ; lot 4 (écran Règles + revue) mergé, 983 propositions acceptées en production ; lot 5 (typage à l'import) mergé ; marque à l'import étudiée, non retenue (§ 8.4)
-**Version :** 0.7 (2026-11-24) — § 8.4 : marque à l'import, mesurée et non retenue
+**Statut :** lots 1 et 2 appliqués ; lot 3 (moteur sans écran) mergé, tables remplies en production ; lot 4 (écran Règles + revue) mergé, 983 propositions acceptées en production ; lot 5 (typage à l'import) mergé ; marque à l'import étudiée, non retenue (§ 8.4) ; doutes du § 9.3 tranchés (+ 18 règles, § 9.4)
+**Version :** 0.8 (2026-11-24) — § 9.4 : doutes du § 9.3 tranchés
 **Contexte :** Le client veut que ses clients retrouvent leur appareil par une recherche, sous la bonne marque et le bon type. Les fabricants codent le type dans leurs références (BSH : `S…` = lave-vaisselle ; Electrolux : PNC `911…` = lave-vaisselle ; Neff : `C17M…` = four combiné micro-ondes). Ce document définit comment l'outil apprend, fait valider et applique ces **règles de nomenclature** pour corriger et compléter le type des appareils.
 
 ---
@@ -29,6 +29,7 @@
 | D18 | Lot 5 : type du fichier **contredit** par une règle validée → le type du fichier est **gardé** et l'appareil reçoit une **proposition de type** (fenêtre « Types proposés »), pas un « à vérifier ». |
 | D19 | Lot 5 : type du fichier **hors liste** (`types_autorises`) → **gardé et signalé** (prévisualisation, historique), non bloquant ; si une règle s'applique, c'est une contradiction (D18). |
 | D20 | 2026-11-24 : **pas de marque automatique à l'import** (§ 8.4) — signaux sous 98 % sauf sur 2 % des appareils, et plafond de 139 appareils typés par les règles en cinq mois. |
+| D21 | 2026-11-24, doutes du § 9.3 tranchés avec le client (§ 9.4) : Hoover `HWC*` → Cave à vin ; AEG `KM9800E*`, `KM71*` → Four combiné micro-ondes (`KMR`, `KM4` restent Micro-ondes) ; **la zone grise Bauknecht `EM*` devient une règle** : `EMV*`, `EMC#*`, `EMCK*`, `EMCE*`, `EME#*`, `EMI*`, `EMZ*` → Four (les « Four vapeur » sont une pollution) ; Whirlpool `AKR0` par numéros (Plaque / Hotte), `AKR04` / `AKR2` sans règle ; Whirlpool `AMW` par numéros (Four vapeur / Micro-ondes). |
 | D12 | Lot 3, catalogue § 9.2 tranché famille par famille : Gaggenau **`BS*` → Four vapeur** (BSP série 200 et BS4 série 400 = combi-vapeur) ; Bauknecht `EM*` = **zone grise** ; Liebherr `G*` Congélateur, `GK*` Réfrigérateur + exceptions `GKN[12]*` Congélateur, `GDC*` Réfrigérateur ; **pas de règle** `HMG8601/8621/8701/8721` (décision ponctuelle du lot 2) ; Whirlpool `AKR[4-9]*` Hotte, `AKR3*` Plaque, `AGB*` Lave-vaisselle ; Beko `FSE[56]*`/`CSE[56]*` Cuisinière, `CSE3*` Réfrigérateur, `FSE2*` Congélateur ; AEG `KMF*` → Four combiné micro-ondes ; Electrolux `EW?D*` Sèche-linge ; validées une par une : Candy, Bosch `HBC??D*`, Siemens `CI??W*`, De Dietrich `DOV*`, Hotpoint `AQD*`/`AQM*`. |
 
 ---
@@ -339,7 +340,7 @@ Exécution : `scripts/corriger_types_nomenclature.py` — simulation par défaut
 
 ### 9.2 Catalogue des règles validées (lot 3)
 
-Catalogue **versionné** `data/regles_nomenclature.csv` : **61 règles**, toutes `validee`, relues famille par famille avec le client le 2026-11-23 (D7, D12). Chargé par `scripts/regles_nomenclature.py catalogue --ecrire` (une règle déjà en base n'est jamais écrasée).
+Catalogue **versionné** `data/regles_nomenclature.csv` : **61 règles** (79 depuis les doutes tranchés, § 9.4), toutes `validee`, relues famille par famille avec le client le 2026-11-23 (D7, D12). Chargé par `scripts/regles_nomenclature.py catalogue --ecrire` (une règle déjà en base n'est jamais écrasée).
 
 **Mesure sur la base réelle** (copie du 2026-11-23, 720 433 appareils) : 20 708 appareils couverts, **983 propositions**, 0 conflit entre clés, **0 proposition sur les 8 616 appareils des lots 1 et 2** (critère du lot 3, test automatique sur les deux listes figées) ; les règles du combiné retrouvent la liste du lot 2 à l'appareil près (sauf les 4 `HMG8601…`, sans règle). Calcul complet : 3,5 s.
 
@@ -368,22 +369,36 @@ Colonnes : pureté (part déjà au type), vote des pièces, 2e clé (code usine)
 
 Propositions par force : **115 fortes** (`AKR3*`, libellé d'accord, types éloignés), 868 simples. Aucune n'est appliquée au lot 3 : elles attendent la revue (lot 4).
 
-Retiré du catalogue initial : Bauknecht `EMV`/`EMZ`/`EMC` (zone grise, § 9.3) ; Bosch `HMG8601/8621/8701/8721` (décision ponctuelle du lot 2 : une règle reproposerait les 4 homonymes laissés en Micro-ondes).
+Retiré du catalogue initial : Bauknecht `EMV`/`EMZ`/`EMC` (zone grise, § 9.3 ; **devenue règle au § 9.4**, D21) ; Bosch `HMG8601/8621/8701/8721` (décision ponctuelle du lot 2 : une règle reproposerait les 4 homonymes laissés en Micro-ondes).
 
 ### 9.3 Doutes ouverts (pas de règle avant source)
 
 - ~~Whirlpool `AGB`~~ : **tranché au lot 3** — `AGB*` → Lave-vaisselle (les 8 « Cuisinière » portent un code usine `851…` de lave-vaisselle).
 - ~~Electrolux `EW9D…`~~ : **tranché au lot 3** — `EW?D*` → Sèche-linge (456/458) ; les 2 `EW9D…VCP` restent introuvables en ligne.
-- **Bauknecht `EM*`** (662 appareils) : **zone grise** (lot 3). Les sites de pièces rangent `EMC 7253`, `EMV 7263`, `EMZD 5265` en « Herd/Backofen » ([ersatzteilshop EMV 7263](https://www.ersatzteilshop.de/ersatzteile-fuer/bauknecht/emv-7263-in-855643122000.html), [ersatzteile-24 EMC 7253](https://www.ersatzteile-24.com/BAUKNECHT/BAUKNECHT_EMC7253IN2_855646322500/855646322502.html)) : les « Four vapeur » ressemblent à la pollution Whirlpool AKP (§ 2.4) ; `EMCC`/`EMCH` sont de vrais micro-ondes. Aucune règle avant une fiche fabricant.
-- AEG `KMR` (`KMR721000B`, rangé « four à micro-ondes » sans détail : [manuall](https://manuall.fr/aeg-kmr721000b-micro-onde/)), `KM4`, `KM7`, `KM9800E` : sans source, laissés tels quels (lot 3).
-- Whirlpool `AKR0`/`AKR2` : mélangés (hottes, plaques, « fours »), sans règle (lot 3).
-- Hoover `HWC…` : 10 « Réfrigérateur » qui ressemblent à des caves à vin (vu au lot 3, non vérifié).
+- ~~**Bauknecht `EM*`**~~ : **tranché le 2026-11-24** (§ 9.4, D21) — les « Four vapeur » sont des fours. Historique : (662 appareils) **zone grise** (lot 3). Les sites de pièces rangent `EMC 7253`, `EMV 7263`, `EMZD 5265` en « Herd/Backofen » ([ersatzteilshop EMV 7263](https://www.ersatzteilshop.de/ersatzteile-fuer/bauknecht/emv-7263-in-855643122000.html), [ersatzteile-24 EMC 7253](https://www.ersatzteile-24.com/BAUKNECHT/BAUKNECHT_EMC7253IN2_855646322500/855646322502.html)) : les « Four vapeur » ressemblent à la pollution Whirlpool AKP (§ 2.4) ; `EMCC`/`EMCH` sont de vrais micro-ondes. Aucune règle avant une fiche fabricant.
+- ~~AEG `KMR`/`KM4`/`KM7`/`KM9800E`~~ : **tranché le 2026-11-24** (§ 9.4). Historique : AEG `KMR` (`KMR721000B`, rangé « four à micro-ondes » sans détail : [manuall](https://manuall.fr/aeg-kmr721000b-micro-onde/)), `KM4`, `KM7`, `KM9800E` : sans source, laissés tels quels (lot 3).
+- ~~Whirlpool `AKR0`/`AKR2`~~ : **tranché le 2026-11-24** (§ 9.4) — `AKR0` par numéros ; `AKR04`/`AKR2` (« Four ») restent sans règle. Historique : mélangés (hottes, plaques, « fours »), sans règle (lot 3).
+- ~~Hoover `HWC…`~~ : **tranché le 2026-11-24** (§ 9.4) — Cave à vin. Historique : 10 « Réfrigérateur » qui ressemblent à des caves à vin (vu au lot 3, non vérifié).
 - Hoover : le `W` signifie lave-linge (`HW`, `H3W`) — **ne pas** étendre la règle Candy au groupe.
 - ~~Beko `CSE…`/`FSE…`~~ : **tranché au lot 3** par position (`[56]` = cuisinière, `CSE3` réfrigérateur, `FSE2` congélateur) ; [CSE 67301 GW](https://www.electromenager-compare.com/cuisiniere-BEKCSE67301GW-BEKO-CSE-67301-GW.htm).
 - ~~Miele `H … BM`, Electrolux `EVY`~~ : **tranché au lot 2** — Miele : aucun appareil en base ; `EVY` → Four combiné micro-ondes (§ 4.1, fam. 6).
 - Whirlpool `AMW 508` et voisins à chaleur pulsée (« micro-ondes combiné » chez Darty) : **restent Micro-ondes** (décision lot 2) ; AEG `KMF`/`KMR`/`KM4`/`KM7`/`KM9800E` : sans source, laissés tels quels.
 - ~~Whirlpool `AKR`~~ : **tranché au lot 3** par numéro — `AKR[4-9]*` Hotte (615 à 100 %), `AKR3*` Plaque (tables gaz) ; `AKR0`/`AKR2` restent ouverts (ci-dessus).
-- Whirlpool `AMW` : série imbriquée — `AMW 5xx` jusqu'à 578 et 584-588 = micro-ondes, 582-583 et 589-599 = fours vapeur compacts. Une règle devra lister les numéros, pas un préfixe.
+- ~~Whirlpool `AMW`~~ : **tranché le 2026-11-24** (§ 9.4) par numéros. Historique : série imbriquée — `AMW 5xx` jusqu'à 578 et 584-588 = micro-ondes, 582-583 et 589-599 = fours vapeur compacts. Une règle devra lister les numéros, pas un préfixe.
+
+### 9.4 Doutes du § 9.3 tranchés (2026-11-24, D21)
+
+**18 règles** ajoutées au catalogue versionné (79 au total), toutes `validee`, chacune avec sa source dans `source_url` / `note`. Mesure sur une copie de la base du 2026-11-24 (le catalogue d'avant ne propose plus rien : les 983 propositions ont été acceptées) : **124 propositions**, aucune règle existante déplacée, 0 proposition sur les listes figées des lots 1 et 2.
+
+| Portée | Motif(s) | Type | Appareils couverts | Prop. | Preuve |
+|---|---|---|---|---|---|
+| Hoover | `HWC*` | Cave à vin | 10 | 10 (Réfrigérateur →) | [notice HWC 2335 / 2336DL « Cave à vin »](https://manualmachine.com/hoover/hwc2335/1286073-user-manual), [Icecat « wine coolers »](https://icecat.se/p/hoover/hwc+2336+dl/wine+coolers-8016361758018-hwc+2336+dl-3600212.html) |
+| AEG | `KM9800E*`, `KM71*` | Four combiné micro-ondes | 10 | 10 (Four →) | [notice KM9800E](https://www.manualslib.com/manual/1597482/Aeg-Km9800e.html) (générateur micro-ondes + grille de four) ; [pièces KM7100000M](https://www.ersatzteile-24.com/AEG/AEG_KM7100000M/94427109300.html) (plateau verre, résistance 1 650 W), PNC 944 27. `KMR721`, `KM4400` (PNC 944 066) restent Micro-ondes, sans règle |
+| Bauknecht | `EMV*`, `EMC#*`, `EMCK*`, `EMCE*`, `EME#*`, `EMI*`, `EMZ*` | Four | 355 | 104 (Four vapeur →) | même modèle en Four ou Four vapeur selon le coloris (`EMZD5266/IN` / `/WS`) ; pièces de four (résistances de sole et de voûte, sonde) ; « Backofen » chez les vendeurs de pièces ([EMVD 7263/IN](https://www.ersatzteile-24.com/BAUKNECHT/BAUKNECHT_EMVD7263IN/855644122001.html), [EMZD 5263](https://www.ersatzteilshop.de/ersatzteile-fuer/bauknecht/emzd-5263-in-855622022000.html)). `EMCC`, `EMCH`, `EMEK`, `EMWD`, `EMPK`… (micro-ondes) non couverts |
+| groupe Whirlpool | `AKR0[01]*`, `AKR02[0-8]*` / `AKR029*`, `AKR03*` | Plaque / Hotte | 36 | 0 | déjà cohérents par numéro ; [AKR030IX = hotte](https://www.appliancesdirect.co.uk/p/akr030ix/whirlpool-akr030ix-60cm-chimney-hood). `AKR047`, `AKR21x`, `AKR224` (15 « Four ») sans règle : [AKR 212 « Ranges »](https://manuall.co.uk/whirlpool-akr-212-range/?page=2), [AKR 047/01 « Cooking Table »](https://manualslib.fr/manual/344915/Whirlpool-Akr-047-01-Ix.html), contradictoires |
+| groupe Whirlpool | `AMW58[239]*`, `AMW59*`, `AMW882*` / `AMW*` | Four vapeur / Micro-ondes | 1 700 | 0 | lot 1, famille 10 ; déjà cohérents |
+
+Les règles à 0 proposition servent aux **imports** (lot 5 : une règle validée type un appareil importé sans type). Mise en production : `scripts/regles_nomenclature.py catalogue --ecrire` (n'ajoute que les nouvelles), puis les 124 propositions se revoient dans **Types proposés** (lot 4).
 
 ---
 
