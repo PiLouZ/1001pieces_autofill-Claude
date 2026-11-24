@@ -4,6 +4,61 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.106.0] - 2026-11-24 (PR #168, #169, #170, #171, #172, #173, #174, #175)
+
+Règles de nomenclature (types justes des appareils, de la correction en masse au
+typage à l'import), filtres de colonne à jokers et retrait des tables vides.
+
+### Tables vides `categories` et `pieces_old` retirées (PR #168)
+- Menu **Affichage → Catégories** retiré : il enregistrait une liste que rien ne relisait.
+- Au démarrage, `_supprimer_tables_vides_obsoletes` supprime ces deux tables si elles
+  sont vides ; l'ancienne migration passe par une table temporaire `temp.pieces_old`.
+
+### Filtres de colonne : jokers, « ou », « sauf » (PR #169)
+- `src/utils/filtre_colonne.py`, branché dans `_build_load_conditions` : `*` et `?`
+  jokers, `|` = ou, `!` = sauf ; sans joker, « contient » comme avant. `_` et `%` tapés
+  sont cherchés tels quels.
+- Bouton **?** à gauche du ✕ des filtres : rappel de la syntaxe.
+
+### CDC « règles de nomenclature » (PR #170)
+- `docs/cdc_regles_nomenclature.md` : constat chiffré, liste fermée des types, modèle
+  de données, moteur, force des propositions, parcours, catalogue, lots, décisions D1-D19.
+
+### Lot 1 : corrections de type sûres (PR #171)
+- 2 512 appareils retypés depuis une liste figée et relue (§ 9.1), via
+  `EventDrivenSaveService`, avec historique.
+
+### Lot 2 : type « Four combiné micro-ondes » (PR #172)
+- 6 104 appareils (Bosch CMG / HMG, Siemens CM / HM, Neff C??M, AEG KMK, Gaggenau BM,
+  Electrolux EVY…) quittent « Four » ou « Micro-ondes ». Migration ponctuelle des
+  appellations (« four micro-ondes » désactivée pour les micro-ondes), segment SEO dédié.
+
+### Lot 3 : liste fermée, tables et moteur de règles (PR #173)
+- `data/types_autorises.json` (versionné), tables `regles_nomenclature` et
+  `propositions_type`, moteur pur `src/utils/nomenclature/` (clés, résolution marque
+  puis groupe, la plus spécifique gagne, zones grises), `RegleNomenclatureService`,
+  `scripts/regles_nomenclature.py` (catalogue | proposer | decouvrir), 61 règles.
+
+### Lot 4 : écran Règles et revue des types proposés (PR #174)
+- **Données → Règles de nomenclature…** : règles, exemples, valider / rejeter (recalcul
+  des propositions en arrière-plan, `CalculNomenclature`), découverte en « proposée ».
+- Fenêtre **Types proposés** et revue dans le tableau (cellule vert d'eau, flèches ▲ ▼,
+  clic droit) : accepter (en groupe pour les fortes et les règles sourcées, avec
+  récapitulatif), refuser (jamais reproposé), annuler une acceptation par lot
+  (`lots_acceptation_type`, `acceptations_type`).
+
+### Lot 5 : typage à l'import par les règles validées (PR #175)
+- `TypageImportService` + `ImportManager._typer_par_regle` dans `_parse_row_data`,
+  commun aux deux chemins d'import et aux fiches du site ; index des règles construit
+  une fois par import.
+- Type vide ou auto-complété par référence → type de la règle, tracé « à vérifier »
+  (D17) ; type du fichier contredit → gardé + proposition de type (D18) ; type hors
+  liste → gardé et signalé (D19). Les refus ne sont jamais réécrits.
+- Prévisualisation (encadré « Règles de nomenclature ») et historique annoncent ces cas.
+- CDC § 8.4 (D20) : marque automatique à l'import mesurée et non retenue.
+
+---
+
 ## [3.105.1] - 2026-11-20 (PR #166)
 
 Gestionnaire de pièces plus rapide et fenêtre « Modifier la pièce » agrandie.

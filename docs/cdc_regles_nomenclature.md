@@ -1,7 +1,7 @@
 # Cahier des charges — Règles de nomenclature des appareils (types justes)
 
-**Statut :** lots 1 et 2 appliqués ; lot 3 (moteur sans écran) mergé, tables remplies en production ; lot 4 (écran Règles + revue) mergé, 983 propositions acceptées en production ; lot 5 (typage à l'import) codé
-**Version :** 0.6 (2026-11-23) — lot 5 : typage à l'import
+**Statut :** lots 1 et 2 appliqués ; lot 3 (moteur sans écran) mergé, tables remplies en production ; lot 4 (écran Règles + revue) mergé, 983 propositions acceptées en production ; lot 5 (typage à l'import) mergé ; marque à l'import étudiée, non retenue (§ 8.4)
+**Version :** 0.7 (2026-11-24) — § 8.4 : marque à l'import, mesurée et non retenue
 **Contexte :** Le client veut que ses clients retrouvent leur appareil par une recherche, sous la bonne marque et le bon type. Les fabricants codent le type dans leurs références (BSH : `S…` = lave-vaisselle ; Electrolux : PNC `911…` = lave-vaisselle ; Neff : `C17M…` = four combiné micro-ondes). Ce document définit comment l'outil apprend, fait valider et applique ces **règles de nomenclature** pour corriger et compléter le type des appareils.
 
 ---
@@ -28,6 +28,7 @@
 | D17 | Lot 5 : à l'import, une règle **validée** l'emporte sur l'**auto-complétion par référence** (qui recopie un appareil sans garantie), jamais sur un type **lu dans le fichier**. |
 | D18 | Lot 5 : type du fichier **contredit** par une règle validée → le type du fichier est **gardé** et l'appareil reçoit une **proposition de type** (fenêtre « Types proposés »), pas un « à vérifier ». |
 | D19 | Lot 5 : type du fichier **hors liste** (`types_autorises`) → **gardé et signalé** (prévisualisation, historique), non bloquant ; si une règle s'applique, c'est une contradiction (D18). |
+| D20 | 2026-11-24 : **pas de marque automatique à l'import** (§ 8.4) — signaux sous 98 % sauf sur 2 % des appareils, et plafond de 139 appareils typés par les règles en cinq mois. |
 | D12 | Lot 3, catalogue § 9.2 tranché famille par famille : Gaggenau **`BS*` → Four vapeur** (BSP série 200 et BS4 série 400 = combi-vapeur) ; Bauknecht `EM*` = **zone grise** ; Liebherr `G*` Congélateur, `GK*` Réfrigérateur + exceptions `GKN[12]*` Congélateur, `GDC*` Réfrigérateur ; **pas de règle** `HMG8601/8621/8701/8721` (décision ponctuelle du lot 2) ; Whirlpool `AKR[4-9]*` Hotte, `AKR3*` Plaque, `AGB*` Lave-vaisselle ; Beko `FSE[56]*`/`CSE[56]*` Cuisinière, `CSE3*` Réfrigérateur, `FSE2*` Congélateur ; AEG `KMF*` → Four combiné micro-ondes ; Electrolux `EW?D*` Sèche-linge ; validées une par une : Candy, Bosch `HBC??D*`, Siemens `CI??W*`, De Dietrich `DOV*`, Hotpoint `AQD*`/`AQM*`. |
 
 ---
@@ -289,6 +290,26 @@ Le libellé d'origine (`other_ref`) n'est **jamais** un signal seul (cas « Four
 - **Pourquoi seulement les validées** : appris sur les appareils d'avant juillet et testé sur ceux d'après, les règles découvertes de pureté ≥ 98 % (D7) auraient typé 929 appareils, dont **526 contre le choix final** de l'utilisateur (483 Bosch `HMG*` → combiné, gardés en Micro-ondes). D4 et D16 tiennent.
 - Rejeu réel sur copie : 9 PDF de test (3 981 appareils déjà en base) sans effet ; CSV de cas pièges conforme (BS* typé et tracé ; Liebherr `GN…` et Whirlpool `AKR399IX` gardés + 2 propositions ; Cocotte signalée).
 
+### 8.4 Marque à l'import — mesurée, non retenue (2026-11-24)
+
+Question : donner une marque aux appareils importés sans marque, pour que les règles (qui visent toutes une marque) puissent ensuite les typer ? Mesuré sur une copie de la base (API backup), rien de codé.
+
+- **Volume** : 10 851 appareils importés sans marque depuis juillet ; tous marqués à la main par l'utilisateur, le jour même, par rafales (10 à 99 dans la même seconde).
+- **Plafond** : même avec la marque finale exacte, les 61 règles validées n'en typent que **139 sur 10 594** sans type (1,3 %, tous justes). Le levier ne vaut que ≈ 30 appareils par mois.
+- **Signaux** (appris sur les appareils d'avant juillet, ou par mois glissant, testés sur ceux d'après) :
+
+| Signal | Couverts | Marque juste |
+|---|---|---|
+| Forme de la référence (préfixe + forme, pureté ≥ 99 %, ≥ 30 appareils) | 10 % | 92-94 % |
+| Marque dominante des appareils de la même pièce | 10 % | 80 % |
+| Les deux d'accord | 2 % (221) | 98,6 % |
+| Suggestions par similarité existantes (tête de liste) | 15 % | 78 % |
+| Une marque par fichier (pièce × minute d'import) | — | 63 % (majoritaire) |
+
+- **Pourquoi** : la forme d'une référence reconnaît le **groupe industriel** (94 % juste), pas la marque commerciale. Les erreurs sont toutes des marques sœurs d'un même groupe : Ikea / Franke / Whirlpool, AEG / Faure, Seb / Moulinex / Krups, Brandt / Blomberg.
+- **Décision (D20)** : pas de lot « marque automatique à l'import » ; la marque reste saisie par l'utilisateur, aidée par les suggestions existantes. À rouvrir seulement si le nombre de règles validées grandit nettement (le plafond suit leur couverture).
+- **Piste notée** : le type dominant de la pièce couvre 42 % des appareils importés sans type, à 96 % de justes (erreurs entre types voisins : réfrigérateur / congélateur, lave-linge / sèche-linge). Il existe déjà en suggestion (`Config.TYPE_PIECE_*`), mais les journaux ne l'affichent que pour 2 894 lignes sur 9 638 depuis septembre : écart à comprendre si le besoin revient.
+
 ---
 
 ## 9. Catalogue initial (règles à faire valider)
@@ -375,6 +396,7 @@ Retiré du catalogue initial : Bauknecht `EMV`/`EMZ`/`EMC` (zone grise, § 9.3) 
 | 3 | Liste fermée `types_autorises` (§ 3), tables § 5, moteur § 6 sans écran, catalogue § 9.2, tests — **codé** (`RegleNomenclatureService`, `src/utils/nomenclature/`, `scripts/regles_nomenclature.py`) | non |
 | 4 | Écran Règles § 8.1 + revue § 8.2 — **codé** (`ReglesNomenclatureDialog`, `PropositionsTypeDialog`, `RevuePropositionsService`, `CalculNomenclature`, tables § 5.3) | oui (+ Guide) |
 | 5 | Typage à l'import § 8.3 — **codé** (`TypageImportService`, D17-D19) | oui (+ Guide) |
+| (6) | Marque à l'import § 8.4 — **mesurée, non retenue** (D20) | — |
 | à part | Ménage marques : retirer « SMEG » collé dans 1 331 réf. ; vérifier Concord/Concorde | données |
 
 Le lot 2 dépend de la création du type sur le site (action client).
