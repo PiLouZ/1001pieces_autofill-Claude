@@ -4,6 +4,26 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.108.0] - 2026-11-24 (PR #180)
+
+Une valeur Type / Marque pour toute une sélection.
+
+### Saisie Type / Marque des imports (PR #180)
+- Mesure sur copie de la base (CDC nomenclature § 8.5, D23) : 40 669 appareils importés
+  sans type ni marque depuis juillet, complétés à la main en ≈ 10 400 gestes ; rejeu de
+  la fenêtre de suggestions et quatre leviers chiffrés ; pas de marque automatique
+  (par fichier 38 % faux, d'après les autres appareils de la pièce 44 à 57 % faux),
+  seuils du type de la pièce inchangés.
+- Tableau : Cmd+D (ou frappe sur une case vide) avec plusieurs lignes sélectionnées dans
+  Type ou Fabricant → une valeur pour toutes ; casse alignée, historique par appareil,
+  une sauvegarde par id (`EventDrivenSaveService`), un seul Cmd+Z (action `cell_edits`).
+- « Valider les suggestions » : « Corriger » (Entrée) et nouveau bouton « Marque… »
+  (touche M) sur plusieurs lignes ou une ligne de groupe.
+- Tests de la fenêtre de suggestions : fenêtres fermées en fin de test (segfault latent
+  du processEvents de pytest-qt).
+
+---
+
 ## [3.107.0] - 2026-11-24 (PR #177, #178)
 
 Doutes de nomenclature tranchés (18 règles) et ménage des marques.
