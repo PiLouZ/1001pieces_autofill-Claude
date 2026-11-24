@@ -2094,6 +2094,8 @@ class MainWindow(QMainWindow):
             - HEXATHERM → Hexatherm (1)
             ==> Types alignés sur la base :
             - CHAUFFAGE → Chauffage (25)
+            ==> Marque retirée des références :
+            - Smeg (12)
 
         Les lignes « - » sont rendues en retrait sous le « ==> » qui les précède.
         Chaîne vide si rien n'a été réécrit.
@@ -2105,6 +2107,11 @@ class MainWindow(QMainWindow):
                 texte += f"{retrait}==> {titre} sur la base :\n"
                 texte += ''.join(f"{retrait}- {ligne}\n"
                                  for ligne in CasseNormalisationService.lignes(results[cle]))
+        retirees = results.get('marques_retirees_des_refs') or []
+        if retirees:
+            # « SMEG ST995 » → « ST995 » (ménage des marques, 2026-11-24)
+            texte += f"{retrait}==> Marque retirée des références :\n"
+            texte += ''.join(f"{retrait}- {m} ({n})\n" for m, n in retirees)
         return texte
 
     @staticmethod
@@ -2211,7 +2218,8 @@ class MainWindow(QMainWindow):
         original_line_count = results.get('original_line_count', total_processed + duplicates_ignored)
         summary += f"Lignes traitées : {original_line_count}\n"
 
-        if results.get('marques_alignees') or results.get('types_alignes'):
+        if (results.get('marques_alignees') or results.get('types_alignes')
+                or results.get('marques_retirees_des_refs')):
             summary += self._lignes_alignements(results, retrait="")
         summary += MainWindow._lignes_completions(results, retrait="")
         if results.get('autocompletes_a_verifier'):
@@ -2399,7 +2407,8 @@ class MainWindow(QMainWindow):
         # Casse des marques réécrite (« DELTA » → « Delta ») : jamais silencieuse.
         # Placée avant l'alerte de mapping : sous un « [!] », ses lignes seraient
         # surlignées en jaune comme faisant partie de l'alerte.
-        if results.get('marques_alignees') or results.get('types_alignes'):
+        if (results.get('marques_alignees') or results.get('types_alignes')
+                or results.get('marques_retirees_des_refs')):
             summary += self._lignes_alignements(results, retrait="     ")
         # Appareils existants complétés : avant l'alerte, pour la même raison.
         # Appel qualifié par la classe : les tests passent une fenêtre factice.
