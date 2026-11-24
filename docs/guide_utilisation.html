@@ -123,6 +123,7 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
   <li><b>Entrée</b> : passe à la ligne suivante, même colonne.</li>
   <li><b>Suppr / Retour arrière</b> : vide les cellules sélectionnées.</li>
   <li><b>Cmd+D</b> : liste des valeurs déjà utilisées dans la colonne (sauf colonnes de référence).</li>
+  <li><b>Une valeur pour plusieurs lignes</b> : sélectionner plusieurs lignes dans la colonne <b>Type</b> ou <b>Fabricant</b> (Maj+clic, Cmd+clic pour des lignes éparses), puis <b>Cmd+D</b> ou taper la première lettre sur une case vide : la valeur choisie va à toutes les lignes sélectionnées, déjà remplies comprises. Le titre de la fenêtre annonce le nombre de lignes. Un seul <b>Cmd+Z</b> annule le tout. L'historique garde une ligne par appareil.</li>
   <li><b>Marque et Type</b> : une valeur tapée reprend l'orthographe déjà présente en base (<code>bosch</code> → <code>Bosch</code>).</li>
   <li><b>Four combiné micro-ondes</b> : type à part entière, comme « Four vapeur », pour les fours compacts avec micro-ondes (niche de 45 cm) : Bosch <code>CMG</code> et <code>HMG</code> récents, Siemens <code>CM</code> / <code>HM</code> récents, Neff <code>C17M…</code>, AEG <code>KMK</code>, Gaggenau <code>BM</code>, Electrolux <code>EVY</code>… Le micro-ondes simple reste « Micro-ondes ». Le libellé est celui du site, au caractère près : ne pas le réécrire autrement. Dans les textes générés, il peut se dire « four micro-ondes combiné » ; « four micro-ondes » ne désigne plus le micro-ondes simple.</li>
   <li><b>Poignée de recopie</b> (petit carré en bas à droite de la sélection), comme dans un tableur :
@@ -137,7 +138,8 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
 <ul>
   <li>Les cellules avec une suggestion sont teintées ; un clic montre les candidats.</li>
   <li>Le bouton ambre <b>« Suggestions à valider (N) »</b>, sous le tableau à côté des lignes incomplètes, ouvre la fenêtre de validation.</li>
-  <li>Chaque ligne a un état : <b>✓ validée</b>, <b>✗ refusée</b> ou <b>· en attente</b>. Les suggestions sûres arrivent validées. Raccourcis : <b>V</b> valider, <b>R</b> refuser, <b>U</b> remettre en attente, <b>Espace</b> bascule ✓ / ·, <b>Entrée</b> ou double-clic pour corriger. Sur une ligne de groupe, la décision vaut pour tout le groupe.</li>
+  <li>Chaque ligne a un état : <b>✓ validée</b>, <b>✗ refusée</b> ou <b>· en attente</b>. Les suggestions sûres arrivent validées. Raccourcis : <b>V</b> valider, <b>R</b> refuser, <b>U</b> remettre en attente, <b>Espace</b> bascule ✓ / ·, <b>Entrée</b> ou double-clic pour corriger le type, <b>M</b> pour donner une marque. Sur une ligne de groupe, la décision vaut pour tout le groupe.</li>
+  <li><b>Corriger plusieurs lignes d'un coup</b> : avec plusieurs lignes sélectionnées, ou une ligne de groupe (par exemple « Pièce … » en regroupant par <b>Appareil voisin</b>), <b>Corriger</b> (Entrée) donne le même type à toutes, et le bouton <b>Marque…</b> (M) la même marque. C'est le geste prévu pour les lignes « type seul » (type de la pièce, autre référence), dont la marque restait à saisir dans le tableau. Les lignes corrigées passent validées.</li>
   <li>Les lignes sont regroupées par preuve (même référence, référence voisine, type de la pièce, autre référence, famille de préfixe) ; les puces du haut filtrent, dont <b>⚠ À risque</b>. Le panneau de droite détaille la preuve, ce que disent les pièces de l'appareil et les autres candidats (lien <b>Prendre</b>).</li>
   <li><b>Autre référence</b> : quand la colonne « Autre référence » porte une désignation déjà vue (« Lave-vaisselle tout-intégrable », « Side by side »…), le Type de la plupart des appareils qui ont ce même texte est proposé (au moins 5 appareils, à 95 % ou plus). C'est un <b>indice, pas une certitude</b> : un fichier peut être mal étiqueté. Seul le Type est proposé, la marque reste à saisir ; si une autre preuve propose un type différent, les deux candidats s'affichent et la ligne n'est pas validée d'office.</li>
   <li><b>Appliquer</b> (⌘ Entrée) enregistre sans fermer : on peut traiter une longue liste en plusieurs fois. Une suggestion <b>refusée</b> n'est plus jamais proposée pour cet appareil.</li>
@@ -274,7 +276,7 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
   <tr><td class="key">Cmd+C</td><td>Copier la sélection (collable dans Excel)</td></tr>
   <tr><td class="key">Cmd+V</td><td>Coller depuis le presse-papiers</td></tr>
   <tr><td class="key">Cmd+S</td><td>Sauvegarder les modifications</td></tr>
-  <tr><td class="key">Cmd+D</td><td>Valeurs existantes de la colonne</td></tr>
+  <tr><td class="key">Cmd+D</td><td>Valeurs existantes de la colonne ; sur plusieurs lignes sélectionnées (Type, Fabricant), une valeur pour toutes</td></tr>
   <tr><td class="key">Suppr</td><td>Vider les cellules sélectionnées</td></tr>
 </table>
 
@@ -303,7 +305,9 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
 
 <h2>Nouveautés depuis la version 3.78</h2>
 <h3>En préparation</h3>
-<p>Rien pour l'instant.</p>
+<ul>
+  <li><b>Une valeur pour plusieurs lignes</b> : dans le tableau, Cmd+D sur plusieurs lignes sélectionnées de la colonne Type ou Fabricant donne la même valeur à toutes ; un seul Cmd+Z annule. Dans <b>Valider les suggestions</b>, « Corriger » et le nouveau bouton <b>Marque…</b> (touche M) agissent sur toutes les lignes sélectionnées ou sur un groupe entier : les lignes « type seul » reçoivent leur marque sans repasser par le tableau.</li>
+</ul>
 <h3>Versions livrées</h3>
 <ul>
   <li><b>3.107.0</b>

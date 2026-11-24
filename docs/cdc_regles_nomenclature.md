@@ -1,7 +1,7 @@
 # Cahier des charges — Règles de nomenclature des appareils (types justes)
 
 **Statut :** lots 1 et 2 appliqués ; lot 3 (moteur sans écran) mergé, tables remplies en production ; lot 4 (écran Règles + revue) mergé, 983 propositions acceptées en production ; lot 5 (typage à l'import) mergé ; marque à l'import étudiée, non retenue (§ 8.4) ; doutes du § 9.3 tranchés (+ 18 règles, § 9.4) ; ménage des marques codé (§ 9.5)
-**Version :** 0.9 (2026-11-24) — § 9.5 : ménage des marques
+**Version :** 1.0 (2026-11-24) — § 8.5 : saisie Type / Marque des imports (D23)
 **Contexte :** Le client veut que ses clients retrouvent leur appareil par une recherche, sous la bonne marque et le bon type. Les fabricants codent le type dans leurs références (BSH : `S…` = lave-vaisselle ; Electrolux : PNC `911…` = lave-vaisselle ; Neff : `C17M…` = four combiné micro-ondes). Ce document définit comment l'outil apprend, fait valider et applique ces **règles de nomenclature** pour corriger et compléter le type des appareils.
 
 ---
@@ -30,6 +30,7 @@
 | D19 | Lot 5 : type du fichier **hors liste** (`types_autorises`) → **gardé et signalé** (prévisualisation, historique), non bloquant ; si une règle s'applique, c'est une contradiction (D18). |
 | D20 | 2026-11-24 : **pas de marque automatique à l'import** (§ 8.4) — signaux sous 98 % sauf sur 2 % des appareils, et plafond de 139 appareils typés par les règles en cinq mois. |
 | D21 | 2026-11-24, doutes du § 9.3 tranchés avec le client (§ 9.4) : Hoover `HWC*` → Cave à vin ; AEG `KM9800E*`, `KM71*` → Four combiné micro-ondes (`KMR`, `KM4` restent Micro-ondes) ; **la zone grise Bauknecht `EM*` devient une règle** : `EMV*`, `EMC#*`, `EMCK*`, `EMCE*`, `EME#*`, `EMI*`, `EMZ*` → Four (les « Four vapeur » sont une pollution) ; Whirlpool `AKR0` par numéros (Plaque / Hotte), `AKR04` / `AKR2` sans règle ; Whirlpool `AMW` par numéros (Four vapeur / Micro-ondes). |
+| D23 | 2026-11-24, saisie Type / Marque des imports (§ 8.5) : **une valeur pour toute une sélection** (tableau : Cmd+D sur plusieurs lignes ; fenêtre de suggestions : « Corriger » et « Marque… » sur plusieurs lignes ou un groupe) ; **pas de marque automatique** par fichier ni d'après les autres appareils de la pièce ; seuils du type de la pièce **inchangés** (95 %, 5 appareils) ; pas d'ouverture automatique de la fenêtre de suggestions après l'import. |
 | D22 | 2026-11-24, ménage des marques (§ 9.5) : la marque collée dans une référence est retirée **pour toutes les marques**, seulement quand le mot est la marque de l'appareil ; le chauffage garde ses désignations ; les doublons ainsi révélés sont **fusionnés** ; le retrait se fait aussi **à l'import** ; « Concord » → « Concorde » partout, « Glem » → « Glem Gas ». |
 | D12 | Lot 3, catalogue § 9.2 tranché famille par famille : Gaggenau **`BS*` → Four vapeur** (BSP série 200 et BS4 série 400 = combi-vapeur) ; Bauknecht `EM*` = **zone grise** ; Liebherr `G*` Congélateur, `GK*` Réfrigérateur + exceptions `GKN[12]*` Congélateur, `GDC*` Réfrigérateur ; **pas de règle** `HMG8601/8621/8701/8721` (décision ponctuelle du lot 2) ; Whirlpool `AKR[4-9]*` Hotte, `AKR3*` Plaque, `AGB*` Lave-vaisselle ; Beko `FSE[56]*`/`CSE[56]*` Cuisinière, `CSE3*` Réfrigérateur, `FSE2*` Congélateur ; AEG `KMF*` → Four combiné micro-ondes ; Electrolux `EW?D*` Sèche-linge ; validées une par une : Candy, Bosch `HBC??D*`, Siemens `CI??W*`, De Dietrich `DOV*`, Hotpoint `AQD*`/`AQM*`. |
 
@@ -311,6 +312,42 @@ Question : donner une marque aux appareils importés sans marque, pour que les r
 - **Pourquoi** : la forme d'une référence reconnaît le **groupe industriel** (94 % juste), pas la marque commerciale. Les erreurs sont toutes des marques sœurs d'un même groupe : Ikea / Franke / Whirlpool, AEG / Faure, Seb / Moulinex / Krups, Brandt / Blomberg.
 - **Décision (D20)** : pas de lot « marque automatique à l'import » ; la marque reste saisie par l'utilisateur, aidée par les suggestions existantes. À rouvrir seulement si le nombre de règles validées grandit nettement (le plafond suit leur couverture).
 - **Piste notée** : le type dominant de la pièce couvre 42 % des appareils importés sans type, à 96 % de justes (erreurs entre types voisins : réfrigérateur / congélateur, lave-linge / sèche-linge). Il existe déjà en suggestion (`Config.TYPE_PIECE_*`), mais les journaux ne l'affichent que pour 2 894 lignes sur 9 638 depuis septembre : écart à comprendre si le besoin revient.
+
+### 8.5 Saisie Type / Marque des appareils importés sans l'un ni l'autre (2026-11-24, D23)
+
+Mesuré sur une copie de la base (API backup), en rejouant la fenêtre « Valider les suggestions » avec le code actuel : index appris, jour par jour, sur les appareils créés avant l'import (plus les appareils du lot importés complets), vote des pièces et de l'« autre référence » limité aux types connus à la fin du lot. Comparé à la valeur actuelle en base.
+
+- **Volume** : **40 669** appareils créés depuis le 2026-07-01 sans type ni marque à l'import (≈ 270 par jour ouvré). Le « 10 851 » du § 8.4 ne lisait que les entrées d'historique à un seul champ ; la plupart des saisies sont des entrées groupées « [Type + Fabricant] » (champ vide, valeurs dans le détail).
+- **Saisie actuelle** : 73 000 cellules en ≈ 10 400 gestes (même seconde, même valeur), à la poignée de recopie, souvent Type et Fabricant ensemble ; 8 cellules par geste pour le type, 6 pour la marque. Cmd+D n'écrivait que la cellule courante ; le collage est un import. La fenêtre de suggestions n'est utilisée que depuis octobre (paliers « pièce » le 15/10, « autre réf. » le 23/10) : depuis le 23/10, 44 % des types passent par elle.
+- **Rejeu** : 75 % des appareils ont une suggestion.
+
+| Tête de liste | Lignes | Type juste | Marque juste |
+|---|---|---|---|
+| Même réf., pré-cochée | 479 | 98,7 % | 99,4 % |
+| Réf. voisine, pré-cochée | 4 772 | 99,1 % | 99,5 % |
+| Réf. voisine, en attente | 8 788 | 89,2 % | 92,8 % |
+| Préfixe, en attente | 5 035 | 89,3 % | 94,1 % |
+| Type de la pièce (type seul), pré-coché | 7 794 | 94,1 % | — |
+| Autre réf. (type seul), pré-coché | 3 531 | 94,0 % | — |
+| Aucune | 9 935 | — | — |
+
+Les 16 576 lignes pré-cochées, appliquées sans retouche : 4,3 % de types faux, 0,5 % de marques fausses.
+
+| Levier | Gain | Erreur | Décision |
+|---|---|---|---|
+| Pré-cocher le type seul de la pièce | **déjà fait** quand il est seul (`is_safe_default` : score = part ≥ 0,95) | 6 % | inchangé |
+| … aussi face à un concurrent | 280 lignes | **92 % faux** (la similarité avait raison) | non |
+| … seuil 90 % au lieu de 95 % | + 2 500 lignes | ≈ 19 % faux | non |
+| Un type pour toutes les lignes d'une pièce du lot | gestes de type ≈ 4 300 → ≈ 1 000 ; 522 groupes sur 596 homogènes | 10 % en aveugle | par la sélection (pas d'action dédiée) |
+| Une marque pour tout un fichier / tout un lot | — | 38 % / 42 % faux | non (automatique) |
+| Une marque pour une sélection | gestes de marque ≈ 6 000 → plancher ≈ 2 200 | 0 (choix de l'utilisateur) | **oui** |
+| Marque des autres appareils de la pièce du lot | 77 à 92 % couverts | 44 à 57 % faux | non |
+
+Une pièce se monte sur des appareils de plusieurs marques d'un même groupe industriel : aucune règle ne tient sur la marque d'un fichier, seule la sélection faite par l'utilisateur est sûre.
+
+**Codé (D23)** :
+- Tableau : plusieurs lignes sélectionnées dans Type ou Fabricant + Cmd+D (ou frappe sur une case vide) → la fenêtre de valeurs s'ouvre une fois (« … — N lignes », sans section Suggestions) et la valeur va à toutes les lignes sélectionnées. Même chemin qu'une saisie (`setData` → casse alignée, historique par appareil, indicateur de suggestion dissipé), une sauvegarde par id (`EventDrivenSaveService.enregistrer_champs_appareils`), **une seule action d'annulation** (`cell_edits`). Une ligne sélectionnée : comportement inchangé.
+- Fenêtre « Valider les suggestions » : « Corriger » (Entrée) et **« Marque… »** (M) sur plusieurs lignes ou une ligne de groupe → une seule valeur, lignes « corrigé » et validées ; une ligne : correction habituelle avec ses candidats.
 
 ---
 

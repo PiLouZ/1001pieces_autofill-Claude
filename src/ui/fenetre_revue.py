@@ -152,6 +152,7 @@ class FenetreRevue(QDialog):
     MODES_GROUPE = []       # [(clé, libellé)] ; le premier est le mode par défaut
     LIBELLE_APPLIQUER = "Appliquer"
     NOM_LIGNE = 'ligne'     # pour pluralize : « 3 lignes »
+    AIDE_RACCOURCIS = _AIDE_RACCOURCIS
 
     def __init__(self, parent, entrees, preuves=None):
         super().__init__(parent)
@@ -199,6 +200,10 @@ class FenetreRevue(QDialog):
         bloquant ; la sous-classe appelle _apres_correction(item) une fois la
         valeur posée (jamais de retour synchrone : pas d'exec_)."""
 
+    def _boutons_correction(self):
+        """Boutons ajoutés après « Corriger » (aucun par défaut)."""
+        return []
+
     def _appliquer(self, valides, refuses):
         """Remet les décisions à la fenêtre principale (listes d'items)."""
 
@@ -218,7 +223,7 @@ class FenetreRevue(QDialog):
         aide = QToolButton()
         aide.setIcon(qta.icon('fa5s.keyboard', color='#6c757d'))
         aide.setAutoRaise(True)
-        aide.setToolTip(_AIDE_RACCOURCIS)
+        aide.setToolTip(self.AIDE_RACCOURCIS)
         tete.addWidget(aide)
         racine.addLayout(tete)
 
@@ -312,6 +317,8 @@ class FenetreRevue(QDialog):
         self._btn_corriger.setAutoDefault(False)
         self._btn_corriger.clicked.connect(lambda: self._corriger_courante())
         actions.addWidget(self._btn_corriger)
+        for bouton in self._boutons_correction():
+            actions.addWidget(bouton)
         actions.addStretch()
         self._resume = QLabel()
         self._resume.setStyleSheet("color: #495057;")

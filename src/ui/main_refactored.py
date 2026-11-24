@@ -1006,6 +1006,16 @@ class MainWindow(QMainWindow):
         current_item = self.table.currentItem()
         current_col = self.table.currentColumn()
 
+        # Plusieurs lignes sélectionnées dans Type ou Fabricant : une seule valeur
+        # pour toutes (la fenêtre ne propose alors pas de suggestion, propre à un
+        # appareil).
+        lignes = self._lignes_selectionnees_dans_colonne(current_col)
+        if len(lignes) > 1:
+            self.autocompletion_service.show_column_values_dialog(
+                self.table, current_item, current_col, prefill=prefill, nb_lignes=len(lignes),
+                sur_resultat=lambda valeur: self._ecrire_valeur_selection(current_col, lignes, valeur))
+            return
+
         # Appelé à la validation du dialogue (modal non bloquant, jamais exec_) ;
         # même garde d'erreur que la méthode, qui a rendu la main entre-temps.
         @handle_ui_errors(log_prefix="Erreur affichage valeurs colonne", show_message=True)
@@ -1019,6 +1029,72 @@ class MainWindow(QMainWindow):
         self.autocompletion_service.show_column_values_dialog(
             self.table, current_item, current_col, prefill=prefill, sur_resultat=(lambda *a: _ecrire(self, *a))
         )
+
+    # Colonnes où une valeur peut être donnée à toute la sélection (Type, Fabricant)
+    _COLONNES_VALEUR_SELECTION = (0, 1)
+
+    def _lignes_selectionnees_dans_colonne(self, colonne) -> list:
+        """Lignes sélectionnées dans `colonne` (Type ou Fabricant), triées ; [] pour
+        les autres colonnes, ou si la ligne courante n'en fait pas partie (Cmd+D
+        vise alors la seule cellule courante, comme avant)."""
+        if colonne not in self._COLONNES_VALEUR_SELECTION:
+            return []
+        selection = self.table.selectionModel() if hasattr(self.table, 'selectionModel') else None
+        if selection is None:
+            return []
+        lignes = sorted({idx.row() for idx in selection.selectedIndexes()
+                         if idx.column() == colonne})
+        return lignes if self.table.currentRow() in lignes else []
+
+    @handle_ui_operation_errors(return_value=0, log_prefix="Erreur valeur à toute la sélection")
+    def _ecrire_valeur_selection(self, colonne, lignes, valeur) -> int:
+        """Écrit `valeur` dans `colonne` sur toutes les `lignes` sélectionnées.
+
+        Même chemin que la saisie d'une cellule (setData → cell_edited : casse
+        alignée sur la base, historique, indicateur de suggestion dissipé), mais :
+        - une seule sauvegarde, par id d'appareil (EventDrivenSaveService) ;
+        - une seule action d'annulation : un Cmd+Z défait toute l'écriture.
+        Les cellules non éditables ou déjà à cette valeur sont ignorées.
+        Retourne le nombre de cellules écrites.
+        """
+        if not isinstance(valeur, str):
+            return 0   # candidat de suggestion : jamais proposé pour une sélection
+        model = self.table_controller.model
+        champ = self._get_db_field_name(colonne)
+        if model is None or not champ:
+            return 0
+        # Validée une fois ici : sinon un avertissement par ligne.
+        verdict = self.validator.validate_field(champ, valeur)
+        if not verdict.is_valid:
+            MessageHelper.show_warning(self, verdict.error_message, Messages.TITLE_WARNING)
+            return 0
+
+        self._bulk_edit_collector = set()
+        self._undo_groupe = []
+        updates_by_db_id = {}
+        try:
+            for row in lignes:
+                index = model.index(row, colonne)
+                if not (index.isValid() and model.flags(index) & Qt.ItemIsEditable):
+                    continue
+                if (model.data(index, Qt.DisplayRole) or "") == valeur:
+                    continue
+                model.setData(index, valeur, Qt.EditRole)
+                db_id = model.get_db_id(row)
+                if (row, colonne) in self._bulk_edit_collector and db_id is not None:
+                    # Valeur retenue après alignement de casse (« DELTA » → « Delta »)
+                    updates_by_db_id[db_id] = {champ: model.data(index, Qt.DisplayRole) or ""}
+        finally:
+            self._bulk_edit_collector = None
+            actions, self._undo_groupe = self._undo_groupe, None
+
+        if actions:
+            self.undo_manager.add_action({'type': 'cell_edits', 'actions': actions})
+        if updates_by_db_id:
+            self.event_driven_save_service.enregistrer_champs_appareils(updates_by_db_id)
+        self._update_toolbar_states()
+        app_logger.info(f"[Saisie] {champ} = « {valeur} » sur {len(updates_by_db_id)} ligne(s) sélectionnée(s)")
+        return len(updates_by_db_id)
 
     def _apply_suggestion_decisions(self, decisions):
         """Cœur batché partagé : applique une liste de décisions [(db_id, candidat)]
@@ -1557,15 +1633,21 @@ class MainWindow(QMainWindow):
         elif hasattr(self, 'event_driven_save_service') and self.event_driven_save_service:
             self.event_driven_save_service.handle_cell_changed(row, col, new_value, self.table)
 
-        # Historique undo
-        self.undo_manager.add_action({
+        # Historique undo (regroupé en une action par l'appelant s'il arme
+        # `_undo_groupe`, cf. _ecrire_valeur_selection)
+        action = {
             'type': 'cell_edit',
             'row': row,
             'col': col,
             'old_value': old_value,
             'new_value': new_value,
             'db_id': db_id,
-        })
+        }
+        undo_groupe = getattr(self, '_undo_groupe', None)
+        if undo_groupe is not None:
+            undo_groupe.append(action)
+        else:
+            self.undo_manager.add_action(action)
         self._safe_add_to_grouped_history(row, col, old_value, new_value)
 
         # Mettre à jour la valeur précédente
@@ -1889,6 +1971,10 @@ class MainWindow(QMainWindow):
             row, col = action['row'], action['col']
             self._apply_undo_redo_cell(row, col, action['old_value'], action.get('db_id'),
                                        self._safe_update_db_for_undo)
+        elif action['type'] == 'cell_edits':
+            # Valeur donnée à toute une sélection : défaite d'un seul Cmd+Z
+            for sous_action in reversed(action['actions']):
+                self._apply_undo_action(sous_action)
 
     def _apply_redo_action(self, action: Dict[str, Any]):
         """Appliquer une action de rétablissement"""
@@ -1896,6 +1982,9 @@ class MainWindow(QMainWindow):
             row, col = action['row'], action['col']
             self._apply_undo_redo_cell(row, col, action['new_value'], action.get('db_id'),
                                        self._safe_update_db_for_redo)
+        elif action['type'] == 'cell_edits':
+            for sous_action in action['actions']:
+                self._apply_redo_action(sous_action)
 
     def _apply_undo_redo_cell(self, row: int, col: int, value: str, db_id, db_updater) -> None:
         """Tronc commun undo/redo : écriture silencieuse + mise à jour DB + UI."""

@@ -144,8 +144,9 @@ class EventDrivenSaveService(BaseService):
 
     @handle_save_service_errors()
     def enregistrer_champs_appareils(self, updates_by_db_id) -> bool:
-        """Champs d'appareils pris sur une fiche du site (type, marque, écriture de
-        la réf., nom commercial) : {id: {colonne: valeur}}, une transaction."""
+        """Champs d'appareils écrits par id : fiche du site (type, marque, écriture
+        de la réf., nom commercial), valeur donnée à toute une sélection du
+        tableau… : {id: {colonne: valeur}}, une transaction."""
         if not updates_by_db_id or not self._validate_save_requirements():
             return False
         self._update_save_indicator_pending()

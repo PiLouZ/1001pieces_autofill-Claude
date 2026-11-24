@@ -15,8 +15,10 @@ toutes les autres en attente.
 Non bloquant : ouvert via show() + callbacks (jamais exec_(), cf. conventions projet).
 """
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QEvent
 from PyQt5.QtGui import QColor, QBrush
+from PyQt5.QtWidgets import QPushButton
+import qtawesome as qta
 
 from src.core.config import pluralize
 from src.services.reference_similarity_service import (
@@ -24,9 +26,10 @@ from src.services.reference_similarity_service import (
     risques_suggestion, texte_preuve,
 )
 from .fenetre_revue import (
-    FenetreRevue, VALIDE, ATTENTE, COL_ETAT, entree as entree_de, html,
+    FenetreRevue, VALIDE, ATTENTE, COL_ETAT, ROLE_FEUILLE, entree as entree_de, html,
     lignes_vote, phrase_abstention, verdict_pieces as verdict_pieces_champ,
 )
+from .style_manager import StyleManager
 from .tri_colonnes import ROLE_TRI
 
 # ── Colonnes ────────────────────────────────────────────────────────────────
@@ -100,6 +103,17 @@ class SuggestionValidationDialog(FenetreRevue):
                     ('voisin', "Appareil voisin"), ('aucun', "Aucun")]
     LIBELLE_APPLIQUER = "Appliquer"
     NOM_LIGNE = 'suggestion'
+    AIDE_RACCOURCIS = (
+        "<b>Raccourcis</b> (liste active)<br>"
+        "V : valider · R : refuser · U : remettre en attente<br>"
+        "Espace : basculer ✓ / ·<br>"
+        "Entrée ou double-clic : corriger le type<br>"
+        "M : donner une marque<br>"
+        "⌘ Entrée : appliquer les décisions<br><br>"
+        "Plusieurs lignes sélectionnées, ou une ligne de groupe : la correction "
+        "(Entrée, M) donne la même valeur à toutes, et la décision (V, R, U) vaut "
+        "pour toutes. Un clic sur la colonne d'état fait tourner · → ✓ → ✗."
+    )
 
     def __init__(self, parent, snapshot, on_validate, value_picker=None,
                  on_refuse=None, preuves=None):
@@ -111,6 +125,7 @@ class SuggestionValidationDialog(FenetreRevue):
         self._on_refuse = on_refuse
         self._value_picker = value_picker
         super().__init__(parent, snapshot, preuves=preuves)
+        self._btn_corriger.setToolTip("Corriger le type des lignes sélectionnées (Entrée)")
 
     # ── Spécialisation du gabarit ────────────────────────────────────────────
     def _etat_initial(self, entree):
@@ -308,6 +323,62 @@ class SuggestionValidationDialog(FenetreRevue):
         self._apres_correction(item)
 
     # ── Correction (fenêtre Cmd+D) ───────────────────────────────────────────
+    def _boutons_correction(self):
+        bouton = QPushButton("Marque…")
+        bouton.setIcon(qta.icon('fa5s.industry', color='#495057'))
+        bouton.setStyleSheet(StyleManager.SECONDARY_COMPACT_BUTTON)
+        bouton.setToolTip("Donner une marque aux lignes sélectionnées (M) — "
+                          "utile pour les lignes « type seul »")
+        bouton.setAutoDefault(False)
+        bouton.clicked.connect(lambda: self._corriger_selection(COL_NEW_MFR))
+        self._btn_marque = bouton
+        return [bouton]
+
+    def eventFilter(self, objet, event):
+        if (objet is self._arbre and event.type() == QEvent.KeyPress
+                and event.key() == Qt.Key_M
+                and not (event.modifiers() & ~Qt.KeypadModifier)):
+            self._corriger_selection(COL_NEW_MFR)
+            return True
+        return super().eventFilter(objet, event)
+
+    def _corriger_courante(self):
+        """Entrée, bouton « Corriger » : type des lignes sélectionnées."""
+        self._corriger_selection(None)
+
+    def _corriger_selection(self, colonne):
+        """Une ligne visée : correction habituelle (candidats proposés). Plusieurs
+        lignes, ou une ligne de groupe : une seule valeur pour toutes."""
+        cibles = self._cibles()
+        if len(cibles) > 1:
+            self._corriger_plusieurs(cibles, colonne)
+            return
+        item = cibles[0] if cibles else None
+        if item is not None and item.data(COL_ETAT, ROLE_FEUILLE):
+            self._corriger(item, colonne)
+
+    def _corriger_plusieurs(self, cibles, colonne=None):
+        """Même valeur (Type par défaut, ou Marque) sur toutes les `cibles` : les
+        lignes passent « corrigé » et validées. Pas de candidat proposé : ils
+        sont propres à chaque appareil."""
+        if self._value_picker is None or not cibles:
+            return
+        colonne = COL_NEW_MFR if colonne == COL_NEW_MFR else COL_NEW_TYPE
+        champ = 'manufacturer' if colonne == COL_NEW_MFR else 'type'
+        valeurs = {item.text(colonne) for item in cibles}
+        actuelle = valeurs.pop() if len(valeurs) == 1 else ""
+
+        def _sur_resultat(resultat):
+            if resultat is None:
+                return
+            valeur = resultat.get(champ, '') if isinstance(resultat, dict) else resultat
+            for item in cibles:
+                item.setText(colonne, valeur)
+                self._marquer_modifiee(item)
+                self._apres_correction(item)
+
+        self._value_picker(champ, actuelle, [], _sur_resultat)
+
     def _corriger(self, item, colonne=None):
         """Choisir un candidat (dict) remplit Type ET Marque ; une valeur libre (str)
         ne touche que la colonne corrigée (Type par défaut, au clavier)."""
