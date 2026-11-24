@@ -1,7 +1,7 @@
 # Cahier des charges — Règles de nomenclature des appareils (types justes)
 
-**Statut :** lots 1 et 2 appliqués ; lot 3 (moteur sans écran) mergé, tables remplies en production ; lot 4 (écran Règles + revue) mergé, 983 propositions acceptées en production ; lot 5 (typage à l'import) mergé ; marque à l'import étudiée, non retenue (§ 8.4) ; doutes du § 9.3 tranchés (+ 18 règles, § 9.4)
-**Version :** 0.8 (2026-11-24) — § 9.4 : doutes du § 9.3 tranchés
+**Statut :** lots 1 et 2 appliqués ; lot 3 (moteur sans écran) mergé, tables remplies en production ; lot 4 (écran Règles + revue) mergé, 983 propositions acceptées en production ; lot 5 (typage à l'import) mergé ; marque à l'import étudiée, non retenue (§ 8.4) ; doutes du § 9.3 tranchés (+ 18 règles, § 9.4) ; ménage des marques codé (§ 9.5)
+**Version :** 0.9 (2026-11-24) — § 9.5 : ménage des marques
 **Contexte :** Le client veut que ses clients retrouvent leur appareil par une recherche, sous la bonne marque et le bon type. Les fabricants codent le type dans leurs références (BSH : `S…` = lave-vaisselle ; Electrolux : PNC `911…` = lave-vaisselle ; Neff : `C17M…` = four combiné micro-ondes). Ce document définit comment l'outil apprend, fait valider et applique ces **règles de nomenclature** pour corriger et compléter le type des appareils.
 
 ---
@@ -30,6 +30,7 @@
 | D19 | Lot 5 : type du fichier **hors liste** (`types_autorises`) → **gardé et signalé** (prévisualisation, historique), non bloquant ; si une règle s'applique, c'est une contradiction (D18). |
 | D20 | 2026-11-24 : **pas de marque automatique à l'import** (§ 8.4) — signaux sous 98 % sauf sur 2 % des appareils, et plafond de 139 appareils typés par les règles en cinq mois. |
 | D21 | 2026-11-24, doutes du § 9.3 tranchés avec le client (§ 9.4) : Hoover `HWC*` → Cave à vin ; AEG `KM9800E*`, `KM71*` → Four combiné micro-ondes (`KMR`, `KM4` restent Micro-ondes) ; **la zone grise Bauknecht `EM*` devient une règle** : `EMV*`, `EMC#*`, `EMCK*`, `EMCE*`, `EME#*`, `EMI*`, `EMZ*` → Four (les « Four vapeur » sont une pollution) ; Whirlpool `AKR0` par numéros (Plaque / Hotte), `AKR04` / `AKR2` sans règle ; Whirlpool `AMW` par numéros (Four vapeur / Micro-ondes). |
+| D22 | 2026-11-24, ménage des marques (§ 9.5) : la marque collée dans une référence est retirée **pour toutes les marques**, seulement quand le mot est la marque de l'appareil ; le chauffage garde ses désignations ; les doublons ainsi révélés sont **fusionnés** ; le retrait se fait aussi **à l'import** ; « Concord » → « Concorde » partout, « Glem » → « Glem Gas ». |
 | D12 | Lot 3, catalogue § 9.2 tranché famille par famille : Gaggenau **`BS*` → Four vapeur** (BSP série 200 et BS4 série 400 = combi-vapeur) ; Bauknecht `EM*` = **zone grise** ; Liebherr `G*` Congélateur, `GK*` Réfrigérateur + exceptions `GKN[12]*` Congélateur, `GDC*` Réfrigérateur ; **pas de règle** `HMG8601/8621/8701/8721` (décision ponctuelle du lot 2) ; Whirlpool `AKR[4-9]*` Hotte, `AKR3*` Plaque, `AGB*` Lave-vaisselle ; Beko `FSE[56]*`/`CSE[56]*` Cuisinière, `CSE3*` Réfrigérateur, `FSE2*` Congélateur ; AEG `KMF*` → Four combiné micro-ondes ; Electrolux `EW?D*` Sèche-linge ; validées une par une : Candy, Bosch `HBC??D*`, Siemens `CI??W*`, De Dietrich `DOV*`, Hotpoint `AQD*`/`AQM*`. |
 
 ---
@@ -400,6 +401,34 @@ Retiré du catalogue initial : Bauknecht `EMV`/`EMZ`/`EMC` (zone grise, § 9.3 ;
 
 Les règles à 0 proposition servent aux **imports** (lot 5 : une règle validée type un appareil importé sans type). Mise en production : `scripts/regles_nomenclature.py catalogue --ecrire` (n'ajoute que les nouvelles), puis les 124 propositions se revoient dans **Types proposés** (lot 4).
 
+### 9.5 Ménage des marques (2026-11-24, D22)
+
+**Constat** (copie de la base du 2026-11-24) : des PDF fournisseurs écrivent la marque dans la référence, « SMEG ST995 » en réf. modèle et « ST995 SMEG » en réf. commerciale (par ex. `00420214.pdf`, 3 192 lignes, le 16 octobre). On en trouve chaque mois depuis juillet 2025. La fiche du site affiche alors « Smeg ST995 SMEG ». Le motif ne touche pas que Smeg : une soixantaine de marques (LG, Far, Sogelux, Techwood, Westwood…).
+
+**Règle** (`src/utils/marque_collee.py`, module pur) : un mot (ou une suite de mots) en tête ou en fin de référence, séparé par un espace, est retiré s'il est **la marque de l'appareil**, comparé sans casse, accents, espaces ni tirets (« GLEMGAS » = « Glem Gas »). Garde-fous :
+- jamais un mot collé sans espace (« SMEGST2FABBL2 » reste : « FAR123 » peut être une vraie référence) ;
+- ce qui reste doit contenir un chiffre (« SMEG LVFABCR » reste) ;
+- un mot qui n'est pas la marque ne bouge pas (« SOG » sur Haier, « WELCO » sur Welcome) ;
+- chauffage (`TypesAppareils.DESIGNATIONS_DE_GAMME` : Chauffage, Chauffe-eau) jamais touché, car la réf. commerciale y est une désignation (« SAUTER VENISE VENTILO 1500 W ») ; sans type, une désignation (3 mots ou plus, le premier sans chiffre) ne l'est pas non plus.
+
+**Marques** (`AliasMarques`, `CasseNormalisationService`) : « Glem » → « Glem Gas » (5 hottes `K24` importées le 2026-11-23 avec 4 Glem Gas) ; « Concord » → « Concorde » (4 appareils de lavage ; Concorde compte aussi 39 appareils de chauffage). À l'import et à la saisie dans le tableau.
+
+**Base** : liste figée versionnée `data/corrections/menage_marques.csv` (6 944 lignes) :
+
+| Nature | Lignes | Détail |
+|---|---|---|
+| `reference` | 6 906 | 3 538 appareils ; Smeg 2 532 champs, LG 635, Far 309, Sogelux 212, Techwood 142… ; 368 champs de chauffage écartés |
+| `marque` | 9 | Glem → Glem Gas (5), Concord → Concorde (4) |
+| `fusion` | 29 | mêmes références et même marque qu'un appareil déjà en base une fois nettoyées (ex. Smeg « SMEG 46TLD/DIT » = « 46TLD/DIT ») ; types d'accord dans les 29 cas ; l'appareil gardé est le plus ancien des non modifiés |
+
+Exécution : `scripts/menage_marques.py` (`liste` recalcule la liste sans toucher la base ; simulation par défaut ; `--ecrire` après sauvegarde ; `--annuler`). Comme le lot 1 : une valeur changée depuis la liste n'est jamais écrasée ; une ligne d'historique par champ (« [Référence modèle] 'SMEG ST995' → 'ST995' ») et une par fusion (« Suppression ») ; les décisions « appareils distincts » (`reference_decisions`, 5 concernées) suivent la réf. modèle renommée. **Une fusion ne se défait qu'en restaurant la sauvegarde** ; le retour arrière remet les références et les marques.
+
+Rejeu sur copie : 6 944 changements écrits, 720 482 → 720 453 appareils (29 fusions, comptage conforme), 0 association orpheline, 2ᵉ passage sans effet, retour arrière conforme (hors fusions). Restent 7 « SMEG LVFAB… » (reste sans chiffre).
+
+**Import** (`ImportManager._retirer_marque_des_refs`, dans `_normaliser_casse`, donc les deux chemins et les fiches du site) : même règle, avant la clé d'identité, pour que la ligne retrouve l'appareil propre. Annoncé dans la prévisualisation (« Orthographe alignée sur la base » → « Marque retirée des références : Smeg (12)… ») et dans l'historique.
+
+L'autre référence n'est pas touchée : « SMEG ST995 » y sert à la recherche.
+
 ---
 
 ## 10. Découpage en lots (une PR par lot, branche dédiée)
@@ -412,7 +441,7 @@ Les règles à 0 proposition servent aux **imports** (lot 5 : une règle validé
 | 4 | Écran Règles § 8.1 + revue § 8.2 — **codé** (`ReglesNomenclatureDialog`, `PropositionsTypeDialog`, `RevuePropositionsService`, `CalculNomenclature`, tables § 5.3) | oui (+ Guide) |
 | 5 | Typage à l'import § 8.3 — **codé** (`TypageImportService`, D17-D19) | oui (+ Guide) |
 | (6) | Marque à l'import § 8.4 — **mesurée, non retenue** (D20) | — |
-| à part | Ménage marques : retirer « SMEG » collé dans 1 331 réf. ; vérifier Concord/Concorde | données |
+| à part | Ménage marques § 9.5 — **codé** (`utils/marque_collee.py`, `MenageMarquesService`, `scripts/menage_marques.py`, retrait à l'import, `AliasMarques`) | données + import |
 
 Le lot 2 dépend de la création du type sur le site (action client).
 

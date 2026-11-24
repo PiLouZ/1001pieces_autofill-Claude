@@ -21,6 +21,10 @@ Deux règles, dans cet ordre :
    Les sigles courts (« CDA ») et les casses mixtes (« KitchenAid ») ne sont
    jamais touchés.
 
+Marques seulement, avant ces deux règles : les écritures connues d'une même
+marque (`AliasMarques.ALIAS`, « Glem » → « Glem Gas », « Concord » → « Concorde »,
+ménage des marques 2026-11-24) sont ramenées à son nom.
+
 Vérifié sur la base de production (488 marques, 42 types) : la clé de
 comparaison ne fait entrer en collision aucune paire de vraies valeurs
 distinctes, seulement MIDEA/Midea (fusionnés depuis).
@@ -30,6 +34,7 @@ import re
 import unicodedata
 from typing import Dict, List, Optional, Tuple
 
+from ..core.constants import AliasMarques
 from .base_service import BaseService
 
 # Au-delà de cette longueur, une valeur tout en capitales est un nom écrit en
@@ -79,6 +84,9 @@ def mettre_en_forme_type(type_appareil: str) -> str:
 
 
 _MISE_EN_FORME = {'manufacturer': mettre_en_forme, 'type': mettre_en_forme_type}
+
+# Clé d'une écriture → nom de la marque (colonne `manufacturer` seulement)
+_ALIAS = {cle_marque(ecriture): nom for ecriture, nom in AliasMarques.ALIAS.items()}
 
 
 class CasseNormalisationService(BaseService):
@@ -131,6 +139,10 @@ class CasseNormalisationService(BaseService):
             self.charger()
 
         cle = cle_marque(valeur)
+        if self.colonne == 'manufacturer' and cle in _ALIAS:
+            # « Glem » → « Glem Gas » ; puis l'orthographe de la base fait foi
+            cle = cle_marque(_ALIAS[cle])
+            self._canoniques.setdefault(cle, _ALIAS[cle_marque(valeur)])
         if cle not in self._canoniques:
             self._completer_depuis_la_base()
         retenue = self._canoniques.get(cle)

@@ -204,3 +204,19 @@ class TypesAppareils:
         frozenset({"Four", "Four vapeur", FOUR_COMBINE_MICRO_ONDES, "Cuisinière", "Micro-ondes"}),
         frozenset({"Lave-linge", "Sèche-linge", "Lavante-séchante"}),
     )
+
+    # Ménage des marques (2026-11-24) : en chauffage, la référence commerciale est
+    # une désignation de gamme (« SAUTER VENISE VENTILO 1500 W »), pas une
+    # référence où un PDF a collé la marque : on n'y retire jamais la marque.
+    DESIGNATIONS_DE_GAMME = frozenset({"Chauffage", "Chauffe-eau"})
+
+
+class AliasMarques:
+    """Écritures d'une marque ramenées à son nom en base (ménage des marques,
+    décision client du 2026-11-24). Clé comparée sans casse, accents, espaces ni
+    tirets (`cle_marque`) ; s'applique à l'import et à la saisie dans le tableau."""
+
+    ALIAS = {
+        'Glem': 'Glem Gas',        # 5 hottes K24 importées avec 4 Glem Gas (2026-11-23)
+        'Concord': 'Concorde',     # même marque de lavage, écrite « CONCORDE » par le fournisseur
+    }

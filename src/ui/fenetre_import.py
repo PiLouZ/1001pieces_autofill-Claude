@@ -2332,7 +2332,8 @@ class ImportPreviewDialog(QDialog):
 
     @classmethod
     def _lignes_alignements(cls, results: dict) -> List[str]:
-        """['Marques :', 'DELTA → Delta (7),', …, 'Types :', …] ; vide si rien."""
+        """['Marques :', 'DELTA → Delta (7),', …, 'Types :', …, 'Marque retirée des
+        références :', 'Smeg (12), Far (3)'] ; vide si rien."""
         from ..services.casse_normalisation_service import CasseNormalisationService
         lignes = []
         for cle, titre in (('marques_alignees', 'Marques'), ('types_alignes', 'Types')):
@@ -2345,6 +2346,10 @@ class ImportPreviewDialog(QDialog):
                 visibles[-1] += ','
                 visibles.append(f"… et {len(alignements) - cls.MAX_ALIGNEMENTS_AFFICHES} autres")
             lignes.extend(f"    {v}" for v in visibles)
+        retirees = results.get('marques_retirees_des_refs') or []
+        if retirees:
+            lignes.append("Marque retirée des références :")
+            lignes.append("    " + ", ".join(f"{m} ({n})" for m, n in retirees))
         return lignes
 
     @staticmethod

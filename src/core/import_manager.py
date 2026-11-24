@@ -3,6 +3,7 @@ Gestionnaire d'importation unifié pour l'application de gestion d'appareils
 Factorisation du code d'importation avec support des libellés hiérarchiques
 """
 
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Tuple, Callable, Union
 from enum import Enum
@@ -859,6 +860,9 @@ class ImportManager:
         self._completions_existants = {}
         # Appareils dont un champ auto-complété a été tracé (fenêtre « à vérifier »)
         self._appareils_autocompletes = set()
+        # Marque collée retirée des références (« SMEG ST995 » → « ST995 ») :
+        # marque → nombre de références nettoyées, pour l'aperçu et l'historique
+        self._marques_retirees_des_refs = Counter()
         self._horodatage_import = datetime.now().isoformat(sep=' ', timespec='seconds')
         # Appareils créés pendant la session, par clé d'identité (les fiches du site
         # y retrouvent l'id de leurs créations), et résultat de chaque fichier
@@ -917,6 +921,12 @@ class ImportManager:
             if alignements:
                 results[cle] = alignements
                 app_logger.info(f"[Import] {libelle} : {service.resume(alignements)}")
+
+        retirees = getattr(self, '_marques_retirees_des_refs', None)
+        if retirees:
+            results['marques_retirees_des_refs'] = sorted(retirees.items())
+            app_logger.info("[Import] Marque retirée des références : "
+                            + ", ".join(f"{m} ({n})" for m, n in sorted(retirees.items())))
 
     def _constats_typage_regles(self, results: Dict[str, Any], dry_run: bool) -> None:
         """Typage par règle (lot 5) reporté au récap. À l'aperçu (rien d'écrit),
@@ -2643,6 +2653,28 @@ class ImportManager:
             data['manufacturer'] = self._marques.normaliser(data['manufacturer'])
         if data.get('type'):
             data['type'] = self._types.normaliser(data['type'])
+        self._retirer_marque_des_refs(data)
+
+    def _retirer_marque_des_refs(self, data: Dict[str, Any]) -> None:
+        """« SMEG ST995 » / « ST995 SMEG » → « ST995 » quand le mot collé est la
+        marque de la ligne (ménage des marques, 2026-11-24 ; règle et garde-fous
+        dans `utils/marque_collee.py`). Avant la clé d'identité : la ligne
+        retrouve l'appareil déjà en base sous sa référence propre."""
+        marque = data.get('manufacturer')
+        if not marque:
+            return
+        from ..utils.marque_collee import retirer_marque_collee
+        type_appareil = data.get('type') or ''
+        for champ in ('ref_modele', 'commercial_ref'):
+            valeur = data.get(champ)
+            if not valeur:
+                continue
+            propre = retirer_marque_collee(valeur, marque, type_appareil)
+            if propre != valeur.strip():
+                data[champ] = propre
+                compteur = getattr(self, '_marques_retirees_des_refs', None)
+                if compteur is not None:
+                    compteur[marque] += 1
 
     def _needs_manual_completion(self, device_data: Dict[str, Any]) -> bool:
         """Vérifier si un appareil a besoin d'une complétion manuelle (ni type ni fabricant)"""

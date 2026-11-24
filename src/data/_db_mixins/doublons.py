@@ -46,6 +46,17 @@ class DatabaseDoublonsMixin:
 
         return self.execute_write_batch(operations)
 
+    def renommer_decisions_reference(self, paires) -> bool:
+        """Décisions « appareils distincts / à fusionner » (`reference_decisions`,
+        rangées par réf. modèle) suivant une réf. modèle renommée : (ancienne,
+        nouvelle) ; une décision déjà posée sur la nouvelle réf. n'est jamais
+        écrasée (ménage des marques, 2026-11-24). Une transaction."""
+        operations = [(
+            "UPDATE reference_decisions SET ref_modele = ? WHERE ref_modele = ? "
+            "AND NOT EXISTS (SELECT 1 FROM reference_decisions WHERE ref_modele = ?)",
+            (nouvelle, ancienne, nouvelle)) for ancienne, nouvelle in paires if ancienne != nouvelle]
+        return self.execute_write_batch(operations) if operations else True
+
     def supprimer_pieces_dupliquees(self, ref_piece: str) -> int:
         """Supprimer les pièces dupliquées de `ref_piece` en gardant la plus
         récente (id le plus élevé), commité.
