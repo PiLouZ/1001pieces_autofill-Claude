@@ -4,6 +4,31 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.107.0] - 2026-11-24 (PR #177, #178)
+
+Doutes de nomenclature tranchés (18 règles) et ménage des marques.
+
+### Règles de nomenclature : doutes du § 9.3 tranchés (PR #177)
+- Catalogue `data/regles_nomenclature.csv` : 61 → 79 règles validées, chacune sourcée
+  (CDC § 9.4, D21) : Hoover `HWC*` → Cave à vin ; AEG `KM9800E*`, `KM71*` → Four combiné
+  micro-ondes ; Bauknecht `EMV*`, `EMC#*`, `EMCK*`, `EMCE*`, `EME#*`, `EMI*`, `EMZ*` → Four
+  (zone grise levée) ; Whirlpool `AKR0` et `AMW` par numéros.
+- Chargées en production le 2026-11-24 : 124 propositions dans « Types proposés ».
+
+### Ménage des marques (PR #178)
+- Marque collée dans les références retirée (« SMEG ST995 » / « ST995 SMEG » → « ST995 »),
+  quand le mot est la marque de l'appareil ; chauffage jamais touché
+  (`src/utils/marque_collee.py`, CDC § 9.5, D22).
+- À l'import (deux chemins, fiches du site) : retrait avant la clé d'identité, annoncé en
+  prévisualisation et dans l'historique.
+- `AliasMarques` : Glem → Glem Gas, Concord → Concorde (import et saisie).
+- `scripts/menage_marques.py` + `MenageMarquesService` : liste figée
+  `data/corrections/menage_marques.csv` (6 906 références, 9 marques, 29 fusions),
+  simulation, sauvegarde, historique, retour arrière hors fusions ; `reference_decisions`
+  suit la réf. modèle renommée. Appliqué en production le 2026-11-24 (720 650 → 720 621).
+
+---
+
 ## [3.106.0] - 2026-11-24 (PR #168, #169, #170, #171, #172, #173, #174, #175)
 
 Règles de nomenclature (types justes des appareils, de la correction en masse au

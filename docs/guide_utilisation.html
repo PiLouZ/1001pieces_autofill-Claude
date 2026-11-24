@@ -303,12 +303,15 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
 
 <h2>Nouveautés depuis la version 3.78</h2>
 <h3>En préparation</h3>
-<ul>
-  <li><b>18 nouvelles règles de nomenclature</b> : caves à vin Hoover <code>HWC</code>, fours combinés micro-ondes AEG <code>KM9800E</code> et <code>KM71</code>, fours Bauknecht <code>EMV</code>, <code>EMC</code>, <code>EMZ</code>… (jusqu'ici rangés à tort en « Four vapeur »), hottes et plaques Whirlpool <code>AKR0</code>, fours vapeur et micro-ondes Whirlpool <code>AMW</code> par numéro. Une fois chargées (<code>scripts/regles_nomenclature.py catalogue --ecrire</code>), elles proposent 124 changements de type à revoir dans <b>Types proposés</b>, et typent les prochains imports.</li>
-  <li><b>Ménage des marques</b> : la marque collée dans les références par certains fichiers fournisseurs (« SMEG ST995 » / « ST995 SMEG ») est retirée, à l'import et dans la base (≈ 3 500 appareils de 60 marques : Smeg, LG, Far, Sogelux…). Le chauffage garde ses désignations. « Glem » devient « Glem Gas » et « Concord » devient « Concorde ». Les 29 doublons que cela révèle sont fusionnés avec l'appareil déjà en base (pièces réunies). Le ménage de la base se lance par <code>scripts/menage_marques.py</code> : simulation par défaut, sauvegarde avant écriture, historique, retour arrière.</li>
-</ul>
+<p>Rien pour l'instant.</p>
 <h3>Versions livrées</h3>
 <ul>
+  <li><b>3.107.0</b>
+  <ul>
+    <li><b>18 nouvelles règles de nomenclature</b> : caves à vin Hoover <code>HWC</code>, fours combinés micro-ondes AEG <code>KM9800E</code> et <code>KM71</code>, fours Bauknecht <code>EMV</code>, <code>EMC</code>, <code>EMZ</code>… (jusqu'ici rangés à tort en « Four vapeur »), hottes et plaques Whirlpool <code>AKR0</code>, fours vapeur et micro-ondes Whirlpool <code>AMW</code> par numéro. Une fois chargées (<code>scripts/regles_nomenclature.py catalogue --ecrire</code>), elles proposent 124 changements de type à revoir dans <b>Types proposés</b>, et typent les prochains imports.</li>
+    <li><b>Ménage des marques</b> : la marque collée dans les références par certains fichiers fournisseurs (« SMEG ST995 » / « ST995 SMEG ») est retirée, à l'import et dans la base (≈ 3 500 appareils de 60 marques : Smeg, LG, Far, Sogelux…). Le chauffage garde ses désignations. « Glem » devient « Glem Gas » et « Concord » devient « Concorde ». Les 29 doublons que cela révèle sont fusionnés avec l'appareil déjà en base (pièces réunies). Le ménage de la base se lance par <code>scripts/menage_marques.py</code> : simulation par défaut, sauvegarde avant écriture, historique, retour arrière.</li>
+  </ul>
+  </li>
   <li><b>3.106.0</b>
   <ul>
     <li><b>Typage à l'import par les règles de nomenclature</b> : un appareil importé sans type reçoit celui d'une règle validée et passe dans <b>Auto-complétés à vérifier</b>. Si le fichier donne un type qui contredit une règle validée, ce type est gardé et l'appareil reçoit un <b>type proposé</b>. Un type absent de la liste des types du site est gardé et signalé. La prévisualisation de l'import et l'historique annoncent ces cas.</li>
