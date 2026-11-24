@@ -34,7 +34,8 @@ class AutoCompletionService(BaseService):
     
     def show_column_values_dialog(self, table_widget, current_item, current_col, prefill: str = "",
                                   suggestions: Optional[List[dict]] = None,
-                                  sur_resultat: Optional[Callable[[Union[str, dict]], None]] = None) -> None:
+                                  sur_resultat: Optional[Callable[[Union[str, dict]], None]] = None,
+                                  nb_lignes: int = 0) -> None:
         """
         Afficher la fenêtre d'auto-complétion selon la colonne (Cmd+D)
 
@@ -50,6 +51,8 @@ class AutoCompletionService(BaseService):
                 - str  : valeur saisie/choisie (à écrire dans la colonne courante)
                 - dict : candidat de suggestion choisi (à appliquer en paire Type+Marque)
                 Rien n'est appelé si l'utilisateur annule ou si la colonne n'a pas de champ DB.
+            nb_lignes: > 1 quand la valeur ira à toute une sélection (titre et
+                consigne le disent ; pas de section Suggestions).
         """
         db_field = self._get_db_field_name(current_col)
         if not db_field:
@@ -59,6 +62,10 @@ class AutoCompletionService(BaseService):
         col_label = Config.UI_HEADERS[current_col] if current_col < len(Config.UI_HEADERS) else "Colonne"
         title = f"Valeurs — {col_label}"
         label = f"Sélectionner ou saisir une valeur pour « {col_label} » :"
+        if nb_lignes > 1:
+            title = f"Valeurs — {col_label} — {nb_lignes} lignes"
+            label = f"Valeur de « {col_label} » pour les {nb_lignes} lignes sélectionnées :"
+            suggestions = None
         # Pré-sélectionner le texte existant (Cmd+D normal), pas lors d'un préfixe de frappe
         select_all = not bool(prefill)
         return self._show_autocompletion_dialog(title, label, db_field, current_value,

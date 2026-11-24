@@ -5,6 +5,7 @@ décisions et des refus, regroupement, puces, raccourcis, panneau de détail,
 application sans fermeture) sans affichage réel (offscreen via qapp).
 """
 
+import pytest
 from PyQt5.QtCore import Qt, QEvent
 from PyQt5.QtGui import QKeyEvent
 from PyQt5.QtWidgets import QApplication
@@ -30,6 +31,24 @@ def _entry(db_id, candidates, ref="R/01", comm="", cur_type="", cur_mfr=""):
     return {'db_id': db_id, 'ref_modele': ref, 'commercial_ref': comm,
             'current_type': cur_type, 'current_manufacturer': cur_mfr,
             'candidates': candidates}
+
+
+# Fenêtres sans parent ouvertes par les tests : gardées jusqu'à la fin du test,
+# puis masquées et détruites par Qt. Laissée au ramasse-miettes, une fenêtre encore
+# visible (dlg.show()) pouvait être détruite entre deux événements, et le
+# processEvents de pytest-qt plantait (Segmentation fault) selon l'ordre des tests.
+_FENETRES = []
+
+
+@pytest.fixture(autouse=True)
+def _fermer_les_fenetres(qapp):
+    yield
+    while _FENETRES:
+        dlg = _FENETRES.pop()
+        dlg._fermeture_confirmee = True
+        dlg.hide()
+        dlg.deleteLater()
+    qapp.processEvents()
 
 
 def _feuille(dlg, db_id):
@@ -120,6 +139,7 @@ class TestDialog:
         dlg = SuggestionValidationDialog(
             None, snapshot, lambda d: recus.setdefault('valides', d), value_picker=value_picker,
             on_refuse=lambda r: recus.setdefault('refus', r), preuves=preuves)
+        _FENETRES.append(dlg)
         return dlg, recus
 
     def test_etat_initial(self, qapp):
@@ -317,3 +337,90 @@ class TestDialog:
         appliquer = dlg._confirmation.buttons()[0]
         dlg._confirmation.buttonClicked.emit(appliquer)
         assert not dlg.isVisible() and len(recus['valides']) == 1
+
+
+# ── Une valeur pour plusieurs lignes (D23, 2026-11-24) ────────────────────────
+
+def _type_seul(ref='PF'):
+    return _cand(type_='Réfrigérateur', mfr='', score=1.0, tier='P_type_piece', ref=ref,
+                 nb_appareils=12)
+
+
+class TestCorrectionPlusieursLignes:
+    def _make(self, qapp, snapshot, valeur):
+        appels = []
+        recus = {}
+
+        def picker(champ, actuelle, cands, ok):
+            appels.append((champ, actuelle, list(cands)))
+            ok(valeur)
+        dlg = SuggestionValidationDialog(None, snapshot, lambda d: recus.setdefault('valides', d),
+                                         value_picker=picker)
+        _FENETRES.append(dlg)
+        return dlg, appels, recus
+
+    def _selectionner(self, dlg, items):
+        dlg._arbre.clearSelection()
+        for item in items:
+            item.setSelected(True)
+        dlg._arbre.setCurrentItem(items[0])
+        for item in items:      # setCurrentItem peut remplacer la sélection
+            item.setSelected(True)
+
+    def test_marque_donnee_aux_lignes_selectionnees(self, qapp):
+        snap = [_entry(i, [_type_seul()], ref=f"R/{i}") for i in (1, 2, 3)]
+        dlg, appels, recus = self._make(qapp, snap, "Whirlpool")
+        self._selectionner(dlg, [_feuille(dlg, 1), _feuille(dlg, 3)])
+        dlg._btn_marque.click()
+        assert appels == [('manufacturer', '', [])]          # une seule question, sans candidat
+        for db_id in (1, 3):
+            feuille = _feuille(dlg, db_id)
+            assert feuille.text(COL_NEW_MFR) == "Whirlpool"
+            assert feuille.text(COL_NEW_TYPE) == "Réfrigérateur"
+            assert feuille.text(COL_PREUVE) == "corrigé"
+            assert dlg.etat(feuille) == VALIDE
+        assert _feuille(dlg, 2).text(COL_NEW_MFR) == ""
+        dlg._on_appliquer()
+        assert sorted((db, c['type'], c['manufacturer']) for db, c in recus['valides']) == [
+            (1, 'Réfrigérateur', 'Whirlpool'), (2, 'Réfrigérateur', ''), (3, 'Réfrigérateur', 'Whirlpool')]
+
+    def test_ligne_de_groupe_vaut_pour_tout_le_groupe(self, qapp):
+        snap = [_entry(1, [_type_seul('P1')]), _entry(2, [_type_seul('P1')]),
+                _entry(3, [_cand(tier='A_suffix_variant', score=1.0)])]
+        dlg, appels, _ = self._make(qapp, snap, "Beko")
+        groupe = _feuille(dlg, 1).parent()
+        assert groupe is not None and groupe is _feuille(dlg, 2).parent()
+        self._selectionner(dlg, [groupe])
+        _touche(dlg, Qt.Key_M)
+        assert [_feuille(dlg, i).text(COL_NEW_MFR) for i in (1, 2, 3)] == ["Beko", "Beko", "Balay"]
+
+    def test_entree_sur_plusieurs_lignes_corrige_le_type(self, qapp):
+        snap = [_entry(1, [_cand(type_='Four', score=0.92, tier='B_fuzzy_alpha')]),
+                _entry(2, [_cand(type_='Four', score=0.92, tier='B_fuzzy_alpha')])]
+        dlg, appels, _ = self._make(qapp, snap, "Four vapeur")
+        self._selectionner(dlg, [_feuille(dlg, 1), _feuille(dlg, 2)])
+        _touche(dlg, Qt.Key_Return)
+        assert appels == [('type', 'Four', [])]              # valeur commune proposée
+        assert [_feuille(dlg, i).text(COL_NEW_TYPE) for i in (1, 2)] == ["Four vapeur"] * 2
+        assert [_feuille(dlg, i).text(COL_NEW_MFR) for i in (1, 2)] == ["Balay"] * 2
+
+    def test_une_ligne_garde_la_correction_habituelle(self, qapp):
+        siemens = _cand(type_='Four', mfr='Siemens', score=0.88, tier='B_fuzzy_alpha')
+        snap = [_entry(1, [_cand(score=0.92, tier='B_fuzzy_alpha'), siemens]), _entry(2, [_cand()])]
+        dlg, appels, _ = self._make(qapp, snap, "Bosch")
+        self._selectionner(dlg, [_feuille(dlg, 1)])
+        _touche(dlg, Qt.Key_M)
+        assert appels[0][0] == 'manufacturer' and len(appels[0][2]) == 2   # candidats proposés
+        assert _feuille(dlg, 1).text(COL_NEW_MFR) == "Bosch"
+        assert _feuille(dlg, 2).text(COL_NEW_MFR) == "Balay"
+
+    def test_annulation_du_selecteur_ne_touche_rien(self, qapp):
+        snap = [_entry(i, [_type_seul()]) for i in (1, 2)]
+        dlg, _, _ = self._make(qapp, snap, None)
+        self._selectionner(dlg, [_feuille(dlg, 1), _feuille(dlg, 2)])
+        dlg._btn_marque.click()
+        assert [_feuille(dlg, i).text(COL_PREUVE) for i in (1, 2)] != ["corrigé"] * 2
+        assert [_feuille(dlg, i).text(COL_NEW_MFR) for i in (1, 2)] == ["", ""]
+
+    def test_aide_mentionne_la_touche_m(self, qapp):
+        assert "M : donner une marque" in SuggestionValidationDialog.AIDE_RACCOURCIS
