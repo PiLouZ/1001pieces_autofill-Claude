@@ -204,8 +204,10 @@ class SaisieAgora(QDialog):
     def choisir_dossier_myspace(self):
         from src.utils.boites import choisir_dossier
         dossier = os.path.dirname(self.base.meta('dossier') or '') or os.path.expanduser('~')
+        # Sélecteur dessiné par Qt (natif=False) : le natif macOS, ouvert depuis une
+        # fenêtre non modale, peut rester invisible et bloquer tous les clics (cf. boites)
         choisir_dossier(self, "Dossier des fichiers MySpace (Parts_N, Products_N)", dossier,
-                        self.charger_myspace)
+                        self.charger_myspace, natif=False)
 
     def charger_myspace(self, dossier: str):
         if not dossier or self._thread is not None:
