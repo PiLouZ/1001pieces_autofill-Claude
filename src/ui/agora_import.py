@@ -164,11 +164,13 @@ class SaisieAgora(QDialog):
         self.zone_agora.setAlignment(Qt.AlignTop)
         racine.addWidget(self.zone_agora, 1)
 
-        pied = QHBoxLayout()
+        # Quota sur sa propre ligne : à côté des boutons, il était écrasé en colonne
         self.etat = QLabel("")
         self.etat.setWordWrap(True)
         self.etat.setStyleSheet(StyleManager.TEXTE_SECONDAIRE)
-        pied.addWidget(self.etat, 1)
+        racine.addWidget(self.etat)
+
+        pied = QHBoxLayout()
         fermer = QPushButton("Fermer")
         fermer.setStyleSheet(StyleManager.SECONDARY_ACTION_BUTTON)
         fermer.clicked.connect(self.close)
@@ -183,6 +185,7 @@ class SaisieAgora(QDialog):
         self.bouton_import.setEnabled(False)
         self.bouton_import.clicked.connect(self.ouvrir_import)
         pied.addWidget(fermer)
+        pied.addStretch(1)
         self.choix_ref = QComboBox()
         self.choix_ref.setToolTip("Référence de la famille dont on demande les appareils compatibles "
                                   "(1 appel, sauf si déjà en cache)")
