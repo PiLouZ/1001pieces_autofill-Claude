@@ -193,6 +193,52 @@ class CustomTableView(QTableView):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._update_frozen_geometry()
+        self._placer_bouton_vide()
+
+    # ── Action proposée sous « Aucun résultat » ──────────────────────────────
+
+    def definir_action_si_vide(self, libelle, rappel=None):
+        """Bouton affiché sous le message « Aucun résultat » (ex. « Créer
+        l'appareil « A694645.00 » »), ou retiré si `libelle` est vide. Le
+        contrôleur ne le propose que quand la recherche ne trouve rien."""
+        bouton = getattr(self, '_bouton_vide', None)
+        self._rappel_vide = rappel if libelle else None
+        if not libelle:
+            if bouton is not None and not bouton.isHidden():
+                bouton.hide()
+                self.viewport().update()
+            return
+        if bouton is None:
+            from PyQt5.QtWidgets import QPushButton
+            from .style_manager import StyleManager
+            bouton = QPushButton(self.viewport())
+            bouton.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
+            bouton.setCursor(Qt.PointingHandCursor)
+            bouton.setToolTip("Crée l'appareil avec ce qui est saisi dans les filtres (Cmd+N)")
+            bouton.clicked.connect(self._sur_bouton_vide)
+            self._bouton_vide = bouton
+        bouton.setText(libelle)
+        bouton.adjustSize()
+        self._placer_bouton_vide()
+        bouton.show()
+        self.viewport().update()
+
+    def action_si_vide(self):
+        """Libellé du bouton proposé sous « Aucun résultat », ou None."""
+        bouton = getattr(self, '_bouton_vide', None)
+        return bouton.text() if bouton is not None and not bouton.isHidden() else None
+
+    def _sur_bouton_vide(self, checked=False):
+        rappel = getattr(self, '_rappel_vide', None)
+        if rappel is not None:
+            rappel()
+
+    def _placer_bouton_vide(self):
+        bouton = getattr(self, '_bouton_vide', None)
+        if bouton is None:
+            return
+        zone = self.viewport().rect()
+        bouton.move(zone.center().x() - bouton.width() // 2, zone.center().y() + 8)
 
     def paintEvent(self, event):
         """Affiche un message centré quand le modèle est vide."""
@@ -204,6 +250,10 @@ class CustomTableView(QTableView):
             font.setPointSize(13)
             painter.setFont(font)
             painter.setPen(QColor(160, 160, 160))
+            zone = self.viewport().rect()
+            if self.action_si_vide():
+                # Message remonté au-dessus du bouton
+                zone = zone.adjusted(0, 0, 0, -48)
             search_term = getattr(self.model(), '_search_term', None)
             if search_term and isinstance(search_term, str):
                 msg = f"Aucun résultat pour « {search_term} »"
@@ -212,7 +262,7 @@ class CustomTableView(QTableView):
                 msg = f"Aucun résultat pour « {original} »" if original else "Aucun résultat"
             else:
                 msg = "Aucun résultat"
-            painter.drawText(self.viewport().rect(), Qt.AlignCenter, msg)
+            painter.drawText(zone, Qt.AlignCenter, msg)
             painter.restore()
 
     def keyPressEvent(self, event: QKeyEvent):

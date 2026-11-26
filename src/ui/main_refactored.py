@@ -3550,11 +3550,72 @@ class MainWindow(QMainWindow):
         """Helper sécurisé pour ajouter une nouvelle ligne"""
         # PHASE 3.3: Déléguer au DatabaseOperationsService
         if hasattr(self, 'database_operations_service') and self.database_operations_service:
+            # Recherche sans résultat : l'appareil reprend la référence cherchée
+            # (et Type / Marque s'ils sont filtrés), lue AVANT la création — après,
+            # la ligne épinglée rend le tableau non vide.
+            controleur = getattr(self, 'table_controller', None)
+            valeurs = (controleur.valeurs_pour_nouvel_appareil()
+                       if controleur is not None and hasattr(controleur, 'valeurs_pour_nouvel_appareil')
+                       else {})
             device_id = self.database_operations_service.add_new_device()
             if not device_id:
                 app_logger.error("Échec de l'ajout de nouvelle ligne")
+            elif valeurs:
+                self._preremplir_nouvel_appareil(device_id, valeurs)
         else:
             app_logger.warning("DatabaseOperationsService non disponible")
+
+    def _preremplir_nouvel_appareil(self, device_id: int, valeurs: dict) -> int:
+        """Écrit dans la ligne de l'appareil créé les valeurs reprises des filtres
+        ({colonne: valeur}), puis place le curseur sur la première cellule
+        Type / Marque restée vide.
+
+        Même chemin que la saisie (setData → cell_edited : validation, casse
+        alignée sur la base, historique), avec une seule sauvegarde
+        (EventDrivenSaveService) et une seule action d'annulation, comme
+        _ecrire_valeur_selection. Retourne le nombre de cellules écrites.
+        """
+        controleur = self.table_controller
+        model = controleur.model
+        row = model.find_row_by_db_id(device_id) if model is not None else None
+        if row is None:
+            return 0
+
+        self._bulk_edit_collector = set()
+        self._undo_groupe = []
+        champs = {}
+        try:
+            for colonne, valeur in sorted(valeurs.items()):
+                champ = self._get_db_field_name(colonne)
+                if not champ or not self.validator.validate_field(champ, valeur).is_valid:
+                    continue
+                index = model.index(row, colonne)
+                if not (index.isValid() and model.flags(index) & Qt.ItemIsEditable):
+                    continue
+                model.setData(index, valeur, Qt.EditRole)
+                if (row, colonne) in self._bulk_edit_collector:
+                    # Valeur retenue après alignement de casse
+                    champs[champ] = model.data(index, Qt.DisplayRole) or ""
+        finally:
+            self._bulk_edit_collector = None
+            actions, self._undo_groupe = self._undo_groupe, None
+
+        if actions:
+            self.undo_manager.add_action({'type': 'cell_edits', 'actions': actions})
+        if champs:
+            self.event_driven_save_service.enregistrer_champs_appareils({device_id: champs})
+        self._update_toolbar_states()
+        self._update_incomplete_button_visibility()
+
+        colonne_vide = next((c for c in (0, 1)
+                             if not (model.data(model.index(row, c), Qt.DisplayRole) or "").strip()), None)
+        controleur._focus_cell(row, colonne_vide if colonne_vide is not None else 0)
+        if hasattr(self, 'statusbar') and champs:
+            reste = " ; complétez Type et Marque" if colonne_vide is not None else ""
+            self.statusbar.showMessage(
+                f"Appareil créé avec {', '.join(sorted(champs.values()))}{reste}",
+                Config.STATUS_MESSAGE_TIMEOUT)
+        return len(champs)
 
     def _handle_paste(self):
         """Gestion du collage de données depuis le presse-papiers - Version refactorisée Phase 2.5"""

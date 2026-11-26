@@ -3,7 +3,7 @@ Gestionnaire de base de données pour l'application de gestion d'appareils
 """
 
 import sqlite3
-from typing import List, Tuple, Optional, Dict, Any
+from typing import List, Tuple, Optional, Dict, Any, Sequence
 from collections import OrderedDict
 import hashlib
 
@@ -429,12 +429,16 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                   offset: Optional[int] = None,
                   sort_column: Optional[int] = None,
                   sort_order: Optional[str] = None,
-                  incomplete_filter: bool = False) -> List[Tuple]:
+                  incomplete_filter: bool = False,
+                  ids_epingles: Optional[Sequence[int]] = None) -> List[Tuple]:
         """Charger les données avec cache LRU optionnel (SMART_CACHE_ENABLED).
 
         Le cache est actif uniquement pour les requêtes sans filtres complexes
         (column_filters, incomplete_filter). Il est invalidé après chaque écriture
         via invalidate_search_cache().
+
+        ids_epingles : appareils ajoutés pendant la recherche en cours, affichés en
+        tête quelle que soit la recherche (cf. _build_load_conditions).
         """
         with self._query_lock:
             use_cache = (
@@ -446,7 +450,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             if use_cache:
                 cache_key = self._make_load_cache_key(
                     search_term, column_filters, limit, offset,
-                    sort_column, sort_order, incomplete_filter
+                    sort_column, sort_order, incomplete_filter, ids_epingles
                 )
                 if cache_key in self.search_cache.cache:
                     self.search_cache.cache.move_to_end(cache_key)
@@ -455,7 +459,7 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
 
             result = self._load_data_original(
                 search_term, column_filters, limit, offset,
-                sort_column, sort_order, incomplete_filter
+                sort_column, sort_order, incomplete_filter, ids_epingles
             )
 
             if use_cache:
@@ -467,13 +471,15 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
             return result
 
     def _make_load_cache_key(self, search_term, column_filters, limit, offset,
-                             sort_column, sort_order, incomplete_filter) -> str:
+                             sort_column, sort_order, incomplete_filter,
+                             ids_epingles=None) -> str:
         """Clé de cache unique pour load_data — hash MD5 de tous les paramètres."""
         import hashlib
         key = (
             str(search_term),
             str(sorted(column_filters.items()) if column_filters else []),
-            limit, offset, sort_column, sort_order, incomplete_filter
+            limit, offset, sort_column, sort_order, incomplete_filter,
+            tuple(ids_epingles or ())
         )
         return hashlib.sha256(str(key).encode()).hexdigest()
 
@@ -525,7 +531,8 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                           offset: Optional[int] = None,
                           sort_column: Optional[int] = None,
                           sort_order: Optional[str] = None,
-                          incomplete_filter: bool = False) -> List[Tuple]:
+                          incomplete_filter: bool = False,
+                          ids_epingles: Optional[Sequence[int]] = None) -> List[Tuple]:
         """Méthode originale de chargement des données (fallback)"""
         try:
             # Construction de la requête avec comptage des pièces.
@@ -541,10 +548,11 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                         WHERE pa.appareil_id = a.id) as pieces_count
                 FROM appareils a
             """
-            conditions, params = self._build_load_conditions(search_term, column_filters, incomplete_filter)
+            conditions, params = self._build_load_conditions(
+                search_term, column_filters, incomplete_filter, ids_epingles)
             if conditions:
                 query += " WHERE " + " AND ".join(conditions)
-            query += self._build_load_order_by(sort_column, sort_order)
+            query += self._build_load_order_by(sort_column, sort_order, ids_epingles)
             
             # Ajouter LIMIT et OFFSET pour la pagination
             if limit:
@@ -560,7 +568,8 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
     
     def _build_load_conditions(self, search_term: Optional[str],
                                column_filters: Optional[Dict[int, str]],
-                               incomplete_filter: bool) -> Tuple[List[str], List]:
+                               incomplete_filter: bool,
+                               ids_epingles: Optional[Sequence[int]] = None) -> Tuple[List[str], List]:
         """Conditions WHERE (et leurs paramètres) du périmètre affiché à l'écran :
         recherche, filtres de colonne, filtre « lignes incomplètes ».
 
@@ -569,7 +578,32 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         get_export_data (CSV, HTML Marques / Détails) : une seule source, donc la
         position calculée en SQL désigne forcément une ligne de la page affichée,
         le total compte exactement ces lignes et l'export sort exactement elles.
+
+        ids_epingles : appareils ajoutés pendant la recherche en cours. Ils
+        échappent à la recherche et aux filtres de colonne (« (recherche ET
+        filtres) OU id épinglé »), pas au filtre « Lignes à traiter ». Passés par
+        les pages, le comptage et le saut ▲/▼, jamais par l'export : une ligne
+        épinglée est montrée, pas exportée.
         """
+        conditions, params = self._conditions_recherche_et_filtres(search_term, column_filters)
+
+        ids = [int(i) for i in (ids_epingles or ())]
+        if ids and conditions:
+            marqueurs = ', '.join('?' for _ in ids)
+            conditions = [f"(({' AND '.join(conditions)}) OR a.id IN ({marqueurs}))"]
+            params = params + ids
+
+        # Filtre pour les lignes incomplètes (champs type OU manufacturer vides)
+        if incomplete_filter:
+            conditions.append(self._get_incomplete_condition())
+
+        return conditions, params
+
+    def _conditions_recherche_et_filtres(self, search_term: Optional[str],
+                                         column_filters: Optional[Dict[int, str]]
+                                         ) -> Tuple[List[str], List]:
+        """Conditions de la recherche et des filtres de colonne (sans le filtre
+        « Lignes à traiter »), cf. _build_load_conditions."""
         params = []
         conditions = []
 
@@ -590,14 +624,11 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                         conditions.append(filtre[0])
                         params.extend(filtre[1])
 
-        # Filtre pour les lignes incomplètes (champs type OU manufacturer vides)
-        if incomplete_filter:
-            conditions.append(self._get_incomplete_condition())
-
         return conditions, params
 
     @staticmethod
-    def _build_load_order_by(sort_column: Optional[int], sort_order: Optional[str]) -> str:
+    def _build_load_order_by(sort_column: Optional[int], sort_order: Optional[str],
+                             ids_epingles: Optional[Sequence[int]] = None) -> str:
         """Clause ORDER BY des pages affichées.
 
         Tri par colonne : départagé par a.id dans le même sens. Les ex-æquo
@@ -606,55 +637,71 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         position de find_incomplete_position. Sur les colonnes indexées c'est
         déjà l'ordre de lecture de l'index (valeur puis rowid) : même résultat,
         même plan. Seul le tri sans index (Notes) y gagne un ordre déterministe.
+
+        ids_epingles : en tête, le plus récent d'abord, quel que soit le tri.
+        Entiers écrits dans la requête (int() les garantit) : la même clause sert
+        au calcul de position, dont les paramètres sont déjà positionnés.
         """
         order = "ASC" if sort_order == "ASC" else "DESC"
+        ids = sorted({int(i) for i in (ids_epingles or ())}, reverse=True)
+        tete = ""
+        if ids:
+            rangs = ' '.join(f"WHEN {i} THEN {rang}" for rang, i in enumerate(ids))
+            tete = f"CASE a.id {rangs} ELSE {len(ids)} END, "
         if sort_column is not None and 0 <= sort_column < len(Config.DB_HEADERS):
-            return f" ORDER BY a.[{Config.DB_HEADERS[sort_column]}] {order}, a.id {order}"
+            return f" ORDER BY {tete}a.[{Config.DB_HEADERS[sort_column]}] {order}, a.id {order}"
         if sort_column is not None and sort_column == len(Config.DB_HEADERS):
             # Tri par nombre de pièces (dernière colonne)
-            return f" ORDER BY pieces_count {order}"
-        return " ORDER BY a.id DESC"  # Tri par défaut
+            return f" ORDER BY {tete}pieces_count {order}"
+        return f" ORDER BY {tete}a.id DESC"  # Tri par défaut
 
     def find_incomplete_position(self, search_term: Optional[str],
                                  column_filters: Optional[Dict[int, str]],
                                  sort_column: Optional[int], sort_order: Optional[str],
                                  incomplete_filter: bool,
-                                 from_position: int, direction: str) -> Optional[int]:
+                                 from_position: int, direction: str,
+                                 ids_epingles: Optional[Sequence[int]] = None) -> Optional[int]:
         """Position de la prochaine ligne incomplète (Type ou Fabricant vide),
         voir _find_position_par_condition."""
         return self._find_position_par_condition(
             self._get_incomplete_condition(), search_term, column_filters,
-            sort_column, sort_order, incomplete_filter, from_position, direction)
+            sort_column, sort_order, incomplete_filter, from_position, direction,
+            ids_epingles)
 
     def find_a_verifier_position(self, search_term: Optional[str],
                                  column_filters: Optional[Dict[int, str]],
                                  sort_column: Optional[int], sort_order: Optional[str],
                                  incomplete_filter: bool,
-                                 from_position: int, direction: str) -> Optional[int]:
+                                 from_position: int, direction: str,
+                                 ids_epingles: Optional[Sequence[int]] = None) -> Optional[int]:
         """Position de la prochaine ligne auto-complétée à vérifier (au moins une
         trace dans appareils_autocompletes), voir _find_position_par_condition."""
         return self._find_position_par_condition(
             "EXISTS (SELECT 1 FROM appareils_autocompletes t WHERE t.appareil_id = a.id)",
             search_term, column_filters,
-            sort_column, sort_order, incomplete_filter, from_position, direction)
+            sort_column, sort_order, incomplete_filter, from_position, direction,
+            ids_epingles)
 
     def find_type_propose_position(self, search_term: Optional[str],
                                    column_filters: Optional[Dict[int, str]],
                                    sort_column: Optional[int], sort_order: Optional[str],
                                    incomplete_filter: bool,
-                                   from_position: int, direction: str) -> Optional[int]:
+                                   from_position: int, direction: str,
+                                   ids_epingles: Optional[Sequence[int]] = None) -> Optional[int]:
         """Position de la prochaine ligne dont le type est proposé par une règle
         de nomenclature (lot 4), voir _find_position_par_condition."""
         return self._find_position_par_condition(
             "EXISTS (SELECT 1 FROM propositions_type p WHERE p.appareil_id = a.id)",
             search_term, column_filters,
-            sort_column, sort_order, incomplete_filter, from_position, direction)
+            sort_column, sort_order, incomplete_filter, from_position, direction,
+            ids_epingles)
 
     def _find_position_par_condition(self, condition: str, search_term: Optional[str],
                                      column_filters: Optional[Dict[int, str]],
                                      sort_column: Optional[int], sort_order: Optional[str],
                                      incomplete_filter: bool,
-                                     from_position: int, direction: str) -> Optional[int]:
+                                     from_position: int, direction: str,
+                                     ids_epingles: Optional[Sequence[int]] = None) -> Optional[int]:
         """Position (0-based, dans l'ordre exact de l'écran) de la prochaine ligne
         satisfaisant `condition` (SQL sur l'alias a) strictement après (direction
         'down') ou avant ('up') from_position. None si aucune.
@@ -675,9 +722,10 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         """
         if sort_column is not None and sort_column == len(Config.DB_HEADERS):
             raise ValueError("tri « Nb pièces » non pris en charge")
-        conditions, params = self._build_load_conditions(search_term, column_filters, incomplete_filter)
+        conditions, params = self._build_load_conditions(
+            search_term, column_filters, incomplete_filter, ids_epingles)
         where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
-        order_by = self._build_load_order_by(sort_column, sort_order)[len(" ORDER BY "):]
+        order_by = self._build_load_order_by(sort_column, sort_order, ids_epingles)[len(" ORDER BY "):]
         if direction == 'down':
             comparison, pick = "pos > ?", "ORDER BY pos ASC"
         else:
@@ -700,14 +748,17 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
                    column_filters: Optional[Dict[int, str]] = None,
                    sort_column: Optional[int] = None,
                    sort_order: Optional[str] = None,
-                   incomplete_filter: bool = False) -> int:
+                   incomplete_filter: bool = False,
+                   ids_epingles: Optional[Sequence[int]] = None) -> int:
         """Compter le nombre total de lignes correspondant aux critères"""
         with self._query_lock:
-            return self._count_data_core(search_term, column_filters, incomplete_filter)
+            return self._count_data_core(search_term, column_filters, incomplete_filter,
+                                         ids_epingles)
 
     def _count_data_core(self, search_term: Optional[str] = None,
                          column_filters: Optional[Dict[int, str]] = None,
-                         incomplete_filter: bool = False) -> int:
+                         incomplete_filter: bool = False,
+                         ids_epingles: Optional[Sequence[int]] = None) -> int:
         """Logique interne du comptage — appelée sous _query_lock.
 
         Cas sans filtre : retourne _total_count_cache (calculé une seule fois,
@@ -728,7 +779,8 @@ class DatabaseManager(DatabaseFts5Mixin, DatabaseSupersessionMixin, DatabaseSetu
         query = "SELECT COUNT(*) FROM appareils a"
         # Même périmètre que les pages affichées (_build_load_conditions) : le
         # total « N résultats » compte exactement les lignes du tableau.
-        conditions, params = self._build_load_conditions(search_term, column_filters, incomplete_filter)
+        conditions, params = self._build_load_conditions(
+            search_term, column_filters, incomplete_filter, ids_epingles)
 
         # Ajouter les conditions
         if conditions:

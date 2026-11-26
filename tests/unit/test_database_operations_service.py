@@ -90,7 +90,8 @@ class TestDatabaseOperationsService:
         # Vérifications
         assert device_id == 123
         database_service.db_manager.add_device.assert_called_once_with(device_data)
-        database_service.parent_window.table_controller.load_data.assert_called_once()
+        # Le tableau montre le nouvel appareil, épinglé même hors de la recherche
+        database_service.parent_window.table_controller.afficher_appareil_ajoute.assert_called_once_with(123)
         database_service.cache_service.invalidate_all.assert_called_once()
         database_service.user_interaction_service.add_to_history.assert_called_once()
 

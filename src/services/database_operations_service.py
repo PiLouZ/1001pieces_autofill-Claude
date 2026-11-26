@@ -88,9 +88,16 @@ class DatabaseOperationsService(BaseService):
         if device_id:
             self.log_operation("add_new_device", f"Nouvel appareil ajouté avec ID: {device_id}", "info")
 
-            # Recharger la table
-            if hasattr(self.parent_window, 'table_controller') and self.parent_window.table_controller:
-                self.parent_window.table_controller.load_data()
+            # Recharger la table en montrant le nouvel appareil, épinglé en tête
+            # même hors de la recherche en cours. (Avant : load_data() sans terme,
+            # qui oubliait la recherche par pièce et laissait les filtres masquer
+            # la ligne créée.)
+            controleur = getattr(self.parent_window, 'table_controller', None)
+            if controleur:
+                if hasattr(controleur, 'afficher_appareil_ajoute'):
+                    controleur.afficher_appareil_ajoute(device_id)
+                else:
+                    controleur.load_data()
 
             # Mettre à jour le bouton lignes incomplètes après ajout
             # Forcer l'invalidation du cache du service incomplete_button
