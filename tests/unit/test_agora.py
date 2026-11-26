@@ -48,8 +48,16 @@ def myspace(tmp_path, base):
         _produit('855555555555', 'CIG546 W', '04', 'SCHOLTES', 'Cuisiniere électrique'),
         _produit('850000000000', 'XYZ', '5', 'Autres marques', 'Divers'),
     ]).encode('latin-1'))
+    # Beko (17) : la même référence, remplacée, alors que la ligne Whirlpool est vide
+    (dossier / 'Parts_17.txt').write_bytes('\r\n'.join([
+        _piece('4346040285', 'C00866459', 'RELAIS', 1, 'Abandonnée'),
+        _piece('C00866459', '', 'RELAIS', 1, 'disponible'),
+    ]).encode('latin-1'))
+    pieces.append(_piece('4346040285', '', '', 0, ''))
+    with zipfile.ZipFile(dossier / 'Parts_2.zip', 'w') as z:
+        z.writestr('Parts_2.txt', '\r\n'.join(pieces).encode('latin-1'))
     comptes = charger_dossier(base, str(dossier))
-    assert comptes == {'Parts_2.zip': 7, 'Products_2.txt': 3}
+    assert comptes == {'Parts_2.zip': 8, 'Parts_17.txt': 2, 'Products_2.txt': 3}
     return FamillesMySpace(base)
 
 
@@ -85,6 +93,14 @@ def test_famille_article_epuise(myspace):
     f = myspace.famille('C00111111')
     assert f.epuisee and f.courante.ref == 'C00111111'
     assert myspace.famille('481299999990').epuisee
+
+
+def test_famille_meilleur_constructeur(myspace):
+    f = myspace.famille('4346040285')
+    assert f.courante.ref == 'C00866459' and f.courante.constructeur == 17
+    assert f.anciennes == ['4346040285'] and f.autres_constructeurs == [2]
+    # constructeur imposé : on le respecte
+    assert myspace.famille('4346040285', 2).courante.constructeur == 2
 
 
 def test_famille_inconnue(myspace):

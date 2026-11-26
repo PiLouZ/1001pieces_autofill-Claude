@@ -33,11 +33,14 @@ SANS_FICHIER = {33}
 
 # Code générique Whirlpool « ARTICLE EPUISE » : des centaines de pièces y renvoient,
 # ce n'est pas un remplacement
-_EPUISE = re.compile(r'ARTICLE\s+EPUIS', re.I)
+# (« ARTICLE EPUISE » dans le fichier Whirlpool, « PART NO LONGER AVAILABLE » chez Beko)
+_EPUISE = re.compile(r'ARTICLE\s+EPUIS|NO\s+LONGER\s+AVAILABLE', re.I)
+CODES_EPUISE = {'481299999990'}
+ANCIENNES_MAX = 60          # au-delà, ce n'est plus une famille mais un code générique
 
 
 def est_code_epuise(piece: 'PieceMySpace') -> bool:
-    return bool(_EPUISE.search(piece.designation or ''))
+    return cle_ref(piece.ref) in CODES_EPUISE or bool(_EPUISE.search(piece.designation or ''))
 
 _FICHIER = re.compile(r'^(Parts|Products)_(\d+)\.(zip|txt)$', re.I)
 
@@ -243,49 +246,75 @@ class FamillesMySpace:
         return pieces[0]
 
     def famille(self, saisie: str, constructeur: Optional[int] = None) -> FamilleAgora:
-        f = FamilleAgora(saisie=saisie.strip())
+        """Famille d'une référence. Sans constructeur imposé, chaque constructeur
+        qui connaît la référence est essayé et le meilleur résultat l'emporte :
+        une ligne Whirlpool vide ne doit pas masquer le remplacement donné par
+        le fichier Beko (4346040285 → C00866459)."""
         cle = cle_ref(saisie)
         if not cle or not myspace_charge(self.base):
-            return f
+            return FamilleAgora(saisie=saisie.strip())
         with self.base.connexion() as c:
-            depart = self._meilleure(c, cle, constructeur)
-            if depart is None:
-                return f
-            if est_code_epuise(depart):
-                f.epuisee = True
-                return f
-            f.autres_constructeurs = sorted({p.constructeur for p in self._pieces(c, cle)}
-                                            - {depart.constructeur})
-            # Vers l'avant : on suit la référence liée tant que la pièce n'est pas commandable
-            chaine, vues, p = [depart], {cle}, depart
-            while (p.etat not in (COMMANDABLE, RUPTURE) and cle_ref(p.ref_liee)
-                   and cle_ref(p.ref_liee) not in vues and len(chaine) < self.PROFONDEUR):
-                suivante = self._meilleure(c, cle_ref(p.ref_liee), p.constructeur)
-                if suivante is None or est_code_epuise(suivante):
-                    f.epuisee = suivante is not None
+            tous = sorted({p.constructeur for p in self._pieces(c, cle)})
+            if not tous:
+                return FamilleAgora(saisie=saisie.strip())
+            essais = [constructeur] if constructeur is not None else tous
+            familles = [self._famille(c, saisie, cle, n) for n in essais]
+        meilleure = min(familles, key=self._rang)
+        retenu = meilleure.courante.constructeur if meilleure.courante else None
+        meilleure.autres_constructeurs = [n for n in tous if n != retenu]
+        return meilleure
+
+    @staticmethod
+    def _rang(f: FamilleAgora) -> tuple:
+        """Ordre de préférence : pièce disponible, désignation renseignée, puis
+        chaîne la plus longue (les remplacements sont connus)."""
+        if f.courante is None:
+            return (9, 1, 0)
+        if f.epuisee and f.courante.etat not in (COMMANDABLE, RUPTURE):
+            return (8, 1, 0)
+        return (_ORDRE[f.courante.etat], 0 if f.courante.designation else 1,
+                -(len(f.chaine) + len(f.anciennes)))
+
+    def _famille(self, c, saisie: str, cle: str, constructeur: Optional[int]) -> FamilleAgora:
+        f = FamilleAgora(saisie=saisie.strip())
+        depart = self._meilleure(c, cle, constructeur)
+        if depart is None:
+            return f
+        if est_code_epuise(depart):
+            f.epuisee = True
+            return f
+        # Vers l'avant : on suit la référence liée tant que la pièce n'est pas commandable
+        chaine, vues, p = [depart], {cle}, depart
+        while (p.etat not in (COMMANDABLE, RUPTURE) and cle_ref(p.ref_liee)
+               and cle_ref(p.ref_liee) not in vues and len(chaine) < self.PROFONDEUR):
+            suivante = self._meilleure(c, cle_ref(p.ref_liee), p.constructeur)
+            if suivante is None or est_code_epuise(suivante):
+                f.epuisee = suivante is not None
+                break
+            vues.add(cle_ref(suivante.ref))
+            chaine.append(suivante)
+            p = suivante
+        f.chaine = chaine
+        disponibles = [x for x in chaine if x.etat in (COMMANDABLE, RUPTURE)]
+        f.courante = disponibles[-1] if disponibles else chaine[-1]
+        # Vers l'arrière : pièces remplacées par une référence de la chaîne
+        anciennes = [x.ref_publiee for x in chaine if x is not f.courante]
+        a_voir = [cle_ref(x.ref) for x in chaine]
+        vues_arriere = set(a_voir)
+        while a_voir and len(anciennes) < ANCIENNES_MAX:
+            cible = a_voir.pop(0)
+            for r in c.execute("SELECT ref, statut, commandable FROM myspace_pieces "
+                               "WHERE ref_liee_cle = ? AND constructeur = ? LIMIT ?",
+                               (cible, f.courante.constructeur, ANCIENNES_MAX + 1)):
+                k = cle_ref(r[0])
+                if k in vues_arriere or etat_piece(r[1], r[2]) in (COMMANDABLE, RUPTURE):
+                    continue
+                vues_arriere.add(k)
+                anciennes.append(ref_affichee(r[0]))
+                a_voir.append(k)
+                if len(anciennes) >= ANCIENNES_MAX:
                     break
-                vues.add(cle_ref(suivante.ref))
-                chaine.append(suivante)
-                p = suivante
-            f.chaine = chaine
-            disponibles = [x for x in chaine if x.etat in (COMMANDABLE, RUPTURE)]
-            f.courante = disponibles[-1] if disponibles else chaine[-1]
-            # Vers l'arrière : pièces remplacées par une référence de la chaîne
-            anciennes = [x.ref_publiee for x in chaine if x is not f.courante]
-            a_voir = [cle_ref(x.ref) for x in chaine]
-            vues_arriere = set(a_voir)
-            while a_voir and len(anciennes) < 40:
-                cible = a_voir.pop(0)
-                for r in c.execute("SELECT ref, statut, commandable FROM myspace_pieces "
-                                   "WHERE ref_liee_cle = ? AND constructeur = ?",
-                                   (cible, f.courante.constructeur)):
-                    k = cle_ref(r[0])
-                    if k in vues_arriere or etat_piece(r[1], r[2]) in (COMMANDABLE, RUPTURE):
-                        continue
-                    vues_arriere.add(k)
-                    anciennes.append(ref_affichee(r[0]))
-                    a_voir.append(k)
-            f.anciennes = [r for r in dict.fromkeys(anciennes) if r != f.courante.ref_publiee]
+        f.anciennes = [r for r in dict.fromkeys(anciennes) if r != f.courante.ref_publiee]
         return f
 
     def produits(self, appareils: List[Tuple[str, str]],
