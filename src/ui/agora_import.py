@@ -24,6 +24,7 @@ from typing import Dict, List, Optional
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtWidgets import (
     QApplication, QComboBox, QDialog, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout,
+    QWidget,
 )
 import qtawesome as qta
 
@@ -36,6 +37,13 @@ from src.utils.agora.myspace import (COMMANDABLE, CONSTRUCTEURS, SANS_FICHIER, F
                                      FamillesMySpace, charger_dossier, myspace_charge)
 from src.utils.agora.stockage import BaseAgora, cle_ref
 from .style_manager import StyleManager
+
+
+def _prix(texte: str) -> Optional[float]:
+    try:
+        return round(float((texte or '').replace('€', '').replace(',', '.').strip()), 2) or None
+    except ValueError:
+        return None
 
 
 def _euros(valeur) -> str:
@@ -164,6 +172,22 @@ class SaisieAgora(QDialog):
         self.zone_agora.setAlignment(Qt.AlignTop)
         racine.addWidget(self.zone_agora, 1)
 
+        # Code produit et prix proposés, modifiables avant l'import (Pierre-Louis, 2026-11-26)
+        self.ligne_fiche = QWidget()
+        ligne = QHBoxLayout(self.ligne_fiche)
+        ligne.setContentsMargins(0, 0, 0, 0)
+        ligne.addWidget(QLabel("Code produit :"))
+        self.champ_code = QLineEdit()
+        self.champ_code.setToolTip("Référence PrestaShop = code Cogilog, d'après les règles des codes produit")
+        ligne.addWidget(self.champ_code, 1)
+        ligne.addWidget(QLabel("Prix TTC :"))
+        self.champ_prix = QLineEdit()
+        self.champ_prix.setMaximumWidth(110)
+        ligne.addWidget(self.champ_prix)
+        ligne.addStretch(1)
+        self.ligne_fiche.setVisible(False)
+        racine.addWidget(self.ligne_fiche)
+
         # Quota sur sa propre ligne : à côté des boutons, il était écrasé en colonne
         self.etat = QLabel("")
         self.etat.setWordWrap(True)
@@ -261,6 +285,9 @@ class SaisieAgora(QDialog):
         f = self.famille
         self.lignes, self.info, self.info_lue, self.message_prix, self.cas = None, {}, False, [], {}
         self.zone_agora.setText("")
+        self.ligne_fiche.setVisible(False)
+        self.champ_code.clear()
+        self.champ_prix.clear()
         self.bouton_import.setEnabled(False)
         if f.trouvee:
             self.constructeur = choisi if choisi is not None else f.courante.constructeur
@@ -389,8 +416,11 @@ class SaisieAgora(QDialog):
         lignes = list(self.message_prix)
         appareils = r.get('appareils')
         if APPAREILS in r['erreurs']:
-            lignes.append(f"<b style='color:#c0392b'>Appareils de {e(ref)} : {e(r['erreurs'][APPAREILS])}.</b> "
-                          "Importez le PDF de la pièce (Fichier → Importer).")
+            erreur = r['erreurs'][APPAREILS]
+            lignes.append(f"<b style='color:#c0392b'>Appareils de {e(ref)} : {e(erreur)}.</b> "
+                          + ("Agora échoue souvent ainsi sur les pièces aux dizaines de milliers "
+                             "d'appareils. " if 'code 500' in erreur else "")
+                          + "Importez le PDF de la pièce (Fichier → Importer).")
         elif appareils is not None:
             self.cas[ref] = None if appareils.absente else list(appareils.donnees)
         self._calculer_lignes()
@@ -423,7 +453,7 @@ class SaisieAgora(QDialog):
             p = prix_emg(self.info, self.constructeur)
             dispo = self.info.get('Availability')
             statut = self.info.get('Status') or ''
-            texte = (f"Prix de vente : <b>{_euros(p.vente)}</b> TTC ({e(p.regle)} ; achat "
+            texte = (f"Prix de vente proposé : <b>{_euros(p.vente)}</b> TTC ({e(p.regle)} ; achat "
                      f"{_euros(p.achat_ht)} HT, public {_euros(p.public)})")
             if dispo is not None or statut:
                 texte += (f" · disponible : {'oui' if dispo else 'non'}" if dispo is not None else '') + \
@@ -436,9 +466,15 @@ class SaisieAgora(QDialog):
                               f"{e(self.info['ReplaceBy'])}.</span>")
         else:
             lignes.append("Prix : Agora ne connaît pas cette référence.")
-        code = code_emg_propose(self.ref_agora, self.constructeur)
-        lignes.append(f"Code produit proposé (référence PrestaShop / Cogilog) : <b>{e(code)}</b>, à vérifier"
-                      if code else "Code produit : préfixe inconnu pour ce constructeur, à saisir.")
+        # Code et prix proposés dans les champs modifiables (pas d'écrasement d'une saisie)
+        if not self.champ_code.text():
+            code = code_emg_propose(self.ref_agora, self.constructeur)
+            self.champ_code.setText(code or '')
+            self.champ_code.setPlaceholderText("aucune règle : à saisir")
+        if not self.champ_prix.text() and self.info:
+            vente = prix_emg(self.info, self.constructeur).vente
+            self.champ_prix.setText(f"{vente:.2f}".replace('.', ',') if vente else '')
+        self.ligne_fiche.setVisible(True)
         return lignes
 
     def _calculer_lignes(self):
@@ -463,9 +499,10 @@ class SaisieAgora(QDialog):
         designation = self.info.get('Description') or (f.courante.designation if f and f.courante else '')
         # Données commerciales gardées pour la fiche PrestaShop / Cogilog (agora_fiche.py)
         p = prix_emg(self.info, self.constructeur) if self.info else None
-        self.base.noter_fiche(self.ref_agora, self.constructeur,
-                              code_emg_propose(self.ref_agora, self.constructeur) or '', designation,
-                              p.achat_ht if p else None, p.vente if p else None, p.regle if p else '')
+        prix_saisi = _prix(self.champ_prix.text())
+        regle = (p.regle if p else '') if prix_saisi == (p.vente if p else None) else "prix saisi"
+        self.base.noter_fiche(self.ref_agora, self.constructeur, self.champ_code.text().strip(),
+                              designation, p.achat_ht if p else None, prix_saisi, regle)
         fichier = ImportFile(
             path=f"Agora {self.ref_agora}", type=FileType.CLIPBOARD,
             suggested_reference=self.ref_agora, suggested_label=libelle_piece(designation),

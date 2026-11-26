@@ -74,15 +74,16 @@ def ouvrir_fiche_site(main_window):
         meta_title=seo.calculer_meta_title(donnees)['title'],
         meta_description=seo.calculer_meta_description(donnees)['description'],
     )
-    dialogue = FicheSiteDialog(main_window, fiche, agora)
+    dialogue = FicheSiteDialog(main_window, fiche, agora, ctx_titre, ctx_fiche)
     dialogue.show()
     return dialogue
 
 
 class FicheSiteDialog(QDialog):
-    def __init__(self, main_window, fiche: FicheSite, agora: dict):
+    def __init__(self, main_window, fiche: FicheSite, agora: dict, ctx_titre=None, ctx_fiche=None):
         super().__init__(main_window)
         self.main_window, self.fiche, self.agora = main_window, fiche, agora
+        self.ctx_titre, self.ctx_fiche = ctx_titre, ctx_fiche
         self.dossier = ''
         self.setWindowTitle(f"Fiche PrestaShop et Cogilog — {fiche.reference}")
         self.setAttribute(Qt.WA_DeleteOnClose)
@@ -116,15 +117,24 @@ class FicheSiteDialog(QDialog):
         self.champ_meta_title = QLineEdit(f.meta_title)
         self.champ_meta_description = QLineEdit(f.meta_description)
         formulaire.addRow("Code produit :", self.champ_code)
+        config = getattr(self.main_window, 'export_config_service', None)
+        self.gabarit_titre = self._choix_gabarit(
+            config.get_titre_profile_names() if config else [],
+            config.get_default_titre_profile_name() if config else '', self._maj_titre)
+        self.gabarit_fiche = self._choix_gabarit(
+            config.get_fiche_profile_names() if config else [],
+            config.get_default_fiche_profile_name() if config else '', self._maj_description)
+        formulaire.addRow("Gabarit du nom :", self.gabarit_titre)
         formulaire.addRow("Nom :", self.champ_nom)
         formulaire.addRow("Catégorie :", self.champ_categorie)
         formulaire.addRow("Fabricant :", self.champ_fabricant)
         formulaire.addRow("Prix TTC :", ligne_prix)
         formulaire.addRow("Méta title :", self.champ_meta_title)
         formulaire.addRow("Méta description :", self.champ_meta_description)
-        regle = f" ({html.escape(self.agora['regle_prix'])})" if self.agora.get('regle_prix') else ''
-        formulaire.addRow("Description :", QLabel(
-            f"Fiche complète, {len(f.description)} caractères · photo : provisoire, à faire au studio{regle}"))
+        formulaire.addRow("Gabarit de la description :", self.gabarit_fiche)
+        self.resume_description = QLabel()
+        formulaire.addRow("Description :", self.resume_description)
+        self._maj_resume()
         racine.addLayout(formulaire)
         self._maj_ht()
 
@@ -149,6 +159,31 @@ class FicheSiteDialog(QDialog):
         pied.addWidget(self.bouton_dossier)
         pied.addWidget(ajouter)
         racine.addLayout(pied)
+
+    @staticmethod
+    def _choix_gabarit(noms, defaut, rappel) -> QComboBox:
+        choix = QComboBox()
+        choix.addItems(list(noms))
+        if defaut:
+            choix.setCurrentText(defaut)
+        choix.currentTextChanged.connect(lambda *_: rappel())
+        return choix
+
+    def _maj_titre(self):
+        if self.ctx_titre is not None:
+            self.champ_nom.setText(self.main_window.titre_produit_service.rendre(
+                self.ctx_titre, self.gabarit_titre.currentText() or None)['html'])
+
+    def _maj_description(self):
+        if self.ctx_fiche is not None:
+            self.fiche.description = self.main_window.fiche_produit_service.rendre(
+                self.ctx_fiche, self.gabarit_fiche.currentText() or None)['html']
+        self._maj_resume()
+
+    def _maj_resume(self):
+        regle = f" · prix : {html.escape(self.agora['regle_prix'])}" if self.agora.get('regle_prix') else ''
+        self.resume_description.setText(
+            f"{len(self.fiche.description)} caractères · photo : provisoire, à faire au studio{regle}")
 
     def _maj_ht(self):
         ttc = _prix(self.champ_prix.text())
