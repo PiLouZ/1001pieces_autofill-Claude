@@ -81,11 +81,15 @@ def ouvrir_fiche_site(main_window):
     """Prépare la fiche de la recherche en cours ; les refus (pas de recherche,
     libellé manquant…) sont signalés par les services, comme pour les boutons."""
     relancer = lambda: ouvrir_fiche_site(main_window)
+    terme = getattr(getattr(main_window, 'search_input', None), 'text', lambda: '')()
+    app_logger.info(f"[Fiche site] ouverture pour « {terme} »")
     ctx_titre = main_window.titre_produit_service.contexte(interactif=True, relancer=relancer)
     if not ctx_titre:
+        app_logger.info(f"[Fiche site] titre refusé : {getattr(main_window.seo_service, 'raison_refus', '')}")
         return None
     ctx_fiche = main_window.fiche_produit_service.contexte(interactif=True)
     if not ctx_fiche:
+        app_logger.info(f"[Fiche site] fiche refusée : {getattr(main_window.seo_service, 'raison_refus', '')}")
         return None
     donnees = ctx_titre['donnees']
     seo = main_window.seo_service
@@ -110,6 +114,9 @@ def ouvrir_fiche_site(main_window):
                                type_appareil=donnees.get('type_appareil') or '',
                                famille=_famille(main_window, reference))
     dialogue.show()
+    dialogue.raise_()
+    dialogue.activateWindow()
+    app_logger.info(f"[Fiche site] fenêtre ouverte pour {reference} (code {code or '—'})")
     return dialogue
 
 

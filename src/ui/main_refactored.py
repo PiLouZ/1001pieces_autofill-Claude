@@ -2761,6 +2761,8 @@ class MainWindow(QMainWindow):
         except Exception as e:
             app_logger.error(f"Fiche PrestaShop / Cogilog : {e}", exc_info=True)
             self.statusbar.showMessage(f"Fiche PrestaShop / Cogilog non préparée : {e}", 8000)
+            self.user_interaction_service.add_to_history(
+                f"Fiche PrestaShop / Cogilog non préparée\n==> {type(e).__name__} : {e}")
 
     def _open_regles_codes(self):
         """Règles des codes produit des fiches nouvelles (src/ui/agora_regles_codes.py)."""
