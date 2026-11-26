@@ -8,7 +8,8 @@ import pytest
 
 from src.utils.agora.client import (APPAREILS, INFO, ClientAgora, ErreurAgora, QuotaEpuise)
 from src.utils.agora.conversion import (ENTETES, code_emg_propose, libelle_piece,
-                                        lignes_appareils, marque_canonique, prix_emg,
+                                        lignes_appareils, marque_canonique,
+                                        marque_dans_designation, prix_emg,
                                         type_depuis_designation)
 from src.utils.agora.myspace import (COMMANDABLE, FIN_DE_VIE, FamillesMySpace, charger_dossier,
                                      etat_piece, fichiers_myspace)
@@ -133,6 +134,15 @@ def test_marque_canonique():
     assert marque_canonique('LIEBHERR Appliances', connues) == 'Liebherr'
     assert marque_canonique('Autres marques', connues) == ''
     assert marque_canonique('NOUVELLE', connues) == 'Nouvelle'
+
+
+def test_marque_dans_designation():
+    connues = {'altus': 'Altus', 'essentielb': 'Essentiel-B', 'grundig': 'Grundig', 'lg': 'LG'}
+    assert marque_dans_designation('Kg1840 ALTUs', connues) == 'Altus'
+    assert marque_dans_designation('ECC 351b EssENTIELB_FRANCE(C350)', connues) == 'Essentiel-B'
+    assert marque_dans_designation('49 VLE 6523 BLgRUNDIg', connues) == 'Grundig'
+    assert marque_dans_designation('OCEALVE1349IX PRIVATE LABEL', connues) == ''
+    assert marque_dans_designation('LG 123', connues) == ''          # marque trop courte : ignorée
 
 
 def test_type_depuis_designation():

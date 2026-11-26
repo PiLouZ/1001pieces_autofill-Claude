@@ -62,6 +62,27 @@ def marque_canonique(marque: str, marques_connues: Dict[str, str]) -> str:
     return m.title() if m.isupper() else m
 
 
+_MOTS_NEUTRES = {'france', 'label', 'private', 'oem', 'autres', 'marques', 'export'}
+
+
+def marque_dans_designation(designation: str, marques_connues: Dict[str, str]) -> str:
+    """Marque connue de l'outil citée dans la désignation, pour les appareils que
+    le référentiel range sous « Autres marques » (« Kg1840 ALTUs » → Altus,
+    « ECC 351b EssENTIELB_FRANCE » → Essentiel-B, « 49 VLE BLgRUNDIg » → Grundig).
+    Seules les marques déjà en base sont reconnues : rien n'est inventé."""
+    mots = [cle_marque(m) for m in re.split(r'[\s_()\[\]/*,;-]+', designation or '')]
+    mots = [m for m in mots if m and m not in _MOTS_NEUTRES]
+    candidats = mots + [a + b for a, b in zip(mots, mots[1:])]
+    for c in candidats:
+        if len(c) >= 4 and c in marques_connues:
+            return marques_connues[c]
+    for c in mots:          # marque collée à un code (« BFgRUNDIg »)
+        for cle, marque in marques_connues.items():
+            if len(cle) >= 6 and c != cle and c.endswith(cle):
+                return marque
+    return ''
+
+
 @dataclass
 class LignesAppareils:
     lignes: List[List[str]] = field(default_factory=list)   # sans l'en-tête
@@ -93,7 +114,8 @@ def lignes_appareils(cas: Iterable[dict],
     resultat = LignesAppareils()
     for tech, com in couples:
         marque_agora, designation = infos.get((tech, com), ('', ''))
-        marque = marque_canonique(marque_agora, marques_connues)
+        marque = (marque_canonique(marque_agora, marques_connues)
+                  or marque_dans_designation(designation, marques_connues))
         # Type : désignation du référentiel, sinon description du cas d'usage
         # (souvent « Cuisiniere électrique », parfois la seule réf. commerciale)
         type_ = type_depuis_designation(designation) or type_depuis_designation(descriptions[(tech, com)])
