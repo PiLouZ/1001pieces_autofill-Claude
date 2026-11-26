@@ -155,6 +155,8 @@ class FicheSiteDialog(QDialog):
         racine.addWidget(self.etat_site)
 
         formulaire = QFormLayout()
+        # macOS : les champs gardent sinon leur largeur minimale (listes illisibles)
+        formulaire.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
         self.champ_code = QLineEdit(f.code)
         self.champ_code.setToolTip("Référence PrestaShop = code Cogilog (Données → Règles des codes produit)")
         self.champ_nom = QLineEdit(f.nom)
@@ -191,6 +193,8 @@ class FicheSiteDialog(QDialog):
                                ("Description :", self.resume_description)):
             formulaire.addRow(libelle, champ)
         racine.addLayout(formulaire)
+        for champ in (self.champ_nom, self.champ_meta_title, self.champ_meta_description):
+            champ.setCursorPosition(0)          # le début du texte visible, pas la fin
         self._maj_ht()
         self._maj_resume()
 
@@ -225,6 +229,8 @@ class FicheSiteDialog(QDialog):
     def _choix_libre(valeurs, courant: str) -> QComboBox:
         choix = QComboBox()
         choix.setEditable(True)
+        choix.setMinimumContentsLength(40)
+        choix.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
         choix.addItems(list(valeurs))
         choix.setCurrentText(courant or '')
         return choix
@@ -242,6 +248,7 @@ class FicheSiteDialog(QDialog):
         if self.ctx_titre is not None:
             self.champ_nom.setText(self.main_window.titre_produit_service.rendre(
                 self.ctx_titre, self.gabarit_titre.currentText() or None)['html'])
+            self.champ_nom.setCursorPosition(0)
 
     def _maj_description(self):
         if self.ctx_fiche is not None:
