@@ -213,6 +213,12 @@ class ToolbarService:
         fiche_agora_action.triggered.connect(getattr(self.main_window, '_open_fiche_site_agora', lambda: None))
         data_menu.addAction(fiche_agora_action)
 
+        regles_codes_action = QAction("Règles des codes produit…", self.main_window)
+        regles_codes_action.setToolTip("Préfixes et règles qui proposent le code produit "
+                                       "(référence PrestaShop = code Cogilog) d'une fiche nouvelle")
+        regles_codes_action.triggered.connect(getattr(self.main_window, '_open_regles_codes', lambda: None))
+        data_menu.addAction(regles_codes_action)
+
         reprise_site_action = QAction("Importer les fiches du site…", self.main_window)
         reprise_site_action.setToolTip("Importer toutes les fiches du site, par lots, depuis les exports PrestaShop")
         reprise_site_action.triggered.connect(getattr(self.main_window, '_open_reprise_site_dialog', lambda: None))

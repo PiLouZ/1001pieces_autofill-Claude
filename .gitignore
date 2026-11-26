@@ -38,6 +38,7 @@ data/certificats_racines.pem
 data/agora.env
 data/agora.db
 data/agora.db-journal
+data/regles_codes.json
 
 # Logs
 logs/

@@ -2762,6 +2762,11 @@ class MainWindow(QMainWindow):
             app_logger.error(f"Fiche PrestaShop / Cogilog : {e}", exc_info=True)
             self.statusbar.showMessage(f"Fiche PrestaShop / Cogilog non préparée : {e}", 8000)
 
+    def _open_regles_codes(self):
+        """Règles des codes produit des fiches nouvelles (src/ui/agora_regles_codes.py)."""
+        from .agora_regles_codes import ReglesCodesDialog
+        ReglesCodesDialog(self).show()
+
     def _open_reprise_site_dialog(self):
         """Importer les fiches du site en masse, par lots (CDC reprise des fiches,
         étape 4 et refonte) : une seule fenêtre à la fois (elle tient la session)."""

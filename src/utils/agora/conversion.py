@@ -145,7 +145,7 @@ def libelle_piece(description: str) -> str:
 
 # --- Prix (règles EMG, Pierre-Louis 2026-11-26) ------------------------------------------
 
-COEFFICIENT = 2.0                 # prix de vente = prix d'achat × 2
+COEFFICIENT = 2.0                 # prix de vente TTC = prix d'achat × 2, arrondi au dixième
 ELECTROLUX = 3
 REMISE_ELECTROLUX = 0.33          # Electrolux : prix d'achat = prix public − 33 %
 
@@ -159,9 +159,14 @@ class Prix:
     alerte: str = ''
 
 
+def arrondi_dixieme(valeur: float) -> float:
+    """Prix TTC du site, arrondi au dixième (Pierre-Louis, 2026-11-26) : 29,57 → 29,60."""
+    from decimal import ROUND_HALF_UP, Decimal
+    return float(Decimal(str(valeur)).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP))
+
+
 def prix_emg(info: dict, constructeur: int, coefficient: float = COEFFICIENT) -> Prix:
-    """Prix de vente d'une pièce d'après getsparepartinfo. Le résultat est lu
-    comme un prix TTC (à confirmer par EMG)."""
+    """Prix de vente TTC d'une pièce d'après getsparepartinfo."""
     info = info or {}
     public = info.get('PublicPrice')
     if constructeur == ELECTROLUX and public:
@@ -170,7 +175,7 @@ def prix_emg(info: dict, constructeur: int, coefficient: float = COEFFICIENT) ->
         achat, regle = info.get('DiscountPrice'), "prix remisé × 2"
     if not achat:
         return Prix(None, None, "aucun prix chez Agora", public)
-    vente = round(achat * coefficient, 2)
+    vente = arrondi_dixieme(achat * coefficient)
     alerte = ''
     if public and vente > public * 1.3:
         alerte = f"au-dessus du prix public Agora ({public:.2f} €) de plus de 30 %"
@@ -179,20 +184,9 @@ def prix_emg(info: dict, constructeur: int, coefficient: float = COEFFICIENT) ->
 
 # --- Code produit EMG (= référence PrestaShop = code Cogilog) -----------------------------
 
-# Préfixe par constructeur Agora, relevé dans le catalogue du site (voir
-# `prefixes_ref_interne` de la reprise des fiches) ; Whirlpool : sans préfixe.
-PREFIXES = {2: '', 3: 'EL', 4: 'GAU', 5: 'MIE', 17: 'BEO', 22: 'LH', 33: 'ROS', 37: 'LH'}
-
-
-def code_emg_propose(ref: str, constructeur: int) -> Optional[str]:
-    """Code proposé pour une fiche nouvelle (modifiable : la référence interne
-    n'est pas déductible de façon sûre, CDC reprise § 5.8). None : préfixe inconnu.
-    Références Indesit C00xxxxxx : « SCS » + les 6 chiffres, quel que soit le
-    constructeur Agora (935 fiches du site : C00731573 → SCS731573)."""
-    ref = re.sub(r'\s+', '', ref or '')
-    indesit = re.fullmatch(r'C00(\d{6})', ref.upper())
-    if indesit:
-        return 'SCS' + indesit.group(1)
-    if constructeur not in PREFIXES:
-        return None
-    return PREFIXES[constructeur] + ref
+def code_emg_propose(ref: str, constructeur: Optional[int], regles=None) -> Optional[str]:
+    """Code proposé pour une fiche nouvelle, d'après les règles des codes produit
+    (src/utils/agora/codes.py). Modifiable : la référence interne n'est pas
+    déductible de façon sûre (CDC reprise § 5.8). None : aucune règle."""
+    from .codes import code_produit
+    return code_produit(ref, constructeur, regles)

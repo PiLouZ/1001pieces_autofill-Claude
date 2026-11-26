@@ -156,13 +156,18 @@ def test_prix_emg():
     p = prix_emg({'DiscountPrice': 10.0, 'PublicPrice': 12.0}, 2)
     assert (p.achat_ht, p.vente) == (10.0, 20.0) and p.alerte
     assert prix_emg({}, 2).vente is None
+    assert prix_emg({'DiscountPrice': 14.784}, 17).vente == 29.6          # arrondi au dixième
 
 
 def test_code_et_libelle():
-    assert code_emg_propose('140005565027', 3) == 'EL140005565027'
-    assert code_emg_propose('481011015524', 2) == '481011015524'
-    assert code_emg_propose('123', 10) is None
-    assert code_emg_propose('C00866459', 17) == 'SCS866459'          # Indesit : SCS + 6 chiffres
+    from src.utils.agora.codes import REGLES_PAR_DEFAUT as R
+    assert code_emg_propose('140005565027', 3, R) == 'EL140005565027'
+    assert code_emg_propose('481011015524', 2, R) == '481011015524'
+    assert code_emg_propose('123', 10, R) is None
+    assert code_emg_propose('C00866459', 17, R) == 'SCS866459'      # C00 + 6 chiffres : SCS, même chez Beko
+    assert code_emg_propose('00611323', 4, R) == 'GAU611323'        # BSH : sans le 00 de tête
+    assert code_emg_propose('11051894', 4, R) == 'GAU11051894'
+    assert code_emg_propose('0078216', 5, R) == 'MIE0078216'
     assert libelle_piece('panneau,blanc') == 'Panneau'
     assert libelle_piece('POMPE DE VIDANGE') == 'Pompe de vidange'
     assert libelle_piece('Serrure electro-ma. 0437 220/240') == 'Serrure'
@@ -274,3 +279,13 @@ def test_fichiers_du_jour(tmp_path):
     assert presta[1].startswith('0;Relais pour réfrigérateur Beko - C00866459;Divers - Réfrigérateur;25.833333;1;SCS866459')
     assert FicheSite(code='', nom='', libelle='', reference='X', prix_ttc=None).manques()[:3] == [
         'code produit', 'nom', 'prix']
+
+
+def test_regles_codes_fichier(tmp_path):
+    from src.utils.agora.codes import RegleCode, charger_regles, code_produit, enregistrer_regles
+    chemin = str(tmp_path / 'regles_codes.json')
+    assert len(charger_regles(chemin)) == 8                          # défauts sans fichier
+    enregistrer_regles([RegleCode('Test', 'TT', [3], '14*')], chemin)
+    regles = charger_regles(chemin)
+    assert code_produit('140005565027', 3, regles) == 'TT140005565027'
+    assert code_produit('2262143023', 3, regles) is None
