@@ -134,16 +134,31 @@ class SitePrestaShop:
 
     # --- Création ------------------------------------------------------------------------
     def creer_fiche(self, fiche, id_categorie: int, id_fabricant: Optional[int],
-                    caracteristiques: List[Tuple[int, int]], cover: Optional[bytes]) -> int:
-        """Crée la fiche désactivée (et sa cover) ; retourne l'id du produit.
-        Refus si un produit du site porte déjà ce code."""
+                    caracteristiques: List[Tuple[int, int]], cover: Optional[bytes]) -> Tuple[int, str]:
+        """Crée la fiche désactivée, puis sa cover : (id du produit, erreur de la cover
+        ou ''). Une cover refusée ne masque pas la fiche créée. Refus si un produit du
+        site porte déjà ce code."""
+        import logging
+        journal = logging.getLogger('1001pieces')
         if self.client.lister('products', '[id]', {'reference': f'[{fiche.code}]'}):
             raise ValueError(f"le code {fiche.code} existe déjà sur le site")
         xml = xml_produit(fiche, id_categorie, id_fabricant, caracteristiques, self.referentiels().modele)
         id_produit = self.client.creer('products', xml)
+        journal.info(f"[Site] produit n° {id_produit} créé ({fiche.code})")
+        erreur_cover = ''
         if cover:
-            self.client.envoyer_image(id_produit, cover)
-        return id_produit
+            try:
+                self.client.envoyer_image(id_produit, cover)
+                journal.info(f"[Site] cover envoyée pour le produit n° {id_produit}")
+            except Exception as e:
+                erreur_cover = str(e) or type(e).__name__
+                journal.warning(f"[Site] cover refusée pour le produit n° {id_produit} : {erreur_cover}")
+        else:
+            erreur_cover = "cover par défaut introuvable (data/cover_par_defaut.jpg)"
+        return id_produit, erreur_cover
+
+    def envoyer_cover(self, id_produit: int, cover: bytes) -> None:
+        self.client.envoyer_image(id_produit, cover)
 
 
 def _texte(valeur) -> str:

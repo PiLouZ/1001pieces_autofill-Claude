@@ -59,10 +59,36 @@ class TacheFond(QThread):
 
     def run(self):
         try:
-            self.termine.emit(self.fonction(), '')
+            resultat, erreur = self.fonction(), ''
         except Exception as e:
             app_logger.warning(f"[Site] {type(e).__name__} : {e}")
-            self.termine.emit(None, str(e) or type(e).__name__)
+            resultat, erreur = None, str(e) or type(e).__name__
+        self.termine.emit(resultat, erreur)
+
+
+# Tâches en cours, gardées ici et sans parent : fermer la fenêtre pendant un appel ne
+# détruit pas le thread (« QThread: Destroyed while thread is still running » arrête
+# l'application) ; la suite n'est pas appelée si la fenêtre n'existe plus.
+_TACHES = set()
+
+
+def lancer_tache(fonction: Callable, suite: Callable, fenetre=None) -> TacheFond:
+    from PyQt5 import sip
+    tache = TacheFond(fonction)
+
+    def _suite(resultat, erreur):
+        if fenetre is not None and sip.isdeleted(fenetre):
+            return
+        try:
+            suite(resultat, erreur)
+        except Exception:                      # jamais d'exception hors d'un slot (arrêt de l'appli)
+            app_logger.error("[Site] suite d'une tâche en échec", exc_info=True)
+
+    tache.termine.connect(_suite)
+    tache.finished.connect(lambda: _TACHES.discard(tache))
+    _TACHES.add(tache)
+    tache.start()
+    return tache
 
 
 def _famille(main_window, reference: str) -> List[str]:
@@ -133,7 +159,6 @@ class FicheSiteDialog(QDialog):
         self.doublons = []
         self.id_cree: Optional[int] = None
         self.dossier = ''
-        self._taches = []
         self.setWindowTitle(f"Fiche PrestaShop et Cogilog — {fiche.reference}")
         self.setAttribute(Qt.WA_DeleteOnClose)
         self.resize(860, 520)
@@ -265,11 +290,7 @@ class FicheSiteDialog(QDialog):
         self.prix_ht.setText(f"soit {ttc / 1.2:.2f} € HT".replace('.', ',') if ttc else "prix à saisir")
 
     def _lancer(self, fonction: Callable, suite: Callable):
-        tache = TacheFond(fonction, self)
-        tache.termine.connect(suite)
-        tache.finished.connect(lambda t=tache: self._taches.remove(t) if t in self._taches else None)
-        self._taches.append(tache)
-        tache.start()
+        lancer_tache(fonction, suite, self)
 
     # --- Site : référentiels et anti-doublon -----------------------------------------------
     def _charger_site(self):
@@ -398,21 +419,29 @@ class FicheSiteDialog(QDialog):
         site, id_fab = self.site, r.id_fabricant(f.fabricant)
         self.bouton_creer.setEnabled(False)
         self._signaler("Création de la fiche…")
+        app_logger.info(f"[Site] création de la fiche {f.code} ({self.site.client.environnement})")
         self._lancer(lambda: site.creer_fiche(f, id_cat, id_fab, caracteristiques, cover),
-                     lambda id_produit, err: self._cree(f, id_produit, err))
+                     lambda resultat, err: self._cree(f, resultat, err))
 
-    def _cree(self, f: FicheSite, id_produit, erreur: str):
+    def _cree(self, f: FicheSite, resultat, erreur: str):
         env = self.site.client.environnement
         if erreur:
             self.bouton_creer.setEnabled(True)
             self._signaler(f"Fiche non créée : {erreur}", StyleManager.TEXTE_ERREUR_SOMBRE)
             return
+        id_produit, erreur_cover = resultat
         self.id_cree = id_produit
         self.bouton_creer.setText(f"Créée : n° {id_produit}")
-        self._signaler(f"Fiche {f.code} créée sur le site ({env}), produit n° {id_produit}, désactivée "
-                       "avec la cover par défaut. Pensez aux compatibilités (Exporter CSV, EveryParts).")
+        if erreur_cover:
+            self._signaler(f"Fiche {f.code} créée sur le site ({env}), produit n° {id_produit}, désactivée, "
+                           f"mais sans cover : {erreur_cover}. Ajoutez-la dans le back-office.",
+                           StyleManager.TEXTE_AVERTISSEMENT)
+        else:
+            self._signaler(f"Fiche {f.code} créée sur le site ({env}), produit n° {id_produit}, désactivée "
+                           "avec la cover par défaut. Pensez aux compatibilités (Exporter CSV, EveryParts).")
         self._historique(f"Fiche créée sur PrestaShop ({env}) : {f.code} ({f.reference}), "
-                         f"produit n° {id_produit}\n==> {f.nom}")
+                         f"produit n° {id_produit}" + (" — sans cover" if erreur_cover else "")
+                         + f"\n==> {f.nom}")
 
     # --- Fichiers d'import ------------------------------------------------------------------
     def ajouter(self):

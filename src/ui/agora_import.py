@@ -259,10 +259,18 @@ class SaisieAgora(QDialog):
         if not dossier or self._thread is not None:
             return
         self.bouton_myspace.setEnabled(False)
-        self._thread = ChargementMySpace(self.base, dossier, self)
-        self._thread.etape.connect(lambda m: self.bandeau_myspace.setText(f"Chargement : {m}"))
+        from .agora_fiche import _TACHES
+        # Sans parent, gardé dans _TACHES : fermer la fenêtre pendant le chargement ne
+        # détruit pas le thread en cours (arrêt de l'application)
+        self._thread = ChargementMySpace(self.base, dossier)
+        _TACHES.add(self._thread)
+        self._thread.finished.connect(lambda t=self._thread: _TACHES.discard(t))
+        self._thread.etape.connect(self._etape_myspace)
         self._thread.termine.connect(self._myspace_charge)
         self._thread.start()
+
+    def _etape_myspace(self, message: str):
+        self.bandeau_myspace.setText(f"Chargement : {message}")
 
     def _myspace_charge(self, comptes, erreur: str):
         self._thread = None
@@ -314,14 +322,12 @@ class SaisieAgora(QDialog):
         except Exception:
             return                          # site non configuré : contrôle local seulement
         from src.utils.agora.codes import code_produit
-        from .agora_fiche import TacheFond
+        from .agora_fiche import lancer_tache
         refs = self._refs_famille()
         refs += [c for c in (code_produit(r, self.constructeur) for r in list(refs)) if c]
         site, saisie = self._site, self.champ.text().strip()
-        tache = TacheFond(lambda: site.produits_existants(refs), self)
-        tache.termine.connect(lambda produits, err: self._site_verifie(saisie, produits, err))
-        self._tache_site = tache
-        tache.start()
+        self._tache_site = lancer_tache(lambda: site.produits_existants(refs),
+                                        lambda produits, err: self._site_verifie(saisie, produits, err), self)
 
     def _site_verifie(self, saisie: str, produits, erreur: str):
         if saisie != self.champ.text().strip():
@@ -426,8 +432,11 @@ class SaisieAgora(QDialog):
         self.bouton_agora.setEnabled(False)
         self.bouton_chercher.setEnabled(False)
         self.zone_agora.setText(f"Interrogation d'Agora ({ref_appareils})…")
+        from .agora_fiche import _TACHES
         self._thread = AppelAgora(self.client, self.constructeur,
-                                  None if self.info_lue else self.ref_agora, ref_appareils, self)
+                                  None if self.info_lue else self.ref_agora, ref_appareils)
+        _TACHES.add(self._thread)
+        self._thread.finished.connect(lambda t=self._thread: _TACHES.discard(t))
         self._thread.termine.connect(self._agora_repond)
         self._thread.start()
 

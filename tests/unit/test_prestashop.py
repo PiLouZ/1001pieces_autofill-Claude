@@ -84,6 +84,17 @@ def test_lien_reecrit():
         'etagere-porte-bouteilles-pour-refrigerateur-00748045'
 
 
+def test_creation_cover_refusee():
+    def t(methode, url, entetes, corps):
+        if '/images/' in url:
+            return 500, b'<message><![CDATA[Erreur image]]></message>'
+        return (201, json.dumps({'product': {'id': 77}}).encode()) if methode == 'POST' else (200, b'[]')
+    site = SitePrestaShop(ClientPrestaShop('https://dev.1001pieces.com', 'x', t))
+    site._referentiels = Referentiels(modele={'id_tax_rules_group': '9'})
+    f = FicheSite(code='SCS866459', nom='x', libelle='x', reference='C00866459', prix_ttc=10)
+    assert site.creer_fiche(f, 157, 6, [], b'jpg') == (77, 'POST images/products/77 : Erreur image')
+
+
 def test_creation_refusee_si_code_existe():
     t = _Transport({'products': (200, {'products': [{'id': 1}]})})
     site = SitePrestaShop(ClientPrestaShop('https://dev.1001pieces.com', 'x', t))
