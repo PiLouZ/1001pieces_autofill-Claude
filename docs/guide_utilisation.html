@@ -125,6 +125,8 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
   <li><b>Cmd+D</b> : liste des valeurs déjà utilisées dans la colonne (sauf colonnes de référence).</li>
   <li><b>Une valeur pour plusieurs lignes</b> : sélectionner plusieurs lignes dans la colonne <b>Type</b> ou <b>Fabricant</b> (Maj+clic, Cmd+clic pour des lignes éparses), puis <b>Cmd+D</b> ou taper la première lettre sur une case vide : la valeur choisie va à toutes les lignes sélectionnées, déjà remplies comprises. Le titre de la fenêtre annonce le nombre de lignes. Un seul <b>Cmd+Z</b> annule le tout. L'historique garde une ligne par appareil.</li>
   <li><b>Marque et Type</b> : une valeur tapée reprend l'orthographe déjà présente en base (<code>bosch</code> → <code>Bosch</code>).</li>
+  <li><b>Ajouter un appareil (Cmd+N) pendant une recherche</b> : la nouvelle ligne apparaît en tête du tableau, sur fond pêche, même si elle ne correspond pas à la recherche ni aux filtres, et quel que soit le tri. Elle y reste tant que la recherche et les filtres ne changent pas. Plusieurs ajouts de suite s'empilent, le plus récent en haut.</li>
+  <li><b>Créer l'appareil qu'on cherche</b> : quand une référence tapée dans un filtre (Réf. modèle, commerciale ou autre) ne trouve rien, un bouton <b>Créer l'appareil « … »</b> apparaît sous « Aucun résultat ». Ce bouton, comme Cmd+N, crée l'appareil avec cette référence. Il reprend aussi la marque et le type filtrés s'ils existent déjà en base (<code>bosch</code> → <code>Bosch</code>). Le curseur se place ensuite sur la première case vide (Type ou Fabricant), et un seul <b>Cmd+Z</b> retire les valeurs reprises. Un filtre avec joker (<code>*</code> <code>?</code>), <code>|</code> ou <code>!</code> n'est pas repris.</li>
   <li><b>Four combiné micro-ondes</b> : type à part entière, comme « Four vapeur », pour les fours compacts avec micro-ondes (niche de 45 cm) : Bosch <code>CMG</code> et <code>HMG</code> récents, Siemens <code>CM</code> / <code>HM</code> récents, Neff <code>C17M…</code>, AEG <code>KMK</code>, Gaggenau <code>BM</code>, Electrolux <code>EVY</code>… Le micro-ondes simple reste « Micro-ondes ». Le libellé est celui du site, au caractère près : ne pas le réécrire autrement. Dans les textes générés, il peut se dire « four micro-ondes combiné » ; « four micro-ondes » ne désigne plus le micro-ondes simple.</li>
   <li><b>Poignée de recopie</b> (petit carré en bas à droite de la sélection), comme dans un tableur :
     <ul>
@@ -270,7 +272,7 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
 <table>
   <tr><th>Raccourci</th><th>Action</th></tr>
   <tr><td class="key">Double-clic / F2</td><td>Modifier la cellule</td></tr>
-  <tr><td class="key">Cmd+N</td><td>Ajouter une nouvelle ligne</td></tr>
+  <tr><td class="key">Cmd+N</td><td>Ajouter une nouvelle ligne, visible en tête même pendant une recherche ; si la référence filtrée ne trouve rien, l'appareil est créé avec elle</td></tr>
   <tr><td class="key">Cmd+Z</td><td>Annuler la dernière action</td></tr>
   <tr><td class="key">Cmd+Y</td><td>Rétablir l'action annulée</td></tr>
   <tr><td class="key">Cmd+C</td><td>Copier la sélection (collable dans Excel)</td></tr>
@@ -305,7 +307,9 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
 
 <h2>Nouveautés depuis la version 3.78</h2>
 <h3>En préparation</h3>
-<p>Rien pour l'instant.</p>
+<ul>
+  <li><b>Créer l'appareil cherché, et le voir</b> : une référence tapée dans un filtre et absente de la base se crée d'un clic sur <b>Créer l'appareil « … »</b> (sous « Aucun résultat ») ou par Cmd+N, avec la marque et le type filtrés s'ils existent. Toute ligne ajoutée par Cmd+N pendant une recherche apparaît en tête du tableau, sur fond pêche, jusqu'au prochain changement de recherche ou de filtre.</li>
+</ul>
 <h3>Versions livrées</h3>
 <ul>
   <li><b>3.108.0</b>

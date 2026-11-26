@@ -31,7 +31,7 @@ from ..utils.qt_imports import (
 from ..core.config import Config
 from ..core.logger import app_logger
 from ..core.constants import UIConfig
-from ..utils.filtre_colonne import AIDE_FILTRE_COLONNE
+from ..utils.filtre_colonne import AIDE_FILTRE_COLONNE, valeur_litterale
 from ..utils.error_handler import (
     handle_table_operations_errors, handle_async_worker_errors,
     handle_database_operation_errors, handle_ui_operation_errors
@@ -110,7 +110,7 @@ class DatabaseQueryWorker(QThread):
 
     def __init__(self, db_manager, search_term=None, column_filters=None,
                  limit=None, offset=None, sort_column=None, sort_order=None,
-                 incomplete_filter=False):
+                 incomplete_filter=False, ids_epingles=None):
         super().__init__()
         self.db_manager = db_manager
         self.search_term = search_term
@@ -120,6 +120,7 @@ class DatabaseQueryWorker(QThread):
         self.sort_column = sort_column
         self.sort_order = sort_order
         self.incomplete_filter = incomplete_filter
+        self.ids_epingles = list(ids_epingles or ())
 
     @handle_async_worker_errors(log_prefix="Erreur DatabaseQueryWorker")
     def run(self):
@@ -132,7 +133,8 @@ class DatabaseQueryWorker(QThread):
             self.offset,
             self.sort_column,
             self.sort_order,
-            self.incomplete_filter
+            self.incomplete_filter,
+            ids_epingles=self.ids_epingles
         )
         self.data_loaded.emit(records)
 
@@ -213,6 +215,13 @@ class TableController:
                 lambda reason: self.prefetch_cache.clear()
             )
         self._pending_prefetch_params = None
+
+        # Appareils ajoutés (Cmd+N) pendant la recherche en cours : affichés en tête
+        # quelle que soit la recherche, jusqu'au prochain changement de recherche ou
+        # de filtre (cf. afficher_appareil_ajoute, _ids_epingles_pour)
+        self._ids_epingles = []
+        self._contexte_epinglage = None
+
         self.prefetch_timer = QTimer()
         self.prefetch_timer.setSingleShot(True)
         self.prefetch_timer.timeout.connect(self._execute_prefetch)
@@ -927,9 +936,13 @@ class TableController:
         incomplete_filter = self._current_incomplete_filter()
 
         effective_search_term = self.build_effective_search_term(search_term)
+        ids_epingles = self._ids_epingles_pour(search_term, column_filters, incomplete_filter)
+        self._filtres_dernier_chargement = dict(column_filters)
 
         # Compter le total avec le terme unifié
-        self.total_rows = self.db_manager.count_data(effective_search_term, column_filters, incomplete_filter=incomplete_filter)
+        self.total_rows = self.db_manager.count_data(effective_search_term, column_filters,
+                                                     incomplete_filter=incomplete_filter,
+                                                     ids_epingles=ids_epingles)
 
         if self.page_size == -1:  # Mode "Tout"
             self.total_pages = 1
@@ -944,13 +957,20 @@ class TableController:
 
         # Charger les données — vérifier le cache de préchargement d'abord
         cache_key = (str(effective_search_term), str(column_filters), limit, offset,
-                     self.current_sort_column, sort_order_str, incomplete_filter)
+                     self.current_sort_column, sort_order_str, incomplete_filter,
+                     tuple(ids_epingles))
         if cache_key in self.prefetch_cache:
             records = self.prefetch_cache.pop(cache_key)
             app_logger.debug(f"[Prefetch] Cache HIT page {self.current_page} ({len(records)} lignes)")
         else:
             records = self.db_manager.load_data(effective_search_term, column_filters, limit, offset,
-                                               self.current_sort_column, sort_order_str, incomplete_filter)
+                                               self.current_sort_column, sort_order_str, incomplete_filter,
+                                               ids_epingles=ids_epingles)
+
+        # Lignes épinglées teintées (avant le remplissage, qui repeint tout)
+        modele = getattr(self, 'model', None)
+        if modele is not None and hasattr(modele, 'set_ids_epingles'):
+            modele.set_ids_epingles(ids_epingles)
 
         # Remplir le tableau
         if self.total_rows > 1000:
@@ -980,7 +1000,8 @@ class TableController:
             next_offset = self.current_page * self.page_size
             self._pending_prefetch_params = (
                 effective_search_term, column_filters, limit, next_offset,
-                self.current_sort_column, sort_order_str, incomplete_filter  # sort_order_str = "ASC"/"DESC"
+                self.current_sort_column, sort_order_str, incomplete_filter,  # sort_order_str = "ASC"/"DESC"
+                tuple(ids_epingles)
             )
             self.prefetch_timer.start(100)
         else:
@@ -992,6 +1013,9 @@ class TableController:
         #  la sélection est perdue et le panneau ne doit pas afficher les vieilles pièces)
         if self.table.currentRow() < 0 and hasattr(self.parent_window, 'pieces_panel_service'):
             self.parent_window.pieces_panel_service.update_pieces_panel()
+
+        # Recherche sans résultat : proposer de créer l'appareil cherché
+        self._maj_action_tableau_vide()
 
         # Performance logging
         elapsed = time.time() - start_time
@@ -1082,6 +1106,11 @@ class TableController:
             incomplete_filter = self.parent_window.sorting_filtering_service.incomplete_filter_active
         else:
             incomplete_filter = getattr(self.parent_window, 'show_incomplete_only', False)
+        ids_epingles = self._ids_epingles_pour(search_term, column_filters, incomplete_filter)
+        self._filtres_dernier_chargement = dict(column_filters)
+        modele = getattr(self, 'model', None)
+        if modele is not None and hasattr(modele, 'set_ids_epingles'):
+            modele.set_ids_epingles(ids_epingles)
 
         # DIFFÉRENCE: Nettoyer thread précédent s'il existe
         if self.query_worker is not None:
@@ -1099,7 +1128,8 @@ class TableController:
             offset,
             self.current_sort_column,
             sort_order_str_async,
-            incomplete_filter
+            incomplete_filter,
+            ids_epingles
         )
 
         # Connecter les signaux
@@ -1132,7 +1162,8 @@ class TableController:
             count_result = self.db_manager.count_data(
                 self.current_search_term,
                 self.filter_widgets,
-                getattr(self.parent_window, 'show_incomplete_only', False)
+                getattr(self.parent_window, 'show_incomplete_only', False),
+                ids_epingles=list(getattr(self, '_ids_epingles', ()))
             )
             self.total_rows = count_result if count_result is not None else len(records)
 
@@ -1162,6 +1193,8 @@ class TableController:
         # Panneau pièces : vider si aucune ligne sélectionnée (même logique que load_data)
         if self.table.currentRow() < 0 and hasattr(self.parent_window, 'pieces_panel_service'):
             self.parent_window.pieces_panel_service.update_pieces_panel()
+
+        self._maj_action_tableau_vide()
 
         # Nettoyer et finaliser
         self.loading_in_progress = False
@@ -1604,10 +1637,11 @@ class TableController:
         if self.prefetch_worker and self.prefetch_worker.isRunning():
             return
 
-        effective_search_term, column_filters, limit, next_offset, sort_col, sort_order, incomplete_filter = self._pending_prefetch_params
+        (effective_search_term, column_filters, limit, next_offset, sort_col, sort_order,
+         incomplete_filter, ids_epingles) = self._pending_prefetch_params
         # sort_order est déjà une string "ASC"/"DESC" (stocké ainsi dans _pending_prefetch_params)
         cache_key = (str(effective_search_term), str(column_filters), limit, next_offset,
-                     sort_col, sort_order, incomplete_filter)
+                     sort_col, sort_order, incomplete_filter, ids_epingles)
 
         if cache_key in self.prefetch_cache:
             return  # Déjà en cache, rien à faire
@@ -1620,7 +1654,7 @@ class TableController:
 
         self.prefetch_worker = DatabaseQueryWorker(
             self._prefetch_db_manager, effective_search_term, column_filters,
-            limit, next_offset, sort_col, sort_order, incomplete_filter
+            limit, next_offset, sort_col, sort_order, incomplete_filter, ids_epingles
         )
         self.prefetch_worker.data_loaded.connect(
             lambda records, key=cache_key: self._on_prefetch_done(records, key)
@@ -1879,6 +1913,115 @@ class TableController:
                     column_filters[col_idx] = filter_text
         return column_filters
 
+    # ── Appareil ajouté pendant une recherche ────────────────────────────────
+
+    @staticmethod
+    def _contexte_affichage(search_term, column_filters, incomplete_filter) -> tuple:
+        """Ce que l'utilisateur a demandé à voir : terme saisi, filtres de colonne,
+        filtre « Lignes à traiter ». Le tri, la page et les cases des bandeaux
+        (anciennes réf., équivalents) n'en font pas partie."""
+        terme = search_term.strip() if isinstance(search_term, str) else (search_term or '')
+        return (str(terme), tuple(sorted((column_filters or {}).items())), bool(incomplete_filter))
+
+    def _ids_epingles_pour(self, search_term, column_filters, incomplete_filter) -> list:
+        """Appareils épinglés valables pour ce chargement. Ils ne valent que pour
+        le contexte où ils ont été ajoutés : un changement de recherche ou de
+        filtre les oublie ; un tri, une page ou un rechargement les garde."""
+        ids = getattr(self, '_ids_epingles', None)
+        if ids and (self._contexte_affichage(search_term, column_filters, incomplete_filter)
+                    != getattr(self, '_contexte_epinglage', None)):
+            ids = []
+        if not ids:
+            self._ids_epingles, self._contexte_epinglage = [], None
+            return []
+        return list(ids)
+
+    def afficher_appareil_ajoute(self, device_id: int) -> Optional[int]:
+        """Afficher un appareil qui vient d'être créé, quelle que soit la recherche
+        en cours : il est épinglé en tête de la page 1 (teinte pêche), le tableau
+        rechargé sans toucher à la recherche, aux filtres ni au tri, et le curseur
+        placé sur sa cellule Type. Retourne sa ligne, ou None.
+
+        Plusieurs ajouts de suite dans la même recherche s'empilent (le plus
+        récent en haut)."""
+        incompletes = self._current_incomplete_filter()
+        contexte = self._contexte_affichage(self.current_search_term,
+                                            self._live_column_filters(), incompletes)
+        if contexte != getattr(self, '_contexte_epinglage', None):
+            self._ids_epingles = []
+        if device_id not in self._ids_epingles:
+            self._ids_epingles.append(device_id)
+        self._contexte_epinglage = contexte
+
+        self._goto_page_preserving_context(1)
+
+        row = self.model.find_row_by_db_id(device_id) if self.model is not None else None
+        if row is None:
+            return None
+        self._focus_cell(row, 0)
+
+        recherche_active = bool(contexte[0] or contexte[1] or incompletes)
+        if recherche_active and hasattr(self.parent_window, 'statusbar'):
+            self.parent_window.statusbar.showMessage(
+                "Appareil ajouté en tête du tableau, affiché malgré la recherche en cours",
+                Config.STATUS_MESSAGE_TIMEOUT)
+        return row
+
+    # Colonnes de référence reprises des filtres : Réf. modèle, commerciale, autre
+    _COLONNES_REFERENCE = (2, 3, 4)
+
+    def valeurs_pour_nouvel_appareil(self) -> dict:
+        """{colonne: valeur} à reprendre des filtres pour un appareil créé depuis
+        une recherche restée sans résultat (« il n'existe pas encore »).
+
+        Vide si le tableau affiche des lignes, si les filtres saisis ne sont pas
+        ceux du dernier chargement (saisie en cours, pas encore appliquée) ou si
+        aucune référence n'est cherchée. Une référence n'est reprise que si elle
+        désigne une seule valeur (ni joker, ni « | », ni « ! ») ; Type et Marque
+        seulement s'ils correspondent exactement (sans casse) à une valeur de la
+        base, sous son orthographe — « bos » ne crée pas la marque « bos ».
+        """
+        if getattr(self, 'total_rows', 0):
+            return {}
+        filtres = self._live_column_filters()
+        if filtres != getattr(self, '_filtres_dernier_chargement', None):
+            return {}
+        valeurs = {}
+        for col, texte in filtres.items():
+            valeur = valeur_litterale(texte)
+            if not valeur:
+                continue
+            if col in self._COLONNES_REFERENCE:
+                valeurs[col] = valeur
+            elif col in (0, 1):
+                connues = {v.casefold(): v for v in (self._valeurs_filtre_colonne(col) or [])}
+                if valeur.casefold() in connues:
+                    valeurs[col] = connues[valeur.casefold()]
+        if not any(col in valeurs for col in self._COLONNES_REFERENCE):
+            return {}
+        return valeurs
+
+    def _maj_action_tableau_vide(self):
+        """Bouton « Créer l'appareil « réf. » » sous « Aucun résultat », quand la
+        recherche porte sur une référence qui n'existe pas encore."""
+        vue = getattr(self, 'table', None)
+        if vue is None or not hasattr(vue, 'definir_action_si_vide'):
+            return
+        try:
+            valeurs = self.valeurs_pour_nouvel_appareil()
+        except Exception as e:  # jamais bloquant pour l'affichage du tableau
+            app_logger.warning(f"Action « Créer l'appareil » indisponible : {e}")
+            valeurs = {}
+        reference = next((valeurs[c] for c in self._COLONNES_REFERENCE if c in valeurs), None)
+        libelle = f"Créer l'appareil « {reference} »" if reference else None
+        vue.definir_action_si_vide(libelle, self._creer_appareil_depuis_recherche)
+
+    def _creer_appareil_depuis_recherche(self):
+        """Clic sur « Créer l'appareil » : même chemin que Cmd+N."""
+        ajouter = getattr(self.parent_window, '_add_new_row', None)
+        if ajouter is not None:
+            ajouter()
+
     def set_incomplete_nav_buttons(self, up_btn, down_btn):
         """Brancher les flèches « ligne incomplète précédente/suivante », créées
         dans la toolbar autour de « Lignes à traiter » (cf. toolbar_service)."""
@@ -1969,7 +2112,8 @@ class TableController:
 
         effective_search_term = self.build_effective_search_term(self.current_search_term)
         has_incomplete = self.db_manager.count_data(
-            effective_search_term, self._live_column_filters(), incomplete_filter=True
+            effective_search_term, self._live_column_filters(), incomplete_filter=True,
+            ids_epingles=list(getattr(self, '_ids_epingles', ()))
         ) > 0
 
         self.skip_empty_up_btn.setEnabled(has_incomplete and not self._empty_cells_search_exhausted['up'])
@@ -2135,6 +2279,7 @@ class TableController:
             self.current_sort_column, sort_order_str,
             self._current_incomplete_filter(),
             from_position, direction,
+            ids_epingles=list(getattr(self, '_ids_epingles', ())),
         )
 
     def _scan_pages_for(self, critere: str, direction: str, start_index):

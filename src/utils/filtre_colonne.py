@@ -60,6 +60,16 @@ def analyser_filtre(texte: str) -> Tuple[List[str], List[str]]:
     return inclus, exclus
 
 
+def valeur_litterale(texte: str) -> Optional[str]:
+    """La valeur exacte désignée par la saisie d'un filtre (ni joker * ?, ni
+    alternative « | », ni exclusion « ! »), sinon None. Sert à préremplir un
+    appareil créé depuis une recherche restée sans résultat."""
+    inclus, exclus = analyser_filtre(texte)
+    if len(inclus) != 1 or exclus or '*' in inclus[0] or '?' in inclus[0]:
+        return None
+    return inclus[0]
+
+
 def condition_filtre_colonne(colonne_sql: str, texte: str) -> Optional[Tuple[str, List[str]]]:
     """Condition SQL (et ses paramètres) d'un champ de filtre de colonne.
 

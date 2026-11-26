@@ -30,6 +30,12 @@ _AUTOCOMPLETE_BG = QColor('#DDE2F7')
 # Type proposé par une règle de nomenclature (lot 4) : fond vert d'eau, distinct
 # du jaune des suggestions et du lavande des auto-complétés
 _TYPE_PROPOSE_BG = QColor('#D7F2EC')
+# Appareil ajouté pendant la recherche en cours, gardé en tête du tableau :
+# pêche pâle, distinct des trois teintes ci-dessus
+_EPINGLE_BG = QColor('#FDEBD8')
+INFOBULLE_EPINGLE = ("Appareil ajouté : gardé en tête du tableau, même hors de la "
+                     "recherche en cours, jusqu'au prochain changement de recherche "
+                     "ou de filtre")
 
 
 class AppareillsTableModel(QAbstractTableModel):
@@ -71,6 +77,9 @@ class AppareillsTableModel(QAbstractTableModel):
         # Types proposés par les règles de nomenclature (lot 4), pas encore
         # écrits : {db_id: {'type', 'regle', 'force'}} — set_propositions_type().
         self._propositions_type = {}
+        # Appareils ajoutés pendant la recherche en cours (épinglés en tête par le
+        # contrôleur) : fond pêche — set_ids_epingles().
+        self._ids_epingles = frozenset()
 
     # ── API Qt obligatoire ───────────────────────────────────────────────────
 
@@ -132,6 +141,8 @@ class AppareillsTableModel(QAbstractTableModel):
                 return QBrush(_AUTOCOMPLETE_BG)
             if col == 0 and record[0] in self._propositions_type:
                 return QBrush(_TYPE_PROPOSE_BG)
+            if record[0] in self._ids_epingles:
+                return QBrush(_EPINGLE_BG)
             # Highlight de recherche : délégué au service (Phase 3+)
             return None
 
@@ -163,6 +174,8 @@ class AppareillsTableModel(QAbstractTableModel):
                         return (f"Type proposé : {proposition['type']}\n"
                                 f"Règle {proposition['regle']} ({proposition['force']})\n"
                                 f"Clic droit pour l'accepter ou le refuser")
+            if record[0] in self._ids_epingles:
+                return INFOBULLE_EPINGLE
 
         return None
 
@@ -357,6 +370,14 @@ class AppareillsTableModel(QAbstractTableModel):
 
     def ids_types_proposes(self, db_ids):
         return [i for i in db_ids if i in self._propositions_type]
+
+    def set_ids_epingles(self, ids):
+        """Appareils épinglés en tête (cf. TableController.afficher_appareil_ajoute).
+        Appelé avant le remplissage du tableau, qui repeint toutes les cellules."""
+        self._ids_epingles = frozenset(ids or ())
+
+    def est_epingle(self, db_id) -> bool:
+        return db_id in self._ids_epingles
 
     def a_des_autocompletes(self) -> bool:
         """Au moins un appareil auto-complété à vérifier, toutes pages confondues."""
