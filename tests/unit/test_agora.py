@@ -213,6 +213,13 @@ def test_client_enveloppe(base):
     assert not c.en_cache(INFO, 99, 'R2') and not c.en_cache(APPAREILS, 2, 'R1')
 
 
+def test_info_en_cache(base):
+    t = _Transport((200, _enveloppe({'PartRef': 'C00866459', 'DiscountPrice': 14.784})))
+    ClientAgora(base, cle='x', transport=t).info(17, 'C00866459')
+    assert base.info_en_cache('c00866459') == (17, {'PartRef': 'C00866459', 'DiscountPrice': 14.784})
+    assert base.info_en_cache('AUTRE') is None
+
+
 def test_client_refus_non_mis_en_cache(base):
     t = _Transport((403, b'quota'), (500, b''))
     c = ClientAgora(base, cle='x', transport=t)

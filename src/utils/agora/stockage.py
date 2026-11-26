@@ -136,6 +136,17 @@ class BaseAgora:
                             (cle_ref(ref_piece),)).fetchone()
         return dict(row) if row else None
 
+    def info_en_cache(self, ref_piece: str) -> Optional[Tuple[int, dict]]:
+        """(constructeur, réponse getsparepartinfo) déjà obtenue pour cette référence."""
+        with self.connexion() as c:
+            rows = c.execute("SELECT cle, reponse FROM agora_cache WHERE service = 'info' AND cle LIKE ?",
+                             (f"%|{cle_ref(ref_piece)}",)).fetchall()
+        for cle, reponse in rows:
+            donnees = json.loads(reponse) if reponse else None
+            if isinstance(donnees, dict):
+                return int(cle.split('|', 1)[0]), donnees
+        return None
+
     # --- Méta ---------------------------------------------------------------------------
     def meta(self, cle: str) -> Optional[str]:
         with self.connexion() as c:

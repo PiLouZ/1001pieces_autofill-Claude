@@ -19,7 +19,7 @@ from PyQt5.QtWidgets import (
 )
 
 from src.core.logger import app_logger
-from src.utils.agora.conversion import code_emg_propose
+from src.utils.agora.conversion import code_emg_propose, prix_emg
 from src.utils.agora.fiche import (CategoriesSite, FicheSite, ajouter_aux_fichiers_du_jour,
                                    fabricant_site)
 from src.utils.agora.stockage import BaseAgora
@@ -31,6 +31,18 @@ def _prix(texte: str) -> Optional[float]:
         return round(float(texte.replace('€', '').replace(',', '.').strip()), 2) or None
     except ValueError:
         return None
+
+
+def _depuis_le_cache(base: BaseAgora, reference: str) -> dict:
+    """Pièce importée avant que l'import ne retienne code et prix : on les
+    recalcule d'après la réponse d'Agora gardée en cache (aucun appel)."""
+    trouve = base.info_en_cache(reference)
+    if not trouve:
+        return {}
+    constructeur, info = trouve
+    p = prix_emg(info, constructeur)
+    return {'constructeur': constructeur, 'code': code_emg_propose(reference, constructeur) or '',
+            'prix_ttc': p.vente, 'regle_prix': p.regle}
 
 
 def ouvrir_fiche_site(main_window):
@@ -47,7 +59,7 @@ def ouvrir_fiche_site(main_window):
     seo = main_window.seo_service
     reference = donnees['reference']
     base = BaseAgora()
-    agora = base.fiche(reference) or {}
+    agora = base.fiche(reference) or _depuis_le_cache(base, reference)
     code = agora.get('code') or code_emg_propose(reference, -1) or ''
     fiche = FicheSite(
         code=code,
