@@ -122,6 +122,9 @@ class SaisieAgora(QDialog):
         self.cas: Dict[str, Optional[list]] = {}
         self._thread = None
         self._marques: Optional[Dict[str, str]] = None
+        self._site = None                   # webservice du site (anti-doublon), si configuré
+        self._tache_site = None
+        self._texte_famille_courant = ''
         self._construire()
         self._maj_myspace()
         self._maj_quota()
@@ -294,10 +297,45 @@ class SaisieAgora(QDialog):
             self.ref_agora = f.courante.ref_publiee
         else:
             self.constructeur, self.ref_agora = choisi, saisie.replace(' ', '')
-        self.zone_famille.setText(self._texte_famille(f, doublons))
+        self._texte_famille_courant = self._texte_famille(f, doublons)
+        self.zone_famille.setText(self._texte_famille_courant)
+        self._verifier_sur_le_site()
         self._remplir_choix_ref()
         self.bouton_agora.setEnabled(self.constructeur is not None and not f.epuisee)
         self._maj_quota()
+
+    def _verifier_sur_le_site(self):
+        """Anti-doublon sur le site (webservice), hors du thread principal : références
+        de la famille et codes produit qu'elles donneraient."""
+        try:
+            from src.utils.prestashop.site import SitePrestaShop
+            if self._site is None:
+                self._site = SitePrestaShop()
+        except Exception:
+            return                          # site non configuré : contrôle local seulement
+        from src.utils.agora.codes import code_produit
+        from .agora_fiche import TacheFond
+        refs = self._refs_famille()
+        refs += [c for c in (code_produit(r, self.constructeur) for r in list(refs)) if c]
+        site, saisie = self._site, self.champ.text().strip()
+        tache = TacheFond(lambda: site.produits_existants(refs), self)
+        tache.termine.connect(lambda produits, err: self._site_verifie(saisie, produits, err))
+        self._tache_site = tache
+        tache.start()
+
+    def _site_verifie(self, saisie: str, produits, erreur: str):
+        if saisie != self.champ.text().strip():
+            return                          # une autre recherche a été lancée entre-temps
+        env = self._site.client.environnement
+        if erreur:
+            ligne = f"<span style='color:#6c757d'>Site ({env}) non vérifié : {html.escape(erreur)}</span>"
+        elif produits:
+            liste = ', '.join(f"{html.escape(p.reference)} (n° {p.id}, {'active' if p.actif else 'désactivée'})"
+                              for p in produits)
+            ligne = f"<b style='color:#c0392b'>Déjà sur le site ({env})</b> : {liste}."
+        else:
+            ligne = f"<span style='color:#2e7d32'>Aucune fiche sur le site ({env}) pour cette famille.</span>"
+        self.zone_famille.setText(self._texte_famille_courant + '<br>' + ligne)
 
     def _refs_famille(self) -> List[str]:
         f = self.famille
