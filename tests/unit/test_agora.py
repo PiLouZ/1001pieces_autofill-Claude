@@ -162,6 +162,7 @@ def test_code_et_libelle():
     assert code_emg_propose('140005565027', 3) == 'EL140005565027'
     assert code_emg_propose('481011015524', 2) == '481011015524'
     assert code_emg_propose('123', 10) is None
+    assert code_emg_propose('C00866459', 17) == 'SCS866459'          # Indesit : SCS + 6 chiffres
     assert libelle_piece('panneau,blanc') == 'Panneau'
     assert libelle_piece('POMPE DE VIDANGE') == 'Pompe de vidange'
     assert libelle_piece('Serrure electro-ma. 0437 220/240') == 'Serrure'
@@ -221,3 +222,48 @@ def test_client_refus_non_mis_en_cache(base):
     with pytest.raises(ErreurAgora):
         c.info(2, 'R1')
     assert not c.en_cache(INFO, 2, 'R1')
+
+
+# --- Fiche PrestaShop / Cogilog -----------------------------------------------------
+
+from datetime import date  # noqa: E402
+
+from src.utils.agora.fiche import (CategoriesSite, FicheSite, ajouter_aux_fichiers_du_jour,  # noqa: E402
+                                   fabricant_site)
+
+
+def test_fabricant_site():
+    assert fabricant_site('SCS866459') == 'Indesit Ariston Scholtès Hotpoint'
+    assert fabricant_site('481011015524') == 'Whirlpool Laden Ignis Bauknecht'
+    assert fabricant_site('EL140005565027').startswith('Electrolux')
+    assert fabricant_site('SCS866459', 17) == 'Beko'
+
+
+def test_categorie_proposee(tmp_path):
+    chemin = tmp_path / 'categories_site.json'
+    chemin.write_text(json.dumps({
+        'categories': ['Relais - Réfrigérateur', 'Divers - Réfrigérateur', 'Pompe de vidange - Lave-linge'],
+        'par_libelle_type': {'relais|refrigerateur': 'Relais - Réfrigérateur'}}), encoding='utf-8')
+    c = CategoriesSite(str(chemin))
+    assert c.proposer('Relais', 'Réfrigérateur') == 'Relais - Réfrigérateur'
+    assert c.proposer('Pompe', 'Lave-linge') == 'Pompe de vidange - Lave-linge'
+    assert c.proposer('Joint', 'Réfrigérateur') == 'Divers - Réfrigérateur'
+    assert c.proposer('Joint', 'Four') == ''
+
+
+def test_fichiers_du_jour(tmp_path):
+    f = FicheSite(code='SCS866459', nom='Relais pour réfrigérateur Beko - C00866459', libelle='Relais',
+                  reference='C00866459', prix_ttc=29.57, categorie='Divers - Réfrigérateur',
+                  fabricant='Beko', description='<h2>…</h2>')
+    jour = date(2026, 11, 26)
+    r = ajouter_aux_fichiers_du_jour(f, str(tmp_path), jour)
+    f.prix_ttc = 31.0
+    r = ajouter_aux_fichiers_du_jour(f, str(tmp_path), jour)                 # remplace sa ligne
+    assert r['fiches'] == 1
+    cogilog = (tmp_path / 'fiches_cogilog_20261126.csv').read_bytes().decode('cp1252').splitlines()
+    assert cogilog[0] == 'Code;Libellé;Site web1;Internet HT;Internet TTC;Photo;Famille;Code EAN'
+    assert cogilog[1] == 'SCS866459;RELAIS C00866459;PrestaShop;25,833333;31,00;pam;Apieces;'
+    presta = (tmp_path / 'fiches_prestashop_20261126.csv').read_text(encoding='utf-8').splitlines()
+    assert presta[1].startswith('0;Relais pour réfrigérateur Beko - C00866459;Divers - Réfrigérateur;25.833333;1;SCS866459')
+    assert FicheSite(code='', nom='', libelle='', reference='X', prix_ttc=None).manques()[:3] == [
+        'code produit', 'nom', 'prix']

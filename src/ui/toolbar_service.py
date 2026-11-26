@@ -207,6 +207,12 @@ class ToolbarService:
         agora_action.triggered.connect(getattr(self.main_window, '_open_agora_dialog', lambda: None))
         data_menu.addAction(agora_action)
 
+        fiche_agora_action = QAction("Fiche PrestaShop et Cogilog…", self.main_window)
+        fiche_agora_action.setToolTip("Fiche de la pièce recherchée (nom, description, métas, code, prix, "
+                                      "catégorie), ajoutée aux fichiers d'import du jour")
+        fiche_agora_action.triggered.connect(getattr(self.main_window, '_open_fiche_site_agora', lambda: None))
+        data_menu.addAction(fiche_agora_action)
+
         reprise_site_action = QAction("Importer les fiches du site…", self.main_window)
         reprise_site_action.setToolTip("Importer toutes les fiches du site, par lots, depuis les exports PrestaShop")
         reprise_site_action.triggered.connect(getattr(self.main_window, '_open_reprise_site_dialog', lambda: None))

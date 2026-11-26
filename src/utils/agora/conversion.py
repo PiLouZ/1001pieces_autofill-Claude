@@ -186,7 +186,13 @@ PREFIXES = {2: '', 3: 'EL', 4: 'GAU', 5: 'MIE', 17: 'BEO', 22: 'LH', 33: 'ROS', 
 
 def code_emg_propose(ref: str, constructeur: int) -> Optional[str]:
     """Code proposé pour une fiche nouvelle (modifiable : la référence interne
-    n'est pas déductible de façon sûre, CDC reprise § 5.8). None : préfixe inconnu."""
+    n'est pas déductible de façon sûre, CDC reprise § 5.8). None : préfixe inconnu.
+    Références Indesit C00xxxxxx : « SCS » + les 6 chiffres, quel que soit le
+    constructeur Agora (935 fiches du site : C00731573 → SCS731573)."""
+    ref = re.sub(r'\s+', '', ref or '')
+    indesit = re.fullmatch(r'C00(\d{6})', ref.upper())
+    if indesit:
+        return 'SCS' + indesit.group(1)
     if constructeur not in PREFIXES:
         return None
-    return PREFIXES[constructeur] + re.sub(r'\s+', '', ref or '')
+    return PREFIXES[constructeur] + ref

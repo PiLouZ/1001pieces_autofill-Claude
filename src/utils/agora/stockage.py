@@ -52,6 +52,16 @@ CREATE TABLE IF NOT EXISTS agora_appels (
     epuise   INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (jour, service)
 );
+CREATE TABLE IF NOT EXISTS fiches_agora (
+    ref_piece     TEXT PRIMARY KEY,
+    constructeur  INTEGER,
+    code          TEXT,
+    designation   TEXT,
+    prix_achat    REAL,
+    prix_ttc      REAL,
+    regle_prix    TEXT,
+    importee_le   TEXT
+);
 CREATE TABLE IF NOT EXISTS myspace_meta (
     cle      TEXT PRIMARY KEY,
     valeur   TEXT
@@ -110,6 +120,21 @@ class BaseAgora:
             c.execute("INSERT INTO agora_appels (jour, service, nombre, epuise) VALUES (?, ?, 0, 1) "
                       "ON CONFLICT(jour, service) DO UPDATE SET epuise = 1",
                       (jour or jour_utc(), service))
+
+    # --- Fiches importées depuis Agora (données commerciales, pour l'export) -----------
+    def noter_fiche(self, ref_piece: str, constructeur: int, code: str, designation: str,
+                    prix_achat: Optional[float], prix_ttc: Optional[float], regle: str) -> None:
+        with self.connexion() as c:
+            c.execute("INSERT OR REPLACE INTO fiches_agora VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                      (cle_ref(ref_piece), constructeur, code, designation, prix_achat, prix_ttc,
+                       regle, datetime.now(timezone.utc).isoformat(timespec='seconds')))
+
+    def fiche(self, ref_piece: str) -> Optional[dict]:
+        with self.connexion() as c:
+            c.row_factory = sqlite3.Row
+            row = c.execute("SELECT * FROM fiches_agora WHERE ref_piece = ?",
+                            (cle_ref(ref_piece),)).fetchone()
+        return dict(row) if row else None
 
     # --- Méta ---------------------------------------------------------------------------
     def meta(self, cle: str) -> Optional[str]:

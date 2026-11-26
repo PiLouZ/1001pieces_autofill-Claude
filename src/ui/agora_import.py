@@ -461,6 +461,11 @@ class SaisieAgora(QDialog):
         from src.core.import_manager import (FileType, ImportConfiguration, ImportFile, ImportType)
         f = self.famille
         designation = self.info.get('Description') or (f.courante.designation if f and f.courante else '')
+        # Données commerciales gardées pour la fiche PrestaShop / Cogilog (agora_fiche.py)
+        p = prix_emg(self.info, self.constructeur) if self.info else None
+        self.base.noter_fiche(self.ref_agora, self.constructeur,
+                              code_emg_propose(self.ref_agora, self.constructeur) or '', designation,
+                              p.achat_ht if p else None, p.vente if p else None, p.regle if p else '')
         fichier = ImportFile(
             path=f"Agora {self.ref_agora}", type=FileType.CLIPBOARD,
             suggested_reference=self.ref_agora, suggested_label=libelle_piece(designation),

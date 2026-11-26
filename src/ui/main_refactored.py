@@ -2753,6 +2753,15 @@ class MainWindow(QMainWindow):
         dialog = SaisieAgora(self)
         dialog.show()
 
+    def _open_fiche_site_agora(self):
+        """Fiche PrestaShop et Cogilog de la pièce recherchée (src/ui/agora_fiche.py)."""
+        from .agora_fiche import ouvrir_fiche_site
+        try:
+            ouvrir_fiche_site(self)
+        except Exception as e:
+            app_logger.error(f"Fiche PrestaShop / Cogilog : {e}", exc_info=True)
+            self.statusbar.showMessage(f"Fiche PrestaShop / Cogilog non préparée : {e}", 8000)
+
     def _open_reprise_site_dialog(self):
         """Importer les fiches du site en masse, par lots (CDC reprise des fiches,
         étape 4 et refonte) : une seule fenêtre à la fois (elle tient la session)."""
