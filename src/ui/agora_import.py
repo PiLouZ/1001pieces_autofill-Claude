@@ -28,7 +28,7 @@ from PyQt5.QtWidgets import (
 import qtawesome as qta
 
 from src.core.logger import app_logger
-from src.utils.agora.client import (APPAREILS, INFO, ClientAgora, ErreurAgora, QuotaEpuise,
+from src.utils.agora.client import (APPAREILS, INFO, ClientAgora, ErreurAgora,
                                     lire_cle)
 from src.utils.agora.conversion import (cle_marque, code_emg_propose, libelle_piece,
                                         lignes_appareils, prix_emg)
@@ -59,23 +59,28 @@ class ChargementMySpace(QThread):
 
 
 class AppelAgora(QThread):
-    """Prix puis appareils compatibles d'une référence (cache d'abord)."""
-    termine = pyqtSignal(object)               # dict : info, appareils, erreurs
+    """Prix de la référence à publier (si pas encore lu), puis appareils
+    compatibles d'une référence de la famille (cache d'abord)."""
+    termine = pyqtSignal(object)               # dict : info, appareils, erreurs, cache
 
-    def __init__(self, client: ClientAgora, constructeur: int, ref: str, parent=None):
+    def __init__(self, client: ClientAgora, constructeur: int, ref_info: Optional[str],
+                 ref_appareils: str, parent=None):
         super().__init__(parent)
-        self.client, self.constructeur, self.ref = client, constructeur, ref
+        self.client, self.constructeur = client, constructeur
+        self.ref_info, self.ref_appareils = ref_info, ref_appareils
 
     def run(self):
-        resultat = {'info': None, 'appareils': None, 'erreurs': {}, 'cache': {}}
-        for service, appel in ((INFO, self.client.info), (APPAREILS, self.client.appareils)):
+        resultat = {'info': None, 'appareils': None, 'erreurs': {}, 'cache': {},
+                    'ref_appareils': self.ref_appareils}
+        appels = [(APPAREILS, self.client.appareils, self.ref_appareils)]
+        if self.ref_info:
+            appels.insert(0, (INFO, self.client.info, self.ref_info))
+        for service, appel, ref in appels:
             try:
-                r = appel(self.constructeur, self.ref)
+                r = appel(self.constructeur, ref)
                 resultat['info' if service == INFO else 'appareils'] = r
                 resultat['cache'][service] = r.depuis_cache
-            except QuotaEpuise as e:
-                resultat['erreurs'][service] = str(e)
-            except ErreurAgora as e:
+            except ErreurAgora as e:                   # QuotaEpuise compris
                 resultat['erreurs'][service] = str(e)
             except Exception as e:                     # filet : jamais d'exception hors du thread
                 app_logger.error(f"[Agora] {service} : {type(e).__name__}", exc_info=True)
@@ -101,6 +106,12 @@ class SaisieAgora(QDialog):
         self.ref_agora: str = ''
         self.lignes = None
         self.info: Dict = {}
+        self.info_lue = False
+        self.message_prix: List[str] = []
+        # Appareils lus par référence de la famille (None : Agora n'en connaît aucun).
+        # Agora range souvent les appareils sous l'ancienne référence (Beko
+        # C00866459 : rien ; 4346040285 qu'elle remplace : 231 appareils).
+        self.cas: Dict[str, Optional[list]] = {}
         self._thread = None
         self._marques: Optional[Dict[str, str]] = None
         self._construire()
@@ -172,6 +183,11 @@ class SaisieAgora(QDialog):
         self.bouton_import.setEnabled(False)
         self.bouton_import.clicked.connect(self.ouvrir_import)
         pied.addWidget(fermer)
+        self.choix_ref = QComboBox()
+        self.choix_ref.setToolTip("Référence de la famille dont on demande les appareils compatibles "
+                                  "(1 appel, sauf si déjà en cache)")
+        self.choix_ref.setVisible(False)
+        pied.addWidget(self.choix_ref)
         pied.addWidget(self.bouton_agora)
         pied.addWidget(self.bouton_import)
         racine.addLayout(pied)
@@ -240,7 +256,7 @@ class SaisieAgora(QDialog):
         finally:
             QApplication.restoreOverrideCursor()
         f = self.famille
-        self.lignes, self.info = None, {}
+        self.lignes, self.info, self.info_lue, self.message_prix, self.cas = None, {}, False, [], {}
         self.zone_agora.setText("")
         self.bouton_import.setEnabled(False)
         if f.trouvee:
@@ -249,8 +265,32 @@ class SaisieAgora(QDialog):
         else:
             self.constructeur, self.ref_agora = choisi, saisie.replace(' ', '')
         self.zone_famille.setText(self._texte_famille(f, doublons))
+        self._remplir_choix_ref()
         self.bouton_agora.setEnabled(self.constructeur is not None and not f.epuisee)
         self._maj_quota()
+
+    def _refs_famille(self) -> List[str]:
+        f = self.famille
+        refs = f.references if f is not None and f.trouvee else []
+        return refs or ([self.ref_agora] if self.ref_agora else [])
+
+    def _remplir_choix_ref(self, choisie: Optional[str] = None):
+        """Une entrée par référence de la famille : à publier, ancienne, déjà lue."""
+        self.choix_ref.clear()
+        for ref in self._refs_famille():
+            if ref in self.cas:
+                etat = "aucun appareil" if self.cas[ref] is None else f"{len(self.cas[ref])} appareils"
+            elif self.constructeur is not None and self.client.en_cache(APPAREILS, self.constructeur, ref):
+                etat = "en cache"
+            else:
+                etat = "1 appel"
+            role = "à publier" if ref == self.ref_agora else "ancienne"
+            self.choix_ref.addItem(f"Appareils de {ref} ({role}, {etat})", ref)
+        if choisie is not None:
+            i = self.choix_ref.findData(choisie)
+            if i >= 0:
+                self.choix_ref.setCurrentIndex(i)
+        self.choix_ref.setVisible(self.choix_ref.count() > 1)
 
     def _deja_connues(self, refs: List[str]) -> Dict[str, list]:
         """Références de la famille déjà dans l'outil (et nombre d'appareils), et
@@ -310,10 +350,12 @@ class SaisieAgora(QDialog):
     def interroger(self):
         if self._thread is not None or self.constructeur is None or not self.ref_agora:
             return
+        ref_appareils = self.choix_ref.currentData() or self.ref_agora
         self.bouton_agora.setEnabled(False)
         self.bouton_chercher.setEnabled(False)
-        self.zone_agora.setText("Interrogation d'Agora…")
-        self._thread = AppelAgora(self.client, self.constructeur, self.ref_agora, self)
+        self.zone_agora.setText(f"Interrogation d'Agora ({ref_appareils})…")
+        self._thread = AppelAgora(self.client, self.constructeur,
+                                  None if self.info_lue else self.ref_agora, ref_appareils, self)
         self._thread.termine.connect(self._agora_repond)
         self._thread.start()
 
@@ -331,52 +373,83 @@ class SaisieAgora(QDialog):
         self._thread = None
         self.bouton_chercher.setEnabled(True)
         self.bouton_agora.setEnabled(True)
+        e = html.escape
+        if INFO in r['erreurs']:
+            self.message_prix = [f"<span style='color:#b45309'>Prix : {e(r['erreurs'][INFO])}</span>"]
+        elif r.get('info') is not None:
+            self.info_lue = True
+            donnees = r['info'].donnees
+            self.info = donnees if isinstance(donnees, dict) else {}
+            self.message_prix = self._texte_prix()
+
+        ref = r['ref_appareils']
+        lignes = list(self.message_prix)
+        appareils = r.get('appareils')
+        if APPAREILS in r['erreurs']:
+            lignes.append(f"<b style='color:#c0392b'>Appareils de {e(ref)} : {e(r['erreurs'][APPAREILS])}.</b> "
+                          "Importez le PDF de la pièce (Fichier → Importer).")
+        elif appareils is not None:
+            self.cas[ref] = None if appareils.absente else list(appareils.donnees)
+        self._calculer_lignes()
+        for r_lue, cas in self.cas.items():
+            source = "cache" if r_lue == ref and r['cache'].get(APPAREILS) else "Agora"
+            lignes.append(f"Appareils de {e(r_lue)} : aucun chez Agora." if cas is None
+                          else f"Appareils de {e(r_lue)} : {len(cas)} ({source}).")
+        if self.lignes and self.lignes.lignes:
+            lignes.append(f"<b>{len(self.lignes.lignes)} appareils compatibles au total</b> — sans marque : "
+                          f"{self.lignes.sans_marque}, sans type : {self.lignes.sans_type} "
+                          "(l'import les complète ou les propose à valider).")
+        # Rien sur cette référence : proposer la suivante de la famille, sans dépenser
+        suivante = next((x for x in self._refs_famille() if x not in self.cas), None)
+        if ref in self.cas and self.cas[ref] is None:
+            if suivante:
+                lignes.append(f"Agora range souvent les appareils sous l'ancienne référence : "
+                              f"<b>{e(suivante)}</b> est sélectionnée, cliquez sur <b>Interroger Agora</b> "
+                              "pour l'essayer.")
+            elif not (self.lignes and self.lignes.lignes):
+                lignes.append("<b>Agora ne connaît aucun appareil pour cette famille</b> : importez le PDF.")
+        self._remplir_choix_ref(suivante if suivante else ref)
+        self.zone_agora.setText('<br>'.join(lignes))
+        self.bouton_import.setEnabled(bool(self.lignes and self.lignes.lignes))
         self._maj_quota()
+
+    def _texte_prix(self) -> List[str]:
         e = html.escape
         lignes = []
-        info = r.get('info')
-        self.info = (info.donnees or {}) if info is not None and isinstance(info.donnees, dict) else {}
-        if INFO in r['erreurs']:
-            lignes.append(f"<span style='color:#b45309'>Prix : {e(r['erreurs'][INFO])}</span>")
-        elif self.info:
+        if self.info:
             p = prix_emg(self.info, self.constructeur)
-            dispo = self.info.get('Availability') or self.info.get('Status') or ''
+            dispo = self.info.get('Availability')
+            statut = self.info.get('Status') or ''
             texte = (f"Prix de vente : <b>{_euros(p.vente)}</b> TTC ({e(p.regle)} ; achat "
                      f"{_euros(p.achat_ht)} HT, public {_euros(p.public)})")
-            if dispo:
-                texte += f" · disponibilité : {e(str(dispo))}"
+            if dispo is not None or statut:
+                texte += (f" · disponible : {'oui' if dispo else 'non'}" if dispo is not None else '') + \
+                         (f" ({e(str(statut))})" if statut else '')
             lignes.append(texte)
             if p.alerte:
                 lignes.append(f"<span style='color:#b45309'>Prix {e(p.alerte)}.</span>")
             if self.info.get('ReplaceBy'):
                 lignes.append(f"<span style='color:#b45309'>Agora indique un remplacement : "
                               f"{e(self.info['ReplaceBy'])}.</span>")
+        else:
+            lignes.append("Prix : Agora ne connaît pas cette référence.")
         code = code_emg_propose(self.ref_agora, self.constructeur)
         lignes.append(f"Code produit proposé (référence PrestaShop / Cogilog) : <b>{e(code)}</b>, à vérifier"
                       if code else "Code produit : préfixe inconnu pour ce constructeur, à saisir.")
+        return lignes
 
-        appareils = r.get('appareils')
+    def _calculer_lignes(self):
+        """Appareils de toutes les références lues, réunis (sans doublon)."""
+        tous = [c for cas in self.cas.values() if cas for c in cas]
         self.lignes = None
-        if APPAREILS in r['erreurs']:
-            lignes.append(f"<b style='color:#c0392b'>Appareils : {e(r['erreurs'][APPAREILS])}.</b> "
-                          "Importez le PDF de la pièce (Fichier → Importer).")
-        elif appareils is None or appareils.absente:
-            lignes.append("<b>Agora ne connaît aucun appareil pour cette pièce</b> : importez le PDF.")
-        else:
-            QApplication.setOverrideCursor(Qt.WaitCursor)
-            try:
-                self.lignes = lignes_appareils(
-                    appareils.donnees, lambda a: self.familles.produits(a, self.constructeur),
-                    self._marques_connues())
-            finally:
-                QApplication.restoreOverrideCursor()
-            n = len(self.lignes.lignes)
-            source = "cache" if r['cache'].get(APPAREILS) else "Agora"
-            lignes.append(f"<b>{n} appareils compatibles</b> ({source}) — sans marque : "
-                          f"{self.lignes.sans_marque}, sans type : {self.lignes.sans_type} "
-                          "(l'import les complète ou les propose à valider).")
-        self.zone_agora.setText('<br>'.join(lignes))
-        self.bouton_import.setEnabled(bool(self.lignes and self.lignes.lignes))
+        if not tous:
+            return
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            self.lignes = lignes_appareils(
+                tous, lambda a: self.familles.produits(a, self.constructeur), self._marques_connues())
+        finally:
+            QApplication.restoreOverrideCursor()
 
     # --- Import -------------------------------------------------------------------------
     def ouvrir_import(self):
