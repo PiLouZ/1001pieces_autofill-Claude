@@ -577,6 +577,8 @@ class ImportDialog(QDialog):
                 ref_input_edit.setPlaceholderText("Référence pièce (ex: AS6015830)")
                 ref_input_edit.setObjectName(f"ref_input_{file.path}")
                 ref_input_edit.setStyleSheet("padding: 5px; border: 2px solid #0066cc; border-radius: 4px;")
+                if file.type == FileType.CLIPBOARD and file.suggested_reference:
+                    ref_input_edit.setText(file.suggested_reference)    # proposée par la source (Agora)
                 ref_row.addWidget(ref_input_edit)
                 self._ref_saisie_unique = ref_input_edit
             else:
@@ -601,6 +603,8 @@ class ImportDialog(QDialog):
             self._champs_associes.append((file, self.champ_associee))
             if ref_saisie is not None:
                 ref_saisie.textChanged.connect(self.champ_associee.definir_reference)
+                if ref_saisie.text():
+                    self.champ_associee.definir_reference(ref_saisie.text())
             else:
                 self.champ_associee.definir_reference(file.suggested_reference)
             ref_group_layout.addLayout(ref_row)
@@ -614,7 +618,7 @@ class ImportDialog(QDialog):
             desc_input = QLineEdit()
             desc_input.setPlaceholderText("Description optionnelle")
             desc_input.setObjectName(f"desc_{file.path}")
-            if file.type == FileType.FICHE_SITE and file.suggested_label:
+            if file.type in (FileType.FICHE_SITE, FileType.CLIPBOARD) and file.suggested_label:
                 desc_input.setText(file.suggested_label)
             desc_row.addWidget(desc_input)
             ref_group_layout.addLayout(desc_row)
@@ -725,6 +729,14 @@ class ImportDialog(QDialog):
                 self.succ_replaced_by_input.set_refs(self._fiche.remplacee_par())
                 self.equiv_input.set_refs(self._fiche.equivalentes())
                 succ_layout.addWidget(self.liste_paires)
+            elif self.import_config.files and self.import_config.files[0].relations_source:
+                # Relations proposées par la source (Agora) : simples propositions
+                proposees = self.import_config.files[0].relations_source
+                if proposees.get('info'):
+                    succ_info.setText(proposees['info'])
+                self.succ_replaces_input.set_refs(proposees.get('remplace') or [])
+                self.succ_replaced_by_input.set_refs(proposees.get('remplacee_par') or [])
+                self.equiv_input.set_refs(proposees.get('equivalentes') or [])
             self._succ_content.setVisible(True)
             succ_container_layout.addWidget(self._succ_content)
             layout.addWidget(succ_container)

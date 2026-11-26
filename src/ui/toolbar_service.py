@@ -201,6 +201,12 @@ class ToolbarService:
         fiche_site_action.triggered.connect(lambda *_: ouvrir_fiche())
         data_menu.addAction(fiche_site_action)
 
+        agora_action = QAction("Importer depuis Agora…", self.main_window)
+        agora_action.setToolTip("Appareils compatibles et prix d'une pièce lus chez Agora "
+                                "(10 appels par jour), puis la fenêtre d'import, comme un PDF")
+        agora_action.triggered.connect(getattr(self.main_window, '_open_agora_dialog', lambda: None))
+        data_menu.addAction(agora_action)
+
         reprise_site_action = QAction("Importer les fiches du site…", self.main_window)
         reprise_site_action.setToolTip("Importer toutes les fiches du site, par lots, depuis les exports PrestaShop")
         reprise_site_action.triggered.connect(getattr(self.main_window, '_open_reprise_site_dialog', lambda: None))

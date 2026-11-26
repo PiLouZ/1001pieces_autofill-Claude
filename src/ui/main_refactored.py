@@ -2746,6 +2746,13 @@ class MainWindow(QMainWindow):
         if url:
             dialog.lire()
 
+    def _open_agora_dialog(self):
+        """Importer une pièce depuis Agora : famille MySpace, appareils compatibles
+        et prix par l'API, puis la fenêtre d'import (src/ui/agora_import.py)."""
+        from .agora_import import SaisieAgora
+        dialog = SaisieAgora(self)
+        dialog.show()
+
     def _open_reprise_site_dialog(self):
         """Importer les fiches du site en masse, par lots (CDC reprise des fiches,
         étape 4 et refonte) : une seule fenêtre à la fois (elle tient la session)."""

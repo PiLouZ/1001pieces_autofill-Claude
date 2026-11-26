@@ -265,6 +265,17 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
 
 <hr/>
 
+<h2>Importer depuis Agora</h2>
+<p>Pour une pièce vendue par un constructeur présent chez Agora (Whirlpool, Electrolux, BSH, Miele, Beko, Liebherr, Candy…), les appareils compatibles et le prix se lisent directement chez Agora, sans télécharger de PDF. Menu <b>Données → Importer depuis Agora…</b>.</p>
+<ol>
+  <li><b>Fichiers MySpace</b> (une fois, puis à chaque nouvel envoi) : téléchargez sur myspace2.agoraplus.com les fichiers <code>Parts_N</code> et <code>Products_N</code> de chaque constructeur, puis <b>Charger les fichiers MySpace…</b> et choisissez leur dossier (zip ou txt, une vingtaine de secondes). Ils donnent, sans consommer d'appel : la référence la plus récente d'une pièce, celles qu'elle remplace, sa désignation, si elle est commandable, et la marque et le type des appareils.</li>
+  <li><b>Chercher</b> une référence de pièce : la fenêtre affiche la référence à publier (la plus récente commandable), les références qu'elle remplace, et ce que l'outil et le site connaissent déjà de cette famille. Une pièce qui renvoie au code « article épuisé » de Whirlpool est signalée. Une référence absente des fichiers peut quand même être interrogée en choisissant le constructeur.</li>
+  <li><b>Interroger Agora</b> : appareils compatibles et prix de la référence à publier. Prix de vente proposé = prix d'achat × 2 (Electrolux : prix public − 33 %, puis × 2), avec le code produit proposé (préfixe + référence, à vérifier).</li>
+  <li><b>Ouvrir l'import</b> : la fenêtre d'import habituelle, comme pour un collage. Référence, libellé (à relire) et « Remplace » sont préremplis. Puis, comme après tout import : orthographe alignée, auto-complétion, règles de nomenclature, <b>Suggestions à valider</b>, <b>Auto-complétés à vérifier</b>.</li>
+</ol>
+<p><b>Quota</b> : la licence permet <b>10 appels par jour</b> pour les appareils compatibles et 10 pour les prix, remis à zéro à minuit UTC (1 h ou 2 h du matin en France). Le nombre restant est affiché ; une pièce déjà interrogée ne consomme plus rien (réponses gardées en cache). Quota atteint, ou pièce inconnue d'Agora : importez le PDF, comme avant.</p>
+<p><b>Clé d'API</b> : fichier <code>data/agora.env</code>, une ligne <code>AGORA_KEY=…</code> (jamais versionné). Cache, compteur et fichiers MySpace sont rangés dans <code>data/agora.db</code>, à part de la base des appareils.</p>
+
 <h2>Raccourcis clavier</h2>
 <p>Sous Windows : <b>Ctrl</b> à la place de <b>Cmd</b>.</p>
 
@@ -309,6 +320,7 @@ l'application exportée, contient quelques PDF et un CSV d'exemple.</div>
 <h3>En préparation</h3>
 <ul>
   <li><b>Créer l'appareil cherché, et le voir</b> : une référence tapée dans un filtre et absente de la base se crée d'un clic sur <b>Créer l'appareil « … »</b> (sous « Aucun résultat ») ou par Cmd+N, avec la marque et le type filtrés s'ils existent. Toute ligne ajoutée par Cmd+N pendant une recherche apparaît en tête du tableau, sur fond pêche, jusqu'au prochain changement de recherche ou de filtre.</li>
+  <li><b>Importer depuis Agora</b> (menu <b>Données</b>) : une référence de pièce, sa famille lue dans les fichiers MySpace (référence à publier, références remplacées, déjà dans l'outil ou sur le site), puis ses appareils compatibles et son prix lus chez Agora, sans PDF. La fenêtre d'import habituelle s'ouvre ensuite, référence, libellé et « Remplace » préremplis. Quota de 10 appels par jour affiché et respecté, réponses gardées en cache.</li>
 </ul>
 <h3>Versions livrées</h3>
 <ul>

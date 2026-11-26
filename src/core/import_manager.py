@@ -46,6 +46,10 @@ class ImportFile:
     # Fiche du site (FileType.FICHE_SITE) : lecture et plan, pour la fenêtre d'import
     # (aperçu, Succession préremplie) ; cf. EnregistrementFicheService.FicheAImporter
     fiche: Any = None
+    # Relations proposées par la source (Agora : remplacements lus dans MySpace),
+    # préremplies dans la section « Succession » de la fenêtre d'un seul fichier :
+    # {'remplace': [...], 'remplacee_par': [...], 'equivalentes': [...], 'info': '…'}
+    relations_source: Optional[Dict[str, Any]] = None
     
     @property
     def filename(self) -> str:
