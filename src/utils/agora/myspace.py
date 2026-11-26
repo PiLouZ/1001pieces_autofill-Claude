@@ -67,6 +67,19 @@ def etat_piece(statut: str, commandable: Optional[int]) -> str:
     return NON_COMMANDABLE
 
 
+_INDESIT = re.compile(r'C00\d{6}', re.I)
+GROUPES_ASSOCIES = {2, 17}         # Whirlpool, Beko : presque toujours une jumelle Indesit C00…
+
+
+def reference_associee(courante: 'PieceMySpace', anciennes: List[str]) -> Optional[str]:
+    """La 1ʳᵉ ancienne référence de l'autre numérotation (C00… d'un côté, Whirlpool ou
+    Beko de l'autre) : c'est une référence jumelle, pas un remplacement."""
+    if courante is None or courante.constructeur not in GROUPES_ASSOCIES:
+        return None
+    courante_indesit = bool(_INDESIT.fullmatch(courante.ref_publiee))
+    return next((r for r in anciennes if bool(_INDESIT.fullmatch(r)) != courante_indesit), None)
+
+
 def ref_affichee(ref: str) -> str:
     """Référence telle qu'on la publie : sans espace (« 00 123 » → « 00123 »)."""
     return re.sub(r'\s+', '', ref or '')
@@ -210,6 +223,9 @@ class FamilleAgora:
     anciennes: List[str] = field(default_factory=list)          # remplacées par la courante
     autres_constructeurs: List[int] = field(default_factory=list)
     epuisee: bool = False            # renvoie au code générique « article épuisé »
+    # Référence jumelle Whirlpool / Beko ↔ Indesit (C00…) de la courante : Agora la
+    # présente comme remplacée, l'outil la garde en « référence associée » (§ 10.17)
+    associee: Optional[str] = None
 
     @property
     def trouvee(self) -> bool:
@@ -217,9 +233,9 @@ class FamilleAgora:
 
     @property
     def references(self) -> List[str]:
-        """Toutes les références de la famille, la courante en premier."""
+        """Toutes les références de la famille : la courante, sa jumelle, les anciennes."""
         refs = [self.courante.ref_publiee] if self.courante else []
-        for r in self.anciennes:
+        for r in ([self.associee] if self.associee else []) + self.anciennes:
             if r not in refs:
                 refs.append(r)
         return refs
@@ -315,6 +331,9 @@ class FamillesMySpace:
                 if len(anciennes) >= ANCIENNES_MAX:
                     break
         f.anciennes = [r for r in dict.fromkeys(anciennes) if r != f.courante.ref_publiee]
+        f.associee = reference_associee(f.courante, f.anciennes)
+        if f.associee:
+            f.anciennes.remove(f.associee)
         return f
 
     def produits(self, appareils: List[Tuple[str, str]],

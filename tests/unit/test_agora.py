@@ -99,9 +99,21 @@ def test_famille_article_epuise(myspace):
 def test_famille_meilleur_constructeur(myspace):
     f = myspace.famille('4346040285')
     assert f.courante.ref == 'C00866459' and f.courante.constructeur == 17
-    assert f.anciennes == ['4346040285'] and f.autres_constructeurs == [2]
+    assert f.associee == '4346040285' and f.anciennes == [] and f.autres_constructeurs == [2]
     # constructeur imposé : on le respecte
     assert myspace.famille('4346040285', 2).courante.constructeur == 2
+
+
+def test_famille_reference_associee(tmp_path):
+    base = BaseAgora(str(tmp_path / 'a.db'))
+    (tmp_path / 'm').mkdir()
+    (tmp_path / 'm' / 'Parts_17.txt').write_bytes('\r\n'.join([
+        _piece('4298130200', 'C00868066', 'BALCONNET', 1, 'Abandonnée'),
+        _piece('C00868066', '', 'BALCONNET', 1, 'disponible')]).encode('latin-1'))
+    charger_dossier(base, str(tmp_path / 'm'))
+    f = FamillesMySpace(base).famille('4298130200')
+    assert f.courante.ref == 'C00868066' and f.associee == '4298130200' and f.anciennes == []
+    assert f.references == ['C00868066', '4298130200']
 
 
 def test_famille_inconnue(myspace):
@@ -121,10 +133,11 @@ def test_lignes_appareils_marque_et_type(myspace):
     connues = {'whirlpool': 'Whirlpool', 'scholtes': 'Scholtès'}
     r = lignes_appareils(cas, lambda a: myspace.produits(a, 2), connues)
     assert r.avec_entetes()[0] == ENTETES
-    assert r.lignes == [['859991234567', 'AWO 1234', 'Whirlpool', 'Lave-linge'],
-                        ['855555555555', 'CIG546 W', 'Scholtès', 'Cuisinière'],
-                        ['850000000000', 'XYZ', '', ''],
-                        ['25939400000', 'CP059MDXAUSS', '', 'Cuisinière']]
+    assert [l[:4] for l in r.lignes] == [['859991234567', 'AWO 1234', 'Whirlpool', 'Lave-linge'],
+                                         ['855555555555', 'CIG546 W', 'Scholtès', 'Cuisinière'],
+                                         ['850000000000', 'XYZ', '', ''],
+                                         ['25939400000', 'CP059MDXAUSS', '', 'Cuisinière']]
+    assert r.lignes[3][4] == 'Cuisiniere électrique'                     # 3ᵉ colonne d'Agora gardée
     assert (r.sans_marque, r.sans_type) == (2, 1)
 
 

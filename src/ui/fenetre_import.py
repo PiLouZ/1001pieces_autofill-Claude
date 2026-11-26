@@ -593,7 +593,8 @@ class ImportDialog(QDialog):
             ref_saisie = getattr(self, '_ref_saisie_unique', None)
             self.champ_associee = ChampReferenceAssociee(
                 self._memoire_associee(), proposee=(self._fiche.reference_associee()
-                                                    if self._fiche is not None else ''),
+                                                    if self._fiche is not None
+                                                    else (file.relations_source or {}).get('associee', '')),
                 inversion=self._inversion(file, ref_saisie,
                                           None if ref_saisie is not None else ref_display))
             ref_row.addWidget(self.champ_associee)

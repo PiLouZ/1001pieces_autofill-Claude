@@ -352,7 +352,8 @@ class SaisieAgora(QDialog):
                 etat = "en cache"
             else:
                 etat = "1 appel"
-            role = "à publier" if ref == self.ref_agora else "ancienne"
+            role = ("à publier" if ref == self.ref_agora
+                    else "associée" if self.famille is not None and ref == self.famille.associee else "ancienne")
             self.choix_ref.addItem(f"Appareils de {ref} ({role}, {etat})", ref)
         if choisie is not None:
             i = self.choix_ref.findData(choisie)
@@ -397,9 +398,12 @@ class SaisieAgora(QDialog):
             couleur = '#2e7d32' if c.etat == COMMANDABLE else '#b45309'
             lignes.append(f"Référence à publier : <b>{e(c.ref_publiee)}</b> — {e(c.designation)} "
                           f"<span style='color:{couleur}'>({e(c.etat)})</span> · {e(c.nom_constructeur)}")
-            if cle_ref(c.ref) != cle_ref(f.saisie):
+            if cle_ref(c.ref) != cle_ref(f.saisie) and cle_ref(f.saisie) != cle_ref(f.associee or ''):
                 lignes.append(f"La référence saisie <b>{e(f.saisie)}</b> est remplacée : "
                               f"{' → '.join(e(p.ref_publiee) for p in f.chaine)}.")
+            if f.associee:
+                lignes.append(f"Référence associée : <b>{e(f.associee)}</b> (jumelle Whirlpool / Beko ↔ "
+                              "Indesit, gardée à part : ses appareils restent sous sa référence)")
             if f.anciennes:
                 lignes.append(f"Remplace : {e(' '.join(f.anciennes))}")
             if f.autres_constructeurs:
@@ -474,7 +478,7 @@ class SaisieAgora(QDialog):
         suivante = next((x for x in self._refs_famille() if x not in self.cas), None)
         if ref in self.cas and self.cas[ref] is None:
             if suivante:
-                lignes.append(f"Agora range souvent les appareils sous l'ancienne référence : "
+                lignes.append(f"Agora range souvent les appareils sous une autre référence de la famille : "
                               f"<b>{e(suivante)}</b> est sélectionnée, cliquez sur <b>Interroger Agora</b> "
                               "pour l'essayer.")
             elif not (self.lignes and self.lignes.lignes):
@@ -483,6 +487,35 @@ class SaisieAgora(QDialog):
         self.zone_agora.setText('<br>'.join(lignes))
         self.bouton_import.setEnabled(bool(self.lignes and self.lignes.lignes))
         self._maj_quota()
+
+    def _fichiers_import(self, designation: str) -> list:
+        """Un fichier d'import par référence dont Agora a donné les appareils : chaque
+        liste reste sous sa référence d'origine (Pierre-Louis, 2026-11-26), la famille
+        est déclarée par les relations (remplace, remplacée par, réf. associée)."""
+        from src.core.import_manager import FileType, ImportFile
+        f = self.famille
+        courante = self.ref_agora
+        associee = f.associee if f else None
+        anciennes = list(f.anciennes) if f else []
+        libelle = libelle_piece(designation)
+        fichiers = []
+        for ref, cas in self.cas.items():
+            if not cas:
+                continue
+            lignes = lignes_appareils(cas, lambda a: self.familles.produits(a, self.constructeur),
+                                      self._marques_connues())
+            if ref == courante:
+                relations = {'remplace': anciennes, 'associee': associee or ''}
+            elif ref == associee:
+                relations = {'associee': courante}
+            else:
+                relations = {'remplacee_par': [courante]}
+            relations['info'] = ("Relations lues dans les fichiers MySpace d'Agora. "
+                                 "Retirez une référence erronée, ajoutez-en une au besoin.")
+            fichiers.append(ImportFile(path=f"Agora {ref}", type=FileType.CLIPBOARD,
+                                       suggested_reference=ref, suggested_label=libelle,
+                                       data=lignes.avec_entetes(), relations_source=relations))
+        return fichiers
 
     def _texte_prix(self) -> List[str]:
         e = html.escape
@@ -532,24 +565,24 @@ class SaisieAgora(QDialog):
     def ouvrir_import(self):
         if not self.lignes or not self.lignes.lignes:
             return
-        from src.core.import_manager import (FileType, ImportConfiguration, ImportFile, ImportType)
+        from src.core.import_manager import ImportConfiguration, ImportType
         f = self.famille
         designation = self.info.get('Description') or (f.courante.designation if f and f.courante else '')
         # Données commerciales gardées pour la fiche PrestaShop / Cogilog (agora_fiche.py)
         p = prix_emg(self.info, self.constructeur) if self.info else None
         prix_saisi = _prix(self.champ_prix.text())
         regle = (p.regle if p else '') if prix_saisi == (p.vente if p else None) else "prix saisi"
-        self.base.noter_fiche(self.ref_agora, self.constructeur, self.champ_code.text().strip(),
-                              designation, p.achat_ht if p else None, prix_saisi, regle)
-        fichier = ImportFile(
-            path=f"Agora {self.ref_agora}", type=FileType.CLIPBOARD,
-            suggested_reference=self.ref_agora, suggested_label=libelle_piece(designation),
-            data=self.lignes.avec_entetes(),
-            relations_source={'remplace': list(f.anciennes) if f else [],
-                              'info': "Remplacements lus dans les fichiers MySpace d'Agora. "
-                                      "Retirez une référence erronée, ajoutez-en une au besoin."})
-        config = ImportConfiguration(files=[fichier], import_type=ImportType.SINGLE_FILE,
-                                     has_headers=True)
+        fichiers = self._fichiers_import(designation)
+        if not fichiers:
+            return
+        # Code et prix retenus pour chaque référence importée (la fiche peut être ouverte
+        # sur l'une ou l'autre) : code calculé sur la plus récente, comme convenu avec EMG
+        for ref in dict.fromkeys([self.ref_agora] + [x.suggested_reference for x in fichiers]):
+            self.base.noter_fiche(ref, self.constructeur, self.champ_code.text().strip(),
+                                  designation, p.achat_ht if p else None, prix_saisi, regle)
+        config = ImportConfiguration(
+            files=fichiers, has_headers=True,
+            import_type=ImportType.MULTI_FILE if len(fichiers) > 1 else ImportType.SINGLE_FILE)
         main_window = self.main_window
 
         def fin(results):
@@ -557,5 +590,5 @@ class SaisieAgora(QDialog):
                 main_window._on_import_complete(results)
 
         main_window.import_manager.importer_avec_dialogue(
-            config, callback=fin, titre=f"Importer depuis Agora — {self.ref_agora}")
+            config, callback=fin, titre=f"Importer depuis Agora — {', '.join(f.suggested_reference for f in fichiers)}")
         self.close()

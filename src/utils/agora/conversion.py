@@ -14,7 +14,9 @@ from dataclasses import dataclass, field
 from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 # En-têtes reconnus par la fenêtre d'import (détection des en-têtes du collage)
-ENTETES = ['Ref technique', 'Ref commerciale', 'Marque', 'Type']
+# « Description » : 3ᵉ colonne des impressions de compatibilités d'Agora (selon les groupes :
+# désignation de l'appareil, réf. commerciale…) ; reconnue comme « Notes », modifiable au mapping
+ENTETES = ['Ref technique', 'Ref commerciale', 'Marque', 'Type', 'Description']
 
 # Désignation du référentiel produits (français) → type de l'outil ; 1re règle qui s'applique
 _TYPES = [
@@ -121,7 +123,7 @@ def lignes_appareils(cas: Iterable[dict],
         type_ = type_depuis_designation(designation) or type_depuis_designation(descriptions[(tech, com)])
         resultat.sans_marque += not marque
         resultat.sans_type += not type_
-        resultat.lignes.append([tech or com, com, marque, type_])
+        resultat.lignes.append([tech or com, com, marque, type_, descriptions[(tech, com)].strip()])
     return resultat
 
 
