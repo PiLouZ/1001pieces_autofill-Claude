@@ -223,6 +223,14 @@ class CustomTableView(QTableView):
         bouton.show()
         self.viewport().update()
 
+    def definir_filtres_si_vide(self, texte):
+        """Filtres de colonne actifs, rappelés sous « Aucun résultat pour … » quand
+        une recherche par pièce s'y ajoute (ils peuvent seuls vider le tableau)."""
+        texte = texte or ''
+        if texte != getattr(self, '_filtres_vide', ''):
+            self._filtres_vide = texte
+            self.viewport().update()
+
     def action_si_vide(self):
         """Libellé du bouton proposé sous « Aucun résultat », ou None."""
         bouton = getattr(self, '_bouton_vide', None)
@@ -262,6 +270,9 @@ class CustomTableView(QTableView):
                 msg = f"Aucun résultat pour « {original} »" if original else "Aucun résultat"
             else:
                 msg = "Aucun résultat"
+            filtres = getattr(self, '_filtres_vide', '')
+            if filtres and search_term:
+                msg += f"\navec les filtres : {filtres}"
             painter.drawText(zone, Qt.AlignCenter, msg)
             painter.restore()
 

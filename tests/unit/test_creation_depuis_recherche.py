@@ -124,6 +124,31 @@ fen._add_new_row()
 attendre()
 troisieme = max(ids_affiches())
 res['tri'] = [ids_affiches()[0] == troisieme, en_base(troisieme)]
+# 7. Recherche par pièce + filtre qui vide le tableau : pas de bouton « Créer »,
+#    les filtres actifs sont rappelés sous le message
+tc.current_search_term = None
+filtrer({2: 'ZZ999'})
+res['filtre_seul'] = [len(ids_affiches()), fen.table.action_si_vide(),
+                      getattr(fen.table, '_filtres_vide', '')]
+for col, widget in tc.filter_widgets.items():
+    if widget is not None:
+        widget.blockSignals(True)
+        (widget.setEditText if hasattr(widget, 'setEditText') else widget.setText)('ZZ999' if col == 2 else '')
+        widget.blockSignals(False)
+tc.load_data('HBA123', is_search=True)
+attendre()
+res['piece_filtre'] = [len(ids_affiches()), fen.table.action_si_vide(),
+                       getattr(fen.table, '_filtres_vide', '')]
+# 8. Pièce + filtre sur une référence qui EXISTE (HBA456, casse différente) :
+#    pas de bouton, même si la pièce cherchée vide le tableau
+for col, widget in tc.filter_widgets.items():
+    if widget is not None:
+        widget.blockSignals(True)
+        (widget.setEditText if hasattr(widget, 'setEditText') else widget.setText)('hba456' if col == 2 else '')
+        widget.blockSignals(False)
+tc.load_data('HBA123', is_search=True)
+attendre()
+res['piece_filtre_existant'] = [len(ids_affiches()), fen.table.action_si_vide()]
 print('RESULTAT ' + json.dumps(res), flush=True)
 os._exit(0)
 """
@@ -154,6 +179,12 @@ def test_creer_l_appareil_cherche_et_le_voir():
     assert res['empiles'] == [True, ['', '', '']]
     assert res['autre_filtre'] == ['HBA123', 'HBA456']
     assert res['tri'] == [True, ['', '', '']]
+    # Filtre seul : bouton toujours proposé (non-régression), pas de rappel de filtres
+    assert res['filtre_seul'] == [0, "Créer l'appareil « ZZ999 »", '']
+    # Pièce + filtre sur une référence absente : bouton proposé, filtres rappelés
+    assert res['piece_filtre'] == [0, "Créer l'appareil « ZZ999 »", 'Référence modèle = ZZ999']
+    # Pièce + filtre sur une référence qui existe : pas de bouton trompeur
+    assert res['piece_filtre_existant'] == [0, None]
 
 
 def test_valeur_litterale():
