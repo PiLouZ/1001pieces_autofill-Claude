@@ -293,6 +293,10 @@ class DatabaseFichesSiteMixin:
                 ok, message = self.add_equivalence(ref, associee)
                 if not ok:
                     app_logger.warning(f"Référence associée {ref} ≡ {associee} : {message}")
+                else:
+                    # La jumelle, créée sans libellé, hérite de celui de la pièce (ou
+                    # l'inverse) ; un libellé existant n'est jamais écrasé
+                    self.propagate_description(ref, associee)
             with self._query_lock:
                 self.cursor.execute(
                     "INSERT OR REPLACE INTO references_associees (ref_piece, associee, decide_le) "

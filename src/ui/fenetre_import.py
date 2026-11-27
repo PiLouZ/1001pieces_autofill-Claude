@@ -263,7 +263,8 @@ class ImportDialog(QDialog):
         self._cartes_fiches = []
         self._boite_ecartees = None         # confirmation des équivalentes écartées
         self._champs_associes = []      # (fichier, ChampReferenceAssociee)
-        self._refs_inversees = {}       # chemin → réf. de pièce choisie par « ⇄ »
+        self._refs_inversees = {}       # fiche du site : chemin → réf. de pièce choisie par « ⇄ »
+        self._principales_choisies = {} # autre fichier : chemin → réf. principale choisie par « ⇄ » (appareils inchangés)
         self._fiche = fiches[0].fiche if fiches and not self._fiches_lot else None
         self.setWindowTitle("Importer les fiches du site" if self._fiches_lot
                             else "Importer une fiche du site" if self._fiche is not None
@@ -593,7 +594,8 @@ class ImportDialog(QDialog):
                 self._memoire_associee(), proposee=(self._fiche.reference_associee()
                                                     if self._fiche is not None else ''),
                 inversion=self._inversion(file, ref_saisie,
-                                          None if ref_saisie is not None else ref_display))
+                                          None if ref_saisie is not None else ref_display),
+                garde_la_piece=ref_saisie is None and file.type != FileType.FICHE_SITE)
             ref_row.addWidget(self.champ_associee)
             if ref_saisie_unique := getattr(self, '_ref_saisie_unique', None):
                 ref_saisie_unique.setMaximumWidth(260)   # la réf. associée suit, à sa droite
@@ -1671,7 +1673,9 @@ class ImportDialog(QDialog):
         """Réf. associée d'une carte : suit la référence de la carte."""
         champ = ChampReferenceAssociee(self._memoire_associee(), proposee=proposee, largeur=200,
                                        petit=True,
-                                       inversion=self._inversion(file, ref_edit, ref_label))
+                                       inversion=self._inversion(file, ref_edit, ref_label),
+                                       garde_la_piece=(ref_edit is None
+                                                       and file.type != FileType.FICHE_SITE))
         self._champs_associes.append((file, champ))
         # (le champ de saisie n'est pas encore rattaché à la fenêtre : pas de findChild)
         if ref_edit is not None:
@@ -1682,12 +1686,26 @@ class ImportDialog(QDialog):
         return champ
 
     def _inversion(self, file, ref_edit=None, ref_label=None):
-        """« ⇄ » : la réf. associée devient la référence de la pièce. Champ de saisie
-        (collage, fiche sans code produit) : son texte change ; référence fixe (nom du
-        fichier, code produit) : elle est remplacée pour cet import."""
+        """« ⇄ » : la réf. associée devient la PRINCIPALE de la paire (elle vient en
+        premier dans le code produit). Champ de saisie (collage) : son texte change.
+        Fiche du site (code produit) : la référence de la pièce est remplacée pour cet
+        import. Fichier nommé d'après sa référence (PDF, CSV) : les appareils RESTENT
+        sur la réf. du fichier, seule la paire s'inverse (la réf. du fichier devient
+        l'associée de la principale choisie)."""
         def inverser(nouvelle: str, ancienne: str):
             if ref_edit is not None:
                 ref_edit.setText(nouvelle)
+                return
+            if file.type != FileType.FICHE_SITE:
+                if nouvelle == ancienne:
+                    self._principales_choisies.pop(file.path, None)
+                else:
+                    self._principales_choisies[file.path] = nouvelle
+                if ref_label is not None:
+                    ref_label.setToolTip("" if nouvelle == ancienne else
+                                         f"Les appareils restent sur {ancienne} (fichier). "
+                                         f"Référence principale choisie par « ⇄ » : {nouvelle}")
+                    self._maj_nom_fichier_carte(file)
                 return
             if nouvelle == file.suggested_reference:
                 self._refs_inversees.pop(file.path, None)
@@ -1713,7 +1731,7 @@ class ImportDialog(QDialog):
                   and file.path not in self._refs_inversees
                   and file.name_without_ext == file.suggested_reference)
         nom_fichier.setVisible(not repete)
-        if file.path not in self._refs_inversees:
+        if file.path not in self._refs_inversees and file.path not in self._principales_choisies:
             ref_display.setToolTip(f"Fichier : {file.filename}" if repete else "")
 
     def _collecter_associees(self, config: ImportConfiguration):
@@ -1729,7 +1747,12 @@ class ImportDialog(QDialog):
                 ref = config.individual_references.get(file.path, '') or ''
             repondu, associee = champ.reponse()
             if repondu and ref and ref == champ.reference:
-                reponses[ref] = associee
+                # « ⇄ » sur un fichier : la paire s'inverse (l'associée est la principale),
+                # les appareils restent sur `ref`
+                if champ.inversee:
+                    reponses[associee] = ref
+                else:
+                    reponses[ref] = associee
                 # Groupe choisi pour une réf. de forme inconnue (§ 10.17 bis) :
                 # retenu seulement avec la paire qu'il permet
                 origines.update(champ.origines_declarees())

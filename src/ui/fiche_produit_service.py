@@ -148,12 +148,37 @@ class FicheProduitService:
             lignee = [equivalente] + [r for r in anciennes if r not in deja and r != equivalente]
             deja.update(lignee)
             lignees.append(lignee)
+        lignees = self._jumelles_dans_la_lignee(lignees)
 
         # Même décompte que les métas (appareils distincts de toute la lignée)
         seo = self.main_window.seo_service
         nb = {lignee[0]: seo._count_compatible_models(lignee) for lignee in lignees}
         lignees.sort(key=lambda l: (-nb[l[0]], l[0][:1].isdigit(), l[0]))
         return remplace, lignees
+
+    def _jumelles_dans_la_lignee(self, lignees: List[List[str]]) -> List[List[str]]:
+        """Une équivalente qui est la jumelle (réf. associée) d'une autre rejoint sa
+        lignée, au lieu de former la sienne : la paire (C00916410, 4298130100) se
+        suit alors, et se classe avec la lignée de sa principale (Beko : réf. du
+        fichier et C00… ne sont plus éclatées par nombre d'appareils)."""
+        if len(lignees) < 2:
+            return lignees
+        db = self.main_window.db_manager
+        try:
+            paires = db.paires_associees_parmi([r for l in lignees for r in l])
+        except Exception as e:
+            app_logger.debug(f"Fiche: jumelles des équivalentes non lues : {e}")
+            return lignees
+        lignees = [list(l) for l in lignees]
+        for principale, associee in paires:
+            for tete, autre in ((principale, associee), (associee, principale)):
+                hote = next((l for l in lignees if tete in l), None)
+                absorbee = next((l for l in lignees if l[0] == autre), None)
+                if hote is not None and absorbee is not None and hote is not absorbee:
+                    hote.extend(absorbee)
+                    lignees.remove(absorbee)
+                    break
+        return lignees
 
     def references_fiche(self, reference: str) -> Dict[str, Any]:
         """

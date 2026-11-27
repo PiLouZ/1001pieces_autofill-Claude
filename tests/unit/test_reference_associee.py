@@ -181,6 +181,55 @@ def test_jumelle_d_une_ancienne_reference_a_la_suite_dans_remplace(tmp_path):
     assert refs['lignes_equivalentes'] == [] and refs['equivalentes'] == []
 
 
+def test_jumelles_des_equivalentes_suivent_leur_principale(tmp_path):
+    """Cas Beko : appareils sur les réf. de fichier (4298…), jumelles C00… . Chaque
+    paire se suit, principale d'abord, dans l'ordre des lignées (successeur avant
+    ancienne), sur une seule ligne d'équivalentes."""
+    from tests.unit.test_fiche_export_site import _fiche_service
+    b = Construite(tmp_path)
+    db = b.db
+    db.add_supersession('C00880446', 'C00916410')
+    db.add_supersession('C00869001', 'C00870867')
+    le = '2026-11-27T08:31:51'
+    db.definir_references_associees(
+        [('C00868066', '4298130200'), ('C00916410', '4298130100'), ('C00880446', '4298130172'),
+         ('C00870867', '4858140300'), ('C00869001', '4858140372')], le)
+    for autre in ('C00916410', 'C00880446', 'C00870867', 'C00869001'):   # un seul groupe
+        db.add_equivalence('C00868066', autre)
+    for ref in ('4298130100', '4298130172'):          # les appareils sont sur les réf. de fichier
+        db.conn.execute("INSERT OR IGNORE INTO pieces (ref_piece, description) VALUES (?, 'x')", (ref,))
+    for i, ref in enumerate(('4298130100', '4298130172', '4298130172'), start=1):
+        db.conn.execute("INSERT OR IGNORE INTO appareils (id) VALUES (?)", (i,))
+        pid = db.conn.execute("SELECT id FROM pieces WHERE ref_piece = ?", (ref,)).fetchone()[0]
+        db.conn.execute("INSERT INTO piece_associations (piece_id, appareil_id) VALUES (?, ?)", (pid, i))
+    db.conn.commit()
+    svc = _fiche_service(db)
+    attendu = [['C00916410', '4298130100', 'C00880446', '4298130172',
+                'C00870867', '4858140300', 'C00869001', '4858140372']]
+    for cherchee in ('C00868066', '4298130200'):
+        refs = svc.references_fiche(cherchee)
+        assert refs['code_produit'] == ['C00868066', '4298130200']
+        assert refs['lignes_equivalentes'] == attendu
+
+
+def test_reference_associee_herite_du_libelle(tmp_path):
+    """La jumelle créée par l'import (sans libellé) reçoit celui de la pièce ; un
+    libellé déjà présent n'est jamais écrasé, dans un sens comme dans l'autre."""
+    b = Construite(tmp_path)
+    db = b.db
+    db.conn.execute("INSERT INTO pieces (ref_piece, description) VALUES ('4298130200', 'Balconnet')")
+    db.conn.execute("INSERT INTO pieces (ref_piece, description) VALUES ('C00900001', 'Autre nom')")
+    db.conn.commit()
+    db.definir_references_associees(
+        [('4298130200', 'C00868066'), ('C00900001', '4858140372'), ('C00700002', 'C00900001')],
+        '2026-11-27T08:31:51')
+    desc = dict(db.conn.execute("SELECT ref_piece, description FROM pieces").fetchall())
+    assert desc['C00868066'] == 'Balconnet'               # jumelle sans libellé : hérite
+    assert desc['4858140372'] == 'Autre nom'
+    assert desc['C00700002'] == 'Autre nom'               # sens inverse : la pièce hérite
+    assert desc['4298130200'] == 'Balconnet' and desc['C00900001'] == 'Autre nom'
+
+
 def test_jumelles_a_la_suite_sur_la_meme_ligne():
     from src.ui.fiche_produit_service import FicheProduitService
     suite = FicheProduitService.jumelles_a_la_suite
@@ -243,7 +292,9 @@ def test_inverser_dans_un_collage(qapp, tmp_path):
     assert config.references_associees == {'482000029398': 'C00138863'}
 
 
-def test_inverser_un_fichier_appareils_sur_la_principale(qapp, tmp_path, rendus):
+def test_inverser_un_fichier_appareils_restent_sur_le_fichier(qapp, tmp_path, rendus):
+    """« ⇄ » sur un fichier : l'associée devient la PRINCIPALE de la paire, mais les
+    appareils restent sur la réf. du nom de fichier (cas Beko 4298130200 / C00868066)."""
     from tests.unit.test_fiche_export_site import _fiche_service
     b = Construite(tmp_path)
     fenetre = _fenetre(qapp, b.db)
@@ -259,19 +310,23 @@ def test_inverser_un_fichier_appareils_sur_la_principale(qapp, tmp_path, rendus)
     dialogue.champ_associee.inverser()
     from PyQt5.QtWidgets import QLabel
     etiquette = dialogue.findChild(QLabel, f"ref_display_{fichier.path}")
-    assert etiquette.text() == "→ Réf. : 482000029398" and 'C00138863' in etiquette.toolTip()
+    assert etiquette.text() == "→ Réf. : C00138863" and '482000029398' in etiquette.toolTip()
+    assert dialogue.champ_associee.libelle.text() == "Réf. principale :"
     dialogue.resize(1000, 600)
     dialogue.show()
     qapp.processEvents()
     dialogue.grab().save(str(rendus / 'reference_associee_inversee.png'))
     dialogue._validate_and_accept()
     config = dialogue.get_configuration()
-    assert config.individual_references[fichier.path] == '482000029398'
+    assert config.individual_references[fichier.path] == 'C00138863'
+    assert config.references_associees == {'482000029398': 'C00138863'}
     ImportManager(b.db)._run_import_files(config)
     lies = dict(b.db.conn.execute(
         "SELECT p.ref_piece, COUNT(pa.id) FROM pieces p LEFT JOIN piece_associations pa "
         "ON pa.piece_id = p.id GROUP BY p.ref_piece").fetchall())
-    assert lies.get('482000029398') == 1 and not lies.get('C00138863')
+    assert lies.get('C00138863') == 1 and not lies.get('482000029398')
+    assert b.db.reference_associee('482000029398') == (True, 'C00138863')
+    assert b.db.reference_principale_de('C00138863') == '482000029398'
     svc = _fiche_service(b.db)
     for cherchee in ('482000029398', 'C00138863'):
         assert svc.references_fiche(cherchee)['code_produit'] == ['482000029398', 'C00138863']
@@ -283,7 +338,10 @@ def test_inverser_un_fichier_appareils_sur_la_principale(qapp, tmp_path, rendus)
     d2.champ_associee.inverser()
     d2.champ_associee.inverser()
     d2._validate_and_accept()
-    assert d2.get_configuration().individual_references[fichier.path] == 'C00138863'
+    config2 = d2.get_configuration()
+    assert config2.individual_references[fichier.path] == 'C00138863'
+    assert config2.references_associees == {'C00138863': '482000029398'}
+    assert d2.champ_associee.libelle.text() == "Réf. associée :"
     dialogue.close()
 
 
