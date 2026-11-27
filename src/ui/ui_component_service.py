@@ -224,10 +224,24 @@ class UIComponentService:
         # Méta Title, Méta Desc (Exporter CSV existe déjà)
         self._creer_boutons_seo()
 
+        # Fiche PrestaShop et Cogilog : raccourci du menu Données (src/ui/agora_fiche.py),
+        # actif comme Titre après une recherche par pièce
+        self.main_window.fiche_site_btn = QPushButton(
+            qta.icon('fa5s.store', color='white'), "Fiche PrestaShop et Cogilog")
+        self.main_window.fiche_site_btn.setStyleSheet(
+            StyleManager.bouton_export_plein(*StyleManager.COULEURS_FICHE_SITE))
+        self.main_window.fiche_site_btn.setToolTip(
+            "Fiche de la pièce recherchée : créer sur PrestaShop et/ou ajouter aux fichiers\n"
+            "d'import du jour (menu Données → Fiche PrestaShop et Cogilog)")
+        self.main_window.fiche_site_btn.clicked.connect(
+            lambda: self.main_window._open_fiche_site_agora())
+        self.main_window.fiche_site_btn.setEnabled(False)
+
         # Grille de 6 colonnes égales :
-        # ligne 1 : Méta Title | Méta Desc | Exporter CSV (un tiers chacun) ;
-        # ligne 2 : Titre (un tiers) | Fiche complète (deux tiers) ;
-        # ligne 3 : « Exports HTML » repliable → HTML Marques | HTML Détails.
+        # ligne 1 : Fiche PrestaShop et Cogilog (deux tiers) | Exporter CSV (un tiers) ;
+        # ligne 2 : « Autres exports » repliable, contenant
+        # ligne 3 : Méta Title | Méta Desc ; ligne 4 : Titre | Fiche complète ;
+        # ligne 5 : HTML Marques | HTML Détails.
         grille = QGridLayout()
         grille.setContentsMargins(0, 0, 0, 0)
         grille.setHorizontalSpacing(6)
@@ -235,9 +249,10 @@ class UIComponentService:
         for col in range(6):
             grille.setColumnStretch(col, 1)
         mw = self.main_window
-        for ligne, boutons in ((0, ((mw.meta_title_btn, 2), (mw.meta_desc_btn, 2), (mw.export_csv_btn, 2))),
-                               (1, ((mw.titre_btn, 2), (mw.fiche_btn, 4))),
-                               (3, ((mw.export_html_brands_btn, 3), (mw.export_html_details_btn, 3)))):
+        for ligne, boutons in ((0, ((mw.fiche_site_btn, 4), (mw.export_csv_btn, 2))),
+                               (2, ((mw.meta_title_btn, 3), (mw.meta_desc_btn, 3))),
+                               (3, ((mw.titre_btn, 2), (mw.fiche_btn, 4))),
+                               (4, ((mw.export_html_brands_btn, 3), (mw.export_html_details_btn, 3)))):
             col = 0
             for btn, largeur in boutons:
                 # Largeur fixée par la grille, pas par le texte du bouton
@@ -246,16 +261,17 @@ class UIComponentService:
                 col += largeur
 
         self.main_window.exports_html_toggle = QToolButton()
-        self.main_window.exports_html_toggle.setText("Exports HTML")
+        self.main_window.exports_html_toggle.setText("Autres exports")
         self.main_window.exports_html_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self.main_window.exports_html_toggle.setCheckable(True)
-        self.main_window.exports_html_toggle.setToolTip("Afficher ou masquer HTML Marques et HTML Détails")
+        self.main_window.exports_html_toggle.setToolTip(
+            "Afficher ou masquer Méta Title, Méta Desc, Titre, Fiche complète, HTML Marques et HTML Détails")
         self.main_window.exports_html_toggle.setStyleSheet(
             "QToolButton { border: none; background: transparent; color: #6c757d;"
             " font-size: 11px; padding: 0px 2px; }"
             "QToolButton:hover { color: #343a40; }")
         self.main_window.exports_html_toggle.toggled.connect(self._afficher_exports_html)
-        grille.addWidget(self.main_window.exports_html_toggle, 2, 0, 1, 6, Qt.AlignLeft)
+        grille.addWidget(self.main_window.exports_html_toggle, 1, 0, 1, 6, Qt.AlignLeft)
         layout.addLayout(grille)
 
         settings = getattr(self.main_window, 'settings', None)
@@ -263,14 +279,17 @@ class UIComponentService:
         self.main_window.exports_html_toggle.setChecked(visible)
         self._afficher_exports_html(visible)
 
-    # Ligne HTML Marques / HTML Détails dépliée ou non, mémorisé par poste
+    # Panneau « Autres exports » déplié ou non, mémorisé par poste (clé historique de
+    # l'ancien repli « Exports HTML » : un poste qui l'avait déplié garde le panneau ouvert)
     CLE_EXPORTS_HTML = "exports/html_visible"
 
     def _afficher_exports_html(self, visible: bool) -> None:
-        """Déplier / replier la ligne HTML Marques | HTML Détails."""
-        self.main_window.exports_html_toggle.setArrowType(Qt.DownArrow if visible else Qt.RightArrow)
-        self.main_window.export_html_brands_btn.setVisible(visible)
-        self.main_window.export_html_details_btn.setVisible(visible)
+        """Déplier / replier le panneau « Autres exports »."""
+        mw = self.main_window
+        mw.exports_html_toggle.setArrowType(Qt.DownArrow if visible else Qt.RightArrow)
+        for btn in (mw.meta_title_btn, mw.meta_desc_btn, mw.titre_btn, mw.fiche_btn,
+                    mw.export_html_brands_btn, mw.export_html_details_btn):
+            btn.setVisible(visible)
         settings = getattr(self.main_window, 'settings', None)
         if settings is not None:
             settings.setValue(self.CLE_EXPORTS_HTML, "true" if visible else "false")
@@ -398,6 +417,8 @@ class UIComponentService:
         # Tous les boutons d'export nécessitent une référence de pièce
         if hasattr(self.main_window, 'export_csv_btn'):
             self.main_window.export_csv_btn.setEnabled(is_piece_search)
+        if hasattr(self.main_window, 'fiche_site_btn'):
+            self.main_window.fiche_site_btn.setEnabled(is_piece_search)
         if hasattr(self.main_window, 'export_html_brands_btn'):
             self.main_window.export_html_brands_btn.setEnabled(is_piece_search)
         if hasattr(self.main_window, 'export_html_details_btn'):

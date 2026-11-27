@@ -186,67 +186,69 @@ class ToolbarService:
         autocomplete_action = QAction("Autocomplétion", self.main_window)
         autocomplete_action.setToolTip("Compléter automatiquement Type et Fabricant manquants")
         autocomplete_action.triggered.connect(self.main_window._fill_empty_fields)
-        data_menu.addAction(autocomplete_action)
 
         suggest_action = QAction("Suggérer Type/Marque par similarité", self.main_window)
         suggest_action.setToolTip("Proposer Type/Marque pour les lignes incomplètes d'après des références proches déjà renseignées")
         suggest_action.triggered.connect(
             getattr(self.main_window, '_scan_all_for_suggestions', lambda: None)
         )
-        data_menu.addAction(suggest_action)
 
         fiche_site_action = QAction("Lire une fiche du site…", self.main_window)
         fiche_site_action.setToolTip("Importer une fiche produit du site (lien ou description), comme un PDF")
         ouvrir_fiche = getattr(self.main_window, '_open_fiche_site_dialog', lambda: None)
         fiche_site_action.triggered.connect(lambda *_: ouvrir_fiche())
-        data_menu.addAction(fiche_site_action)
 
         agora_action = QAction("Importer depuis Agora…", self.main_window)
         agora_action.setToolTip("Appareils compatibles et prix d'une pièce lus chez Agora "
                                 "(10 appels par jour), puis la fenêtre d'import, comme un PDF")
         agora_action.triggered.connect(getattr(self.main_window, '_open_agora_dialog', lambda: None))
-        data_menu.addAction(agora_action)
 
         fiche_agora_action = QAction("Fiche PrestaShop et Cogilog…", self.main_window)
         fiche_agora_action.setToolTip("Fiche de la pièce recherchée (nom, description, métas, code, prix, "
                                       "catégorie), ajoutée aux fichiers d'import du jour")
         fiche_agora_action.triggered.connect(getattr(self.main_window, '_open_fiche_site_agora', lambda: None))
-        data_menu.addAction(fiche_agora_action)
 
         regles_codes_action = QAction("Règles des codes produit…", self.main_window)
         regles_codes_action.setToolTip("Préfixes et règles qui proposent le code produit "
                                        "(référence PrestaShop = code Cogilog) d'une fiche nouvelle")
         regles_codes_action.triggered.connect(getattr(self.main_window, '_open_regles_codes', lambda: None))
-        data_menu.addAction(regles_codes_action)
 
         reprise_site_action = QAction("Importer les fiches du site…", self.main_window)
         reprise_site_action.setToolTip("Importer toutes les fiches du site, par lots, depuis les exports PrestaShop")
         reprise_site_action.triggered.connect(getattr(self.main_window, '_open_reprise_site_dialog', lambda: None))
-        data_menu.addAction(reprise_site_action)
 
         a_refaire_action = QAction("Fiches du site à refaire…", self.main_window)
         a_refaire_action.setToolTip("Fiches du site aux données en vrac : cherchez leurs PDF et importez-les")
         a_refaire_action.triggered.connect(getattr(self.main_window, '_open_fiches_a_refaire', lambda: None))
-        data_menu.addAction(a_refaire_action)
 
         everyparts_action = QAction("Exporter les fiches reprises (EveryParts)…", self.main_window)
         everyparts_action.setToolTip("Compatibilités des produits repris du site, au format EveryParts "
                                      "(référence produit du site en 1re colonne)")
         everyparts_action.triggered.connect(
             getattr(self.main_window, '_open_export_fiches_reprises', lambda: None))
-        data_menu.addAction(everyparts_action)
 
         regles_action = QAction("Règles de nomenclature…", self.main_window)
         regles_action.setToolTip("Règles qui déduisent le type d'un appareil de sa référence, "
                                  "et revue des types qu'elles proposent")
         regles_action.triggered.connect(
             getattr(self.main_window, '_open_regles_nomenclature', lambda: None))
-        data_menu.addAction(regles_action)
 
         history_action = QAction("Historique des modifications…", self.main_window)
         history_action.setToolTip("Consulter l'historique persistant des modifications")
         history_action.triggered.connect(getattr(self.main_window, '_open_history_view', lambda: None))
-        data_menu.addAction(history_action)
+
+        # Regroupement par usage (séparateurs) : seul l'ordre change, aucune entrée
+        # ne disparaît ni ne change de comportement.
+        for groupe in (
+            (autocomplete_action, suggest_action),                                   # compléter
+            (fiche_agora_action, agora_action, fiche_site_action, regles_codes_action),   # site 1001pieces
+            (reprise_site_action, a_refaire_action, everyparts_action),             # reprise du site
+            (regles_action, history_action),                                         # règles et suivi
+        ):
+            if data_menu.actions():
+                data_menu.addSeparator()
+            for action in groupe:
+                data_menu.addAction(action)
 
         data_btn.setMenu(data_menu)
         toolbar.addWidget(data_btn)

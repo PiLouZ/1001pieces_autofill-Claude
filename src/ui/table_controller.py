@@ -2012,9 +2012,43 @@ class TableController:
         except Exception as e:  # jamais bloquant pour l'affichage du tableau
             app_logger.warning(f"Action « Créer l'appareil » indisponible : {e}")
             valeurs = {}
+        terme = self.current_search_term
+        recherche_pieces = bool(terme.strip() if isinstance(terme, str) else terme)
         reference = next((valeurs[c] for c in self._COLONNES_REFERENCE if c in valeurs), None)
+        # Proposé seulement si l'appareil n'existe pas, quels que soient les autres
+        # filtres ou la pièce cherchée (qui peuvent seuls vider le tableau).
+        if reference and self._appareil_existe(reference):
+            reference = None
         libelle = f"Créer l'appareil « {reference} »" if reference else None
         vue.definir_action_si_vide(libelle, self._creer_appareil_depuis_recherche)
+        if hasattr(vue, 'definir_filtres_si_vide'):
+            vue.definir_filtres_si_vide(self._texte_filtres_actifs() if recherche_pieces else '')
+
+    def _appareil_existe(self, reference: str) -> bool:
+        """Un appareil porte-t-il exactement cette référence (modèle, commerciale
+        ou autre), sans casse, tous filtres et recherche confondus ? En cas
+        d'échec de la requête : False (le bouton reste proposé, comme avant)."""
+        try:
+            lignes = self.db_manager.execute_custom_query(
+                "SELECT 1 FROM appareils WHERE ref_modele = ? COLLATE NOCASE "
+                "OR commercial_ref = ? COLLATE NOCASE OR other_ref = ? COLLATE NOCASE LIMIT 1",
+                [reference, reference, reference])
+            return bool(lignes)
+        except Exception as e:
+            app_logger.warning(f"Existence de l'appareil « {reference} » non vérifiée : {e}")
+            return False
+
+    def _texte_filtres_actifs(self) -> str:
+        """« Référence modèle = C689755 ; Fabricant = Bosch » — filtres de colonne
+        saisis, pour expliquer un « Aucun résultat » en recherche par pièce."""
+        try:
+            entetes = Config.UI_HEADERS
+            return " ; ".join(
+                f"{entetes[col] if col < len(entetes) else col} = {texte}"
+                for col, texte in sorted(self._live_column_filters().items()))
+        except Exception as e:  # jamais bloquant pour l'affichage du tableau
+            app_logger.warning(f"Texte des filtres actifs indisponible : {e}")
+            return ''
 
     def _creer_appareil_depuis_recherche(self):
         """Clic sur « Créer l'appareil » : même chemin que Cmd+N."""
