@@ -231,6 +231,18 @@ def test_client_enveloppe(base):
     assert not c.en_cache(INFO, 99, 'R2') and not c.en_cache(APPAREILS, 2, 'R1')
 
 
+def test_piece_trop_volumineuse(base):
+    from src.utils.agora.client import PieceTropVolumineuse
+    t = _Transport((500, _enveloppe(None, 'E', 'One or more errors occurred.')))
+    c = ClientAgora(base, cle='x', transport=t)
+    with pytest.raises(PieceTropVolumineuse):
+        c.appareils(4, '00611323')
+    assert c.restants(APPAREILS) == 9                               # l'échec compte (support Agora)
+    with pytest.raises(PieceTropVolumineuse, match='pas de nouvel appel'):
+        c.appareils(4, '00 611 323')                                 # même pièce : refusé sans appel
+    assert len(t.urls) == 1 and c.restants(APPAREILS) == 9
+
+
 def test_info_en_cache(base):
     t = _Transport((200, _enveloppe({'PartRef': 'C00866459', 'DiscountPrice': 14.784})))
     ClientAgora(base, cle='x', transport=t).info(17, 'C00866459')

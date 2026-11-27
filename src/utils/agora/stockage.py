@@ -62,6 +62,13 @@ CREATE TABLE IF NOT EXISTS fiches_agora (
     regle_prix    TEXT,
     importee_le   TEXT
 );
+CREATE TABLE IF NOT EXISTS agora_echecs (
+    service  TEXT NOT NULL,
+    cle      TEXT NOT NULL,
+    code     INTEGER,
+    le       TEXT NOT NULL,
+    PRIMARY KEY (service, cle)
+);
 CREATE TABLE IF NOT EXISTS myspace_meta (
     cle      TEXT PRIMARY KEY,
     valeur   TEXT
@@ -100,6 +107,19 @@ class BaseAgora:
             c.execute("INSERT OR REPLACE INTO agora_cache VALUES (?, ?, ?, ?, ?)",
                       (service, cle, code, json.dumps(reponse, ensure_ascii=False),
                        datetime.now(timezone.utc).isoformat(timespec='seconds')))
+
+    # --- Pièces qu'Agora ne sait pas traiter (délai dépassé) --------------------------------
+    def noter_echec(self, service: str, cle: str, code: int) -> None:
+        with self.connexion() as c:
+            c.execute("INSERT OR REPLACE INTO agora_echecs VALUES (?, ?, ?, ?)",
+                      (service, cle, code, datetime.now(timezone.utc).isoformat(timespec='seconds')))
+
+    def echec(self, service: str, cle: str) -> Optional[str]:
+        """Date (ISO, UTC) du dernier échec « délai dépassé » de cette pièce, sinon None."""
+        with self.connexion() as c:
+            row = c.execute("SELECT le FROM agora_echecs WHERE service = ? AND cle = ?",
+                            (service, cle)).fetchone()
+        return row[0] if row else None
 
     # --- Quota ----------------------------------------------------------------------
     def appels_du_jour(self, service: str, jour: Optional[str] = None) -> Tuple[int, bool]:

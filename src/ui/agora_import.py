@@ -356,6 +356,9 @@ class SaisieAgora(QDialog):
                 etat = "aucun appareil" if self.cas[ref] is None else f"{len(self.cas[ref])} appareils"
             elif self.constructeur is not None and self.client.en_cache(APPAREILS, self.constructeur, ref):
                 etat = "en cache"
+            elif self.constructeur is not None and self.base.echec(
+                    APPAREILS, self.client.cle_cache(self.constructeur, ref)):
+                etat = "trop d'appareils pour Agora"
             else:
                 etat = "1 appel"
             role = ("à publier" if ref == self.ref_agora

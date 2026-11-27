@@ -33,6 +33,9 @@ ROUTES = {
     INFO: 'api/sparepart/getsparepartinfo/{constructeur}/{ref}/{pays}',
 }
 LIBELLES = {APPAREILS: 'appareils compatibles', INFO: 'prix et disponibilité'}
+# Pièce en erreur 500 (délai de traitement dépassé : trop d'appareils, support Agora
+# 2026-11-27) : pas de nouvel appel avant ce délai, l'échec coûtant un appel du quota
+JOURS_AVANT_NOUVEL_ESSAI = 30
 
 
 class ErreurAgora(Exception):
@@ -41,6 +44,10 @@ class ErreurAgora(Exception):
 
 class QuotaEpuise(ErreurAgora):
     """Plus d'appel possible aujourd'hui pour ce service."""
+
+
+class PieceTropVolumineuse(ErreurAgora):
+    """Agora dépasse son délai sur cette pièce : on ne relance pas l'appel."""
 
 
 class CleAbsente(ErreurAgora):
@@ -142,6 +149,19 @@ class ClientAgora:
     def en_cache(self, service: str, constructeur: int, ref: str) -> bool:
         return self.base.lire_cache(service, self.cle_cache(constructeur, ref)) is not None
 
+    def _echec_recent(self, service: str, cle_cache: str) -> str:
+        """Message de refus si la pièce a échoué (délai dépassé) il y a moins de
+        JOURS_AVANT_NOUVEL_ESSAI jours, sinon ''."""
+        from datetime import datetime, timedelta, timezone
+        le = self.base.echec(service, cle_cache)
+        if not le:
+            return ''
+        date = datetime.fromisoformat(le)
+        if datetime.now(timezone.utc) - date > timedelta(days=JOURS_AVANT_NOUVEL_ESSAI):
+            return ''
+        return (f"Agora n'a pas pu traiter cette pièce le {date:%d/%m/%Y} (délai dépassé, trop d'appareils) : "
+                f"pas de nouvel appel avant le {date + timedelta(days=JOURS_AVANT_NOUVEL_ESSAI):%d/%m/%Y}")
+
     # --- Appels -------------------------------------------------------------------------
     def appareils(self, constructeur: int, ref: str) -> Reponse:
         """Appareils compatibles : [{ManufacturerID, CommercialReference,
@@ -159,6 +179,9 @@ class ClientAgora:
         deja = self.base.lire_cache(service, cle_cache)
         if deja is not None:
             return Reponse(deja[1], True, deja[0])
+        refus = self._echec_recent(service, cle_cache)
+        if refus:
+            raise PieceTropVolumineuse(refus)
         if self.restants(service) <= 0:
             raise QuotaEpuise(f"quota du jour atteint pour « {LIBELLES[service]} » "
                               f"({self.quota} appels, remis à zéro à minuit UTC)")
@@ -186,6 +209,11 @@ class ClientAgora:
             self.base.marquer_epuise(service)
             raise QuotaEpuise(f"Agora refuse l'appel (code {code}) : quota du jour atteint "
                               f"ou clé refusée pour « {LIBELLES[service]} »")
+        if code == 500:
+            self.base.noter_echec(service, cle_cache, code)
+            raise PieceTropVolumineuse(
+                f"Agora n'a pas pu traiter la pièce (erreur 500 : délai dépassé, souvent une pièce aux "
+                f"dizaines de milliers d'appareils). Pas de nouvel essai avant {JOURS_AVANT_NOUVEL_ESSAI} jours")
         if code not in (200, 404):
             raise ErreurAgora(f"réponse inattendue d'Agora (code {code})")
         try:
