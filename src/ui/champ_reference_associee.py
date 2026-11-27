@@ -41,8 +41,12 @@ class ChampReferenceAssociee(QWidget):
 
     def __init__(self, memoire: Optional[Memoire] = None, proposee: str = '',
                  largeur: int = 260, petit: bool = False, parent=None,
-                 inversion: Optional[Inversion] = None):
+                 inversion: Optional[Inversion] = None, garde_la_piece: bool = False):
         super().__init__(parent)
+        # True : « ⇄ » n'échange pas la pièce (réf. du fichier, qui garde ses appareils) ;
+        # seule la paire s'inverse : le champ de droite devient la réf. PRINCIPALE
+        self._garde_la_piece = garde_la_piece
+        self._inversee = False
         self._memoire = memoire
         self._proposee = proposee or ''
         self._reference = ''
@@ -70,8 +74,10 @@ class ChampReferenceAssociee(QWidget):
         # ⇄ : la réf. associée devient la pièce (appareils, libellé), et inversement
         self.bouton_inverser = QPushButton(qta.icon('fa5s.exchange-alt', color='#0066cc'), '')
         self.bouton_inverser.setStyleSheet(StyleManager.ICON_BUTTON)
-        self.bouton_inverser.setToolTip("Inverser : la référence associée devient la référence "
-                                        "principale (elle reçoit les appareils et le libellé)")
+        self.bouton_inverser.setToolTip(
+            "Inverser les rôles : la référence associée devient la référence principale "
+            "(elle vient en premier dans le code produit). Pour un fichier, les appareils "
+            "restent sur la référence du fichier.")
         self.bouton_inverser.setFixedWidth(24)
         self.bouton_inverser.clicked.connect(self.inverser)
         self.bouton_inverser.setVisible(False)
@@ -143,6 +149,7 @@ class ChampReferenceAssociee(QWidget):
         if reference == self._reference:
             return
         self._reference = reference
+        self._inversee = False
         self._afficher()
 
     def _afficher(self):
@@ -189,7 +196,10 @@ class ChampReferenceAssociee(QWidget):
         self._afficher()
 
     def _maj_bouton(self):
+        if not self.champ.refs():
+            self._inversee = False              # plus d'associée : rien n'est inversé
         self.bouton_inverser.setVisible(self._inversion is not None and bool(self.champ.refs()))
+        self.libelle.setText("Réf. principale :" if self._inversee else "Réf. associée :")
         self._maj_groupe_associee()
 
     def _maj_groupe_associee(self):
@@ -220,6 +230,12 @@ class ChampReferenceAssociee(QWidget):
         if not refs or self._inversion is None or refs[0] == self._reference:
             return
         nouvelle, ancienne = refs[0], self._reference
+        if self._garde_la_piece:
+            # La pièce (et ses appareils) ne bouge pas : seul le rôle du champ change
+            self._inversee = not self._inversee
+            self._inversion(nouvelle if self._inversee else ancienne, ancienne)
+            self._maj_bouton()
+            return
         self._inversion(nouvelle, ancienne)     # la fenêtre change la réf. de la pièce
         self._reference = nouvelle
         # Le groupe choisi suit chaque référence (clé = la référence)
@@ -237,6 +253,12 @@ class ChampReferenceAssociee(QWidget):
     @property
     def reference(self) -> str:
         return self._reference
+
+    @property
+    def inversee(self) -> bool:
+        """« ⇄ » sur une réf. de fichier : le champ de droite est la réf. principale,
+        la réf. du fichier (qui garde les appareils) en est l'associée."""
+        return self._inversee
 
     def reponse(self) -> Tuple[bool, Optional[str]]:
         """(répondu, référence associée). Pièce hors des trois groupes (ni par sa
