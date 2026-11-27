@@ -583,6 +583,8 @@ class SEOService:
             self.main_window.titre_btn.setEnabled(is_piece_search)
         if hasattr(self.main_window, 'fiche_btn'):
             self.main_window.fiche_btn.setEnabled(is_piece_search)
+        if hasattr(self.main_window, 'fiche_site_btn'):
+            self.main_window.fiche_site_btn.setEnabled(is_piece_search)
     
     @handle_seo_generation_errors()
     def cleanup(self) -> None:

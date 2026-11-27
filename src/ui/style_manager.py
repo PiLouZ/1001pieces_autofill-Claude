@@ -301,7 +301,29 @@ class StyleManager:
     COULEURS_META_TITLE = ("#fd7e14", "#e5711f")
     COULEURS_META_DESC = ("#ffc107", "#e5a801")
     COULEURS_TITRE = ("#6f42c1", "#5e37a6", "#512f8f")    # violet
+    COULEURS_FICHE_SITE = ("#1f3a93", "#1a3180")           # bleu marine : Fiche PrestaShop et Cogilog
     COULEURS_FICHE = ("#0b5ed7", "#0a53be", "#094ba8")    # bleu
+
+    # ── Fenêtre « Fiche PrestaShop et Cogilog » ───────────────────────────────
+    # État du site : (fond, texte, icône qtawesome). Jamais la couleur seule : icône + phrase.
+    BANDEAUX_ETAT = {
+        'attente': ("#eef0f2", "#495057", "fa5s.sync-alt"),
+        'ok':      ("#e8f3ec", "#1e6b3a", "fa5s.check-circle"),
+        'doublon': ("#fdecea", "#a93226", "fa5s.exclamation-triangle"),
+        'erreur':  ("#fff4e5", "#b45309", "fa5s.wifi"),
+        'nonconf': ("#eef0f2", "#495057", "fa5s.plug"),
+    }
+    CARTE_APERCU = ("QFrame#carteApercu { background: white; border: 1px solid #dee2e6;"
+                    " border-radius: 8px; }")
+    LEGENDE_SECTION = "color: #6c757d; font-size: 11px; font-weight: 600; margin-top: 6px;"
+    COVER_APERCU = "background: #f1f3f5; color: #868e96; font-size: 11px; border-radius: 6px;"
+    TEXTE_APERCU_HTML = ("QTextBrowser { background: white; border: 1px solid #dee2e6;"
+                         " border-radius: 6px; padding: 4px; }")
+
+    @staticmethod
+    def bandeau_etat(niveau: str) -> str:
+        fond = StyleManager.BANDEAUX_ETAT[niveau][0]
+        return f"QFrame#bandeauEtat {{ background: {fond}; border-radius: 6px; }}"
 
     @staticmethod
     def bouton_export_plein(fond: str, survol: str) -> str:
