@@ -63,15 +63,8 @@ class SEOService:
             return
         search_data, ref_obsolete = preparees
 
-        result = self.seo_generator.generate_meta_title(
-            reference=search_data['reference'],
-            description=search_data['description'],
-            type_appareil=search_data['type_appareil'],
-            fabricants=search_data['fabricants'],
-            variante=self._variante('title', search_data['reference'], autre_formulation),
-            appellations=self.appellations(),
-        )
-        # n_modeles non utilisé dans le title (pas assez de place) mais compté pour info
+        result = self.calculer_meta_title(
+            search_data, self._variante('title', search_data['reference'], autre_formulation))
 
         QApplication.clipboard().setText(result['title'])
 
@@ -115,6 +108,47 @@ class SEOService:
             return
         search_data, ref_obsolete = preparees
 
+        result = self.calculer_meta_description(
+            search_data, self._variante('description', search_data['reference'], autre_formulation))
+
+        QApplication.clipboard().setText(result['description'])
+
+        length = result['length']
+        largeur = f"{length} car., {result['info']['largeur_px']}/{SEOGenerator.DESCRIPTION_MAX_PX} px"
+        status_msg = f"Méta description copiée ({largeur})"
+        if result['info']['truncated']:
+            status_msg += " [Raccourcie]"
+        status_msg += self._libelle_variante(result['info'])
+        if ref_obsolete:
+            status_msg += f" [Supersédée → {search_data['reference']}]"
+
+        detailed_message = f"SEO: Méta description générée pour '{search_data['reference']}'"
+        if ref_obsolete:
+            detailed_message += f" (remplace {ref_obsolete})"
+        detailed_message += f"\n==> Description: {result['description']}"
+        detailed_message += self._ligne_appellation(result['info'], search_data['type_appareil'])
+        detailed_message += f"\n==> Longueur: {largeur}"
+        if result['info']['truncated']:
+            detailed_message += "\n==> Description raccourcie (mots entiers retirés pour tenir dans la largeur)"
+
+        self.main_window.user_interaction_service.add_to_history(detailed_message)
+        self.main_window.statusbar.showMessage(status_msg, 5000)
+    
+    def calculer_meta_title(self, search_data: Dict[str, Any], variante: int = 0) -> Dict[str, Any]:
+        """Méta titre des données préparées (preparer_donnees_fiche), sans copie ni
+        historique : partagé avec la fiche PrestaShop (src/ui/agora_fiche.py)."""
+        # n_modeles non utilisé dans le title (pas assez de place)
+        return self.seo_generator.generate_meta_title(
+            reference=search_data['reference'],
+            description=search_data['description'],
+            type_appareil=search_data['type_appareil'],
+            fabricants=search_data['fabricants'],
+            variante=variante,
+            appellations=self.appellations(),
+        )
+
+    def calculer_meta_description(self, search_data: Dict[str, Any], variante: int = 0) -> Dict[str, Any]:
+        """Méta description des données préparées, sans copie ni historique."""
         # Compter les modèles compatibles (ref courante + prédécesseurs + groupe
         # d'équivalence : une équivalente équipe les mêmes besoins, décision client
         # 2026-10-08)
@@ -145,33 +179,11 @@ class SEOService:
             n_modeles=n_modeles,
             anciennes_refs=anciennes_refs,  # toujours citées quand il y en a (décision client)
             equivalentes=equivalentes,      # idem ; 1 + 1 si la fiche a les deux
-            variante=self._variante('description', search_data['reference'], autre_formulation),
+            variante=variante,
             appellations=self.appellations(),
         )
+        return result
 
-        QApplication.clipboard().setText(result['description'])
-
-        length = result['length']
-        largeur = f"{length} car., {result['info']['largeur_px']}/{SEOGenerator.DESCRIPTION_MAX_PX} px"
-        status_msg = f"Méta description copiée ({largeur})"
-        if result['info']['truncated']:
-            status_msg += " [Raccourcie]"
-        status_msg += self._libelle_variante(result['info'])
-        if ref_obsolete:
-            status_msg += f" [Supersédée → {search_data['reference']}]"
-
-        detailed_message = f"SEO: Méta description générée pour '{search_data['reference']}'"
-        if ref_obsolete:
-            detailed_message += f" (remplace {ref_obsolete})"
-        detailed_message += f"\n==> Description: {result['description']}"
-        detailed_message += self._ligne_appellation(result['info'], search_data['type_appareil'])
-        detailed_message += f"\n==> Longueur: {largeur}"
-        if result['info']['truncated']:
-            detailed_message += "\n==> Description raccourcie (mots entiers retirés pour tenir dans la largeur)"
-
-        self.main_window.user_interaction_service.add_to_history(detailed_message)
-        self.main_window.statusbar.showMessage(status_msg, 5000)
-    
     def preparer_donnees_fiche(self, genre: str, titre_dialogue: str, interactif: bool = True,
                                relancer: Optional[Callable[[], None]] = None
                                ) -> Optional[Tuple[Dict[str, Any], Optional[str]]]:
