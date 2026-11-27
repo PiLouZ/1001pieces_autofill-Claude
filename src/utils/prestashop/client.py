@@ -137,6 +137,26 @@ class ClientPrestaShop:
                 return int(m.group(1))
             raise ErreurPrestaShop("création : identifiant absent de la réponse") from None
 
+    # Champs calculés par PrestaShop, refusés en écriture (« parameter … is read only »)
+    LECTURE_SEULE = ('manufacturer_name', 'quantity', 'position_in_category')
+
+    def lire_xml(self, ressource: str, ident: int):
+        """La ressource complète en XML (élément <prestashop>), base d'une modification."""
+        import xml.etree.ElementTree as ET
+        _code, corps = self._appel('GET', f"{ressource}/{int(ident)}")
+        return ET.fromstring(corps)
+
+    def modifier(self, ressource: str, ident: int, racine) -> None:
+        """PUT de la ressource complète (lue par lire_xml, puis modifiée) : PrestaShop
+        remplace l'objet entier, d'où la relecture préalable de tous ses champs."""
+        import xml.etree.ElementTree as ET
+        objet = next(iter(racine))
+        for champ in self.LECTURE_SEULE:
+            for noeud in objet.findall(champ):
+                objet.remove(noeud)
+        corps = ET.tostring(racine, encoding='utf-8', xml_declaration=True)
+        self._appel('PUT', f"{ressource}/{int(ident)}", None, corps)
+
     def envoyer_image(self, id_produit: int, contenu: bytes, nom: str = 'cover.jpg') -> None:
         """Image d'un produit (la première devient la cover)."""
         limite = f"----autofill{uuid.uuid4().hex}"

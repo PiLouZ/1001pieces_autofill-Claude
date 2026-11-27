@@ -157,6 +157,7 @@ class FicheSiteDialog(QDialog):
         self.site = site
         self.referentiels = None
         self.doublons = []
+        self.cible_maj = None               # fiche déjà en ligne à mettre à jour (doublon)
         self.id_cree: Optional[int] = None
         self.dossier = ''
         self.setWindowTitle(f"Fiche PrestaShop et Cogilog — {fiche.reference}")
@@ -245,7 +246,7 @@ class FicheSiteDialog(QDialog):
         self.bouton_creer = QPushButton("Créer sur PrestaShop")
         self.bouton_creer.setStyleSheet(StyleManager.PRIMARY_ACTION_BUTTON)
         self.bouton_creer.setEnabled(False)
-        self.bouton_creer.clicked.connect(self.creer)
+        self.bouton_creer.clicked.connect(self._action_site)
         for b in (self.bouton_dossier, fichiers, self.bouton_creer):
             pied.addWidget(b)
         racine.addLayout(pied)
@@ -338,6 +339,12 @@ class FicheSiteDialog(QDialog):
                               for p in self.doublons)
             self.etat_site.setText(f"<b style='color:#c0392b'>Déjà sur le site ({env})</b> : {liste}. "
                                    "Vérifiez avant de créer une fiche.")
+            # Une fiche du même code, sinon le seul doublon : on propose de la mettre à jour
+            from src.utils.prestashop.site import cle
+            self.cible_maj = next((p for p in self.doublons if cle(p.reference) == cle(self.fiche.code)),
+                                  self.doublons[0] if len(self.doublons) == 1 else None)
+            if self.cible_maj is not None:
+                self.bouton_creer.setText(f"Mettre à jour la fiche n° {self.cible_maj.id} ({env})")
         else:
             self.etat_site.setText(f"Site ({env}) : aucune fiche pour {html.escape(', '.join(self.famille[:6]))}"
                                    f"{'…' if len(self.famille) > 6 else ''}.")
@@ -383,7 +390,23 @@ class FicheSiteDialog(QDialog):
         if historique is not None:
             historique.add_to_history(texte)
 
-    # --- Création sur le site ---------------------------------------------------------------
+    # --- Création ou mise à jour sur le site ----------------------------------------------------
+    def _action_site(self):
+        if self.cible_maj is not None:
+            self.mettre_a_jour()
+        else:
+            self.creer()
+
+    def mettre_a_jour(self):
+        """Fiche déjà en ligne : avant / après bloc par bloc (src/ui/prestashop_maj.py)."""
+        f, r = self._relever(), self.referentiels
+        if r is None or self.cible_maj is None:
+            return
+        from .prestashop_maj import MiseAJourFicheDialog
+        historique = getattr(self.main_window, 'user_interaction_service', None)
+        MiseAJourFicheDialog(self, self.site, self.cible_maj.id, f, r.id_categorie(f.categorie),
+                             historique.add_to_history if historique is not None else None).show()
+
     def creer(self):
         f, r = self._relever(), self.referentiels
         if r is None:

@@ -102,3 +102,65 @@ def test_creation_refusee_si_code_existe():
     with pytest.raises(ValueError, match='existe déjà'):
         site.creer_fiche(f, 157, 6, [], None)
     assert all(m == 'GET' for m, *_ in t.appels)
+
+
+# --- Mise à jour d'une fiche en ligne -------------------------------------------------------
+
+import xml.etree.ElementTree as ET  # noqa: E402
+
+from src.utils.prestashop.site import appliquer_blocs, comparer  # noqa: E402
+
+_XML_PRODUIT = """<?xml version="1.0" encoding="UTF-8"?>
+<prestashop xmlns:xlink="http://www.w3.org/1999/xlink"><product>
+<id><![CDATA[19923]]></id><manufacturer_name><![CDATA[Electrolux]]></manufacturer_name>
+<quantity><![CDATA[0]]></quantity><id_category_default><![CDATA[105]]></id_category_default>
+<price><![CDATA[36.250000]]></price><active><![CDATA[1]]></active>
+<name><language id="1"><![CDATA[Ancien nom]]></language></name>
+<link_rewrite><language id="1"><![CDATA[ancien-nom]]></language></link_rewrite>
+<description><language id="1"><![CDATA[<p>retouchée à la main</p>]]></language></description>
+<meta_title><language id="1"><![CDATA[Ancien titre]]></language></meta_title>
+<meta_description><language id="1"><![CDATA[Ancienne desc]]></language></meta_description>
+<associations><categories><category><id><![CDATA[105]]></id></category><category><id><![CDATA[2]]></id></category></categories></associations>
+</product></prestashop>"""
+
+
+def _fiche_maj():
+    return FicheSite(code='EL140005565027', nom='Nouveau nom', libelle='Fermeture', reference='140005565027',
+                     prix_ttc=45.0, categorie='Divers - Lave-linge', description='<p>outil</p>',
+                     meta_title='Nouveau titre', meta_description='Ancienne desc')
+
+
+def test_comparer_blocs():
+    produit = {'name': 'Ancien nom', 'description': '<p>outil</p>', 'meta_title': 'Ancien titre',
+               'meta_description': 'Ancienne desc', 'price': '37.500000'}
+    blocs = {b.cle: b for b in comparer(produit, _fiche_maj(), 'Divers - Lave-linge')}
+    assert blocs['nom'].different and blocs['metas'].different
+    assert not blocs['description'].different and not blocs['prix'].different
+    assert not blocs['categorie'].different
+    assert blocs['prix'].avant == '45,00 € TTC (37,50 € HT)'
+
+
+def test_appliquer_blocs_choisis_seulement():
+    racine = ET.fromstring(_XML_PRODUIT)
+    appliquer_blocs(racine, _fiche_maj(), ['nom', 'prix', 'categorie'], 109)
+    p = racine.find('product')
+    assert p.findtext('name/language') == 'Nouveau nom'
+    assert p.findtext('link_rewrite/language') == 'ancien-nom'                  # l'URL ne bouge pas
+    assert p.findtext('description/language') == '<p>retouchée à la main</p>'  # bloc non coché
+    assert p.findtext('meta_title/language') == 'Ancien titre'
+    assert p.findtext('price') == '37.500000' and p.findtext('active') == '1'
+    assert p.findtext('id_category_default') == '109'
+    assert [c.findtext('id') for c in p.find('associations/categories')] == ['2', '109']
+
+
+def test_modifier_retire_les_champs_en_lecture_seule():
+    envois = []
+
+    def t(methode, url, entetes, corps):
+        envois.append((methode, url, corps))
+        return 200, b''
+    c = ClientPrestaShop('https://dev.1001pieces.com', 'x', t)
+    c.modifier('products', 19923, ET.fromstring(_XML_PRODUIT))
+    methode, url, corps = envois[0]
+    assert methode == 'PUT' and url.endswith('/api/products/19923')
+    assert b'manufacturer_name' not in corps and b'<quantity>' not in corps and b'Ancien nom' in corps
