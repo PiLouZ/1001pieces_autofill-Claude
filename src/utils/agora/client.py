@@ -63,6 +63,18 @@ def lire_cle(dossier_data: Optional[str] = None) -> Optional[str]:
     return None
 
 
+def _journaliser(url: str, debut, code, corps) -> None:
+    """Appel en échec, tel que le support d'Agora le demande : URL complète (sans la
+    clé, passée en en-tête), date et heure UTC, durée, code et message reçus."""
+    import logging
+    from datetime import datetime, timezone
+    texte = corps.decode('utf-8', errors='replace') if isinstance(corps, bytes) else str(corps)
+    duree = (datetime.now(timezone.utc) - debut).total_seconds()
+    logging.getLogger('1001pieces').warning(
+        f"[Agora] échec GET {url} — {debut.isoformat(timespec='seconds')} UTC, {duree:.1f} s, "
+        f"code {code} : {texte[:500]}")
+
+
 class TransportUrllib:
     """Envoi HTTPS (urllib). `preparer()` charge le contexte SSL avant que l'appel
     ne soit compté : un problème local (certificats) ne consomme pas le quota."""
@@ -161,10 +173,15 @@ class ClientAgora:
             except Exception as e:
                 raise ErreurAgora(f"connexion HTTPS impossible : {type(e).__name__}") from None
         self.base.compter_appel(service)          # l'appel compte chez Agora même s'il échoue
+        from datetime import datetime, timezone
+        debut = datetime.now(timezone.utc)
         try:
             code, corps = self.transport(url, cle)
         except Exception as e:
+            _journaliser(url, debut, 'injoignable', repr(e))
             raise ErreurAgora(f"Agora injoignable : {type(e).__name__}") from None
+        if code != 200:
+            _journaliser(url, debut, code, corps)
         if code in (401, 403, 429):
             self.base.marquer_epuise(service)
             raise QuotaEpuise(f"Agora refuse l'appel (code {code}) : quota du jour atteint "
@@ -179,6 +196,7 @@ class ClientAgora:
         # ResponseErrorMessage, ResponseData}. Une erreur n'est jamais mise en cache.
         if isinstance(donnees, dict) and 'ResponseStatus' in donnees:
             if donnees.get('ResponseStatus') == 'E':
+                _journaliser(url, debut, code, corps)
                 message = str(donnees.get('ResponseErrorMessage') or donnees.get('ResponseMessage') or '')
                 if re.search(r'quota|limit|exceed|too many', message, re.I):
                     self.base.marquer_epuise(service)

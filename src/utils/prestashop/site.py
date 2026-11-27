@@ -157,8 +157,108 @@ class SitePrestaShop:
             erreur_cover = "cover par défaut introuvable (data/cover_par_defaut.jpg)"
         return id_produit, erreur_cover
 
+    def comparer_fiche(self, id_produit: int, fiche) -> List['BlocMaj']:
+        produit = self.client.lire('products', id_produit)
+        noms = {i: n for n, i in self.referentiels().categories.items()}
+        return comparer(produit, fiche, noms.get(int(produit.get('id_category_default') or 0), ''))
+
+    def mettre_a_jour_fiche(self, id_produit: int, fiche, blocs, id_categorie: Optional[int]) -> List[str]:
+        """Met à jour les blocs choisis d'une fiche en ligne (relue juste avant) ; ne
+        touche ni à l'activation, ni à l'URL, ni aux images, ni au stock. Retourne les
+        blocs écrits."""
+        import logging
+        blocs = [b for b, _l in BLOCS if b in set(blocs)]
+        if not blocs:
+            return []
+        racine = self.client.lire_xml('products', id_produit)
+        appliquer_blocs(racine, fiche, blocs, id_categorie)
+        self.client.modifier('products', id_produit, racine)
+        logging.getLogger('1001pieces').info(
+            f"[Site] produit n° {id_produit} ({fiche.code}) mis à jour : {', '.join(blocs)}")
+        return blocs
+
     def envoyer_cover(self, id_produit: int, cover: bytes) -> None:
         self.client.envoyer_image(id_produit, cover)
+
+
+# --- Mise à jour d'une fiche en ligne ------------------------------------------------------
+
+# Blocs modifiables : nom, description, métas, prix, catégorie. Jamais l'URL (le nom
+# réécrit garde l'ancienne adresse, référencée), ni l'activation, ni le stock (Cogilog).
+BLOCS = (('nom', "Nom"), ('description', "Description"), ('metas', "Méta title et description"),
+         ('prix', "Prix"), ('categorie', "Catégorie"))
+
+
+@dataclass
+class BlocMaj:
+    cle: str
+    libelle: str
+    avant: str
+    apres: str
+
+    @property
+    def different(self) -> bool:
+        return _normaliser(self.avant) != _normaliser(self.apres)
+
+
+def _normaliser(texte: str) -> str:
+    return re.sub(r'\s+', ' ', (texte or '').replace('\r', '')).strip()
+
+
+def _euros(ht) -> str:
+    if not ht:
+        return ''
+    ht = float(ht)
+    return f"{ht * 1.2:.2f} € TTC ({ht:.2f} € HT)".replace('.', ',')
+
+
+def comparer(produit: dict, fiche, categorie_actuelle: str) -> List[BlocMaj]:
+    """Avant (fiche en ligne, lue en JSON) / après (fiche préparée par l'outil), bloc par bloc."""
+    metas_avant = f"{_texte(produit.get('meta_title'))}\n{_texte(produit.get('meta_description'))}"
+    return [
+        BlocMaj('nom', "Nom", _texte(produit.get('name')), fiche.nom),
+        BlocMaj('description', "Description", _texte(produit.get('description')), fiche.description),
+        BlocMaj('metas', "Méta title et description", metas_avant,
+                f"{fiche.meta_title}\n{fiche.meta_description}"),
+        BlocMaj('prix', "Prix", _euros(produit.get('price')), _euros(fiche.prix_ht)),
+        BlocMaj('categorie', "Catégorie", categorie_actuelle, fiche.categorie),
+    ]
+
+
+def _langue_xml(objet, balise: str, texte: str) -> None:
+    noeud = objet.find(f'{balise}/language[@id="{ID_LANGUE}"]')
+    if noeud is None:
+        noeud = objet.find(f'{balise}/language')
+    if noeud is not None:
+        noeud.text = texte
+
+
+def appliquer_blocs(racine, fiche, blocs, id_categorie: Optional[int]) -> None:
+    """Reporte les blocs choisis dans le XML complet du produit (lu par lire_xml)."""
+    import xml.etree.ElementTree as ET
+    produit = racine.find('product')
+    if 'nom' in blocs:
+        _langue_xml(produit, 'name', fiche.nom[:128])
+    if 'description' in blocs:
+        _langue_xml(produit, 'description', fiche.description)
+    if 'metas' in blocs:
+        _langue_xml(produit, 'meta_title', fiche.meta_title[:255])
+        _langue_xml(produit, 'meta_description', fiche.meta_description[:512])
+    if 'prix' in blocs and fiche.prix_ht:
+        produit.find('price').text = f"{fiche.prix_ht:.6f}"
+    if 'categorie' in blocs and id_categorie:
+        # La fiche change de catégorie : l'ancienne catégorie par défaut est retirée de
+        # ses catégories, les autres (ajoutées à la main) restent
+        ancienne = (produit.findtext('id_category_default') or '').strip()
+        produit.find('id_category_default').text = str(int(id_categorie))
+        categories = produit.find('associations/categories')
+        if categories is not None:
+            for c in list(categories):
+                if (c.findtext('id') or '').strip() == ancienne and ancienne != str(int(id_categorie)):
+                    categories.remove(c)
+            if not any((c.findtext('id') or '').strip() == str(int(id_categorie)) for c in categories):
+                nouvelle = ET.SubElement(categories, 'category')
+                ET.SubElement(nouvelle, 'id').text = str(int(id_categorie))
 
 
 def _texte(valeur) -> str:
