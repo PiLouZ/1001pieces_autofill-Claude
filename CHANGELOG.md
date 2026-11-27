@@ -4,6 +4,37 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
+## [3.109.0] - 2026-11-27 (PR #182, #183, #184, #185, #186)
+
+Créer l'appareil cherché, import Beko, Agora et PrestaShop, refonte de l'interface.
+
+### Créer l'appareil cherché, et le voir (PR #182)
+- « Créer l'appareil « réf. » » sous « Aucun résultat » (ou Cmd+N) : référence, marque et
+  type filtrés repris s'ils existent en base ; un seul Cmd+Z.
+- Une ligne ajoutée par Cmd+N pendant une recherche est épinglée en tête de la page 1
+  (fond pêche), jamais exportée.
+
+### Import Beko (PR #183)
+- ⇄ à l'import d'un fichier : les appareils restent sur la référence du nom de fichier.
+- Fiche complète : une jumelle suit sa principale parmi les équivalentes.
+- La réf. associée créée à l'import hérite du libellé de la pièce (jamais d'écrasement).
+
+### Agora et PrestaShop (PR #184)
+- Import d'une pièce depuis Agora (famille MySpace, appareils compatibles, prix) ;
+  création de la fiche sur PrestaShop avec contrôle des doublons ; mise à jour d'une fiche
+  en ligne bloc par bloc ; règles des codes produit.
+
+### Refonte de l'interface (PR #185)
+- Menu Données regroupé ; colonne d'export réduite à « Fiche PrestaShop et Cogilog » et
+  « Exporter CSV » (les autres exports sous « Autres exports ») ; fenêtre Fiche en deux
+  colonnes avec aperçu vivant.
+
+### Recherche par pièce vide (PR #186)
+- Le message « Aucun résultat » rappelle les filtres de colonne actifs ; « Créer l'appareil »
+  n'est proposé que si la référence filtrée n'existe pas déjà (Cmd+N inchangé).
+
+---
+
 ## [3.108.0] - 2026-11-24 (PR #180)
 
 Une valeur Type / Marque pour toute une sélection.
